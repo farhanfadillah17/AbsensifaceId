@@ -22,7 +22,8 @@ fun HomeScreen(
     onRegisterFace: () -> Unit,
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit,
-    onHistory: () -> Unit
+    onHistory: () -> Unit,
+    onQRGenerator: () -> Unit
 ) {
     val isRegistered = remember { faceDataHelper.isRegistered() }
     val profileCount = remember { faceDataHelper.getEmployeeIds().size }
@@ -52,16 +53,31 @@ fun HomeScreen(
                 letterSpacing = 3.sp
             )
             Text(
-                text = "Face Recognition",
-                fontSize = 14.sp,
+                text = "QR Code + Face Recognition",
+                fontSize = 13.sp,
                 color = Color(0xFFB3C5F0),
-                modifier = Modifier.padding(bottom = 36.dp)
+                modifier = Modifier.padding(bottom = 8.dp)
             )
+
+            // 2FA badge
+            Surface(
+                color = Color(0xFF00695C),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.padding(bottom = 28.dp)
+            ) {
+                Text(
+                    text = "🔐 Autentikasi 2 Faktor (2FA)",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                )
+            }
 
             // Face icon
             Box(
                 modifier = Modifier
-                    .size(140.dp)
+                    .size(130.dp)
                     .clip(CircleShape)
                     .background(
                         if (isRegistered) Color(0xFF1B5E20).copy(alpha = 0.8f)
@@ -69,19 +85,18 @@ fun HomeScreen(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = if (isRegistered) "✅" else "👤", fontSize = 64.sp)
+                Text(text = if (isRegistered) "✅" else "👤", fontSize = 60.sp)
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
+            Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = if (isRegistered) "$profileCount wajah terdaftar" else "Belum ada wajah terdaftar",
                 color = if (isRegistered) Color(0xFF81C784) else Color(0xFFEF9A9A),
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Medium
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Status card
             Card(
@@ -91,35 +106,58 @@ fun HomeScreen(
                 elevation = CardDefaults.cardElevation(6.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(20.dp),
+                    modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = if (isRegistered)
-                            "🟢 Siap melakukan absensi"
+                            "🟢 Siap absensi 2FA"
                         else
-                            "🔴 Daftarkan wajah terlebih dahulu",
+                            "🔴 Daftarkan wajah & buat QR terlebih dahulu",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
+                        fontSize = 14.sp,
                         color = if (isRegistered) Color(0xFF2E7D32) else Color(0xFFC62828),
                         textAlign = TextAlign.Center
                     )
+                    if (isRegistered) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "Alur: Scan QR → Verifikasi Wajah → Absen",
+                            color = Color(0xFF78909C),
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // Register button
-            Button(
-                onClick = onRegisterFace,
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B))
+            // Row: Register + QR Generator
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("📸  Daftar / Kelola Wajah", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = onRegisterFace,
+                    modifier = Modifier.weight(1f).height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B))
+                ) {
+                    Text("📸 Daftar\nWajah", fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                }
+                Button(
+                    onClick = onQRGenerator,
+                    enabled = isRegistered,
+                    modifier = Modifier.weight(1f).height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00695C))
+                ) {
+                    Text("🔲 Lihat\nQR Code", fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Check In
             Button(
@@ -150,7 +188,7 @@ fun HomeScreen(
             // History
             OutlinedButton(
                 onClick = onHistory,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                modifier = Modifier.fillMaxWidth().height(46.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
             ) {

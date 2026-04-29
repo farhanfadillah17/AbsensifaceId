@@ -1,9 +1,7 @@
 package com.example.attendanceapp
 
-
-import com.example.attendanceapp.AttendanceAction
-import android.Manifest
 import android.util.Log
+import android.Manifest
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -18,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -40,12 +37,12 @@ import java.util.concurrent.Executors
 @Composable
 fun AttendanceCameraScreen(
     action: AttendanceAction,
+    verifiedEmployee: QREmployee?,   // data dari QR scan (2FA langkah 1)
     faceDataHelper: FaceDataHelper,
     dbHelper: AttendanceDatabaseHelper,
     onBack: () -> Unit,
     onSuccess: () -> Unit
 ) {
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraPermission = rememberPermissionState(Manifest.permission.CAMERA)
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
@@ -53,8 +50,15 @@ fun AttendanceCameraScreen(
     val actionLabel = if (action == AttendanceAction.CHECK_IN) "Masuk" else "Keluar"
     val actionColor = if (action == AttendanceAction.CHECK_IN) Color(0xFF3F51B5) else Color(0xFFE53935)
 
-    var statusText by remember { mutableStateOf("Arahkan wajah Anda ke kamera") }
-    var statusColor by remember { mutableStateOf(Color(0xFFB0BEC5)) }
+    var statusText by remember {
+        mutableStateOf(
+            if (verifiedEmployee != null)
+                "Halo ${verifiedEmployee.employeeName}!\nArahkan wajah Anda untuk konfirmasi identitas"
+            else
+                "Arahkan wajah Anda ke kamera"
+        )
+    }
+    var statusColor by remember { mutableStateOf(Color(0xFF90CAF9)) }
     var faceDetected by remember { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(false) }
     var attendanceDone by remember { mutableStateOf(false) }
@@ -75,12 +79,7 @@ fun AttendanceCameraScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "Absen $actionLabel",
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { Text("Langkah 2 — Verifikasi Wajah", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Kembali", tint = Color.White)
@@ -100,6 +99,38 @@ fun AttendanceCameraScreen(
                 .padding(padding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Step indicator
+            StepIndicator(currentStep = 2)
+
+            // QR verified info bar
+            if (verifiedEmployee != null) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFF1B3A1A)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("✅", fontSize = 18.sp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                "QR Terverifikasi",
+                                color = Color(0xFF69F0AE),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "${verifiedEmployee.employeeName} • ID: ${verifiedEmployee.employeeId}",
+                                color = Color.White,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            }
+
             if (!cameraPermission.status.isGranted) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Button(onClick = { cameraPermission.launchPermissionRequest() }) {
@@ -113,7 +144,7 @@ fun AttendanceCameraScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(400.dp)
+                    .height(340.dp)
             ) {
                 AndroidView(
                     factory = { ctx ->
@@ -158,7 +189,7 @@ fun AttendanceCameraScreen(
                                     imageAnalysis
                                 )
                             } catch (e: Exception) {
-                                Log.e("Camera", "Error", e)
+                                Log.e("FaceCamera", "Error", e)
                             }
                         }, ContextCompat.getMainExecutor(ctx))
                         previewView
@@ -166,25 +197,23 @@ fun AttendanceCameraScreen(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Oval guide overlay
+                // Oval face guide
                 Box(
                     modifier = Modifier
-                        .size(230.dp)
+                        .size(200.dp)
                         .align(Alignment.Center)
                         .border(
                             width = 3.dp,
                             color = if (attendanceDone) Color(0xFF69F0AE)
                                     else if (faceDetected) Color(0xFFFFEB3B)
                                     else Color(0xFFFF5252),
-                            shape = RoundedCornerShape(120.dp)
+                            shape = RoundedCornerShape(100.dp)
                         )
                 )
 
-                // Status badge atas
+                // Top badge
                 Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 12.dp),
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
                     color = when {
                         attendanceDone -> Color(0xFF1B5E20)
                         faceDetected -> Color(0xFFF57F17)
@@ -194,14 +223,14 @@ fun AttendanceCameraScreen(
                 ) {
                     Text(
                         text = when {
-                            attendanceDone -> "✅ Absensi Berhasil!"
+                            attendanceDone -> "✅ Identitas Terkonfirmasi"
                             faceDetected -> "🟡 Wajah Terdeteksi"
-                            else -> "❌ Tidak Ada Wajah"
+                            else -> "❌ Posisikan Wajah di Frame"
                         },
                         color = Color.White,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                     )
                 }
             }
@@ -218,43 +247,57 @@ fun AttendanceCameraScreen(
                 Text(
                     text = statusText,
                     color = statusColor,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     textAlign = TextAlign.Center,
                     fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(bottom = 20.dp)
+                    modifier = Modifier.padding(bottom = 18.dp)
                 )
 
                 if (!attendanceDone) {
                     if (isProcessing) {
                         CircularProgressIndicator(color = actionColor)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Memverifikasi wajah...", color = Color(0xFF90CAF9), fontSize = 13.sp)
                     } else {
                         Button(
                             onClick = {
                                 val features = lastCapturedFeatures
                                 if (!faceDetected || features == null) {
-                                    statusText = "⚠️ Pastikan wajah terlihat jelas di kamera"
+                                    statusText = "⚠️ Pastikan wajah terlihat jelas di frame"
                                     statusColor = Color(0xFFFFAB40)
                                     return@Button
                                 }
-
                                 isProcessing = true
-                                statusText = "🔍 Memverifikasi wajah..."
-                                statusColor = Color(0xFF90CAF9)
 
+                                // Jika 2FA: cari match yang sesuai dengan employee dari QR
                                 val match = faceDataHelper.findBestMatch(features)
 
                                 if (match != null) {
-                                    val timestamp = System.currentTimeMillis()
-                                    dbHelper.insertAttendance(
-                                        action = action.name,
-                                        timestamp = timestamp,
-                                        employeeId = match.employeeId,
-                                        employeeName = match.employeeName
-                                    )
-                                    val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-                                    statusText = "✅ Selamat datang, ${match.employeeName}!\nAbsen $actionLabel: ${fmt.format(Date(timestamp))}"
-                                    statusColor = Color(0xFF69F0AE)
-                                    attendanceDone = true
+                                    // Cek apakah wajah yang terdeteksi sesuai dengan QR (2FA check)
+                                    val isCorrectPerson = verifiedEmployee == null ||
+                                        match.employeeId == verifiedEmployee.employeeId
+
+                                    if (isCorrectPerson) {
+                                        val timestamp = System.currentTimeMillis()
+                                        dbHelper.insertAttendance(
+                                            action = action.name,
+                                            timestamp = timestamp,
+                                            employeeId = match.employeeId,
+                                            employeeName = match.employeeName
+                                        )
+                                        val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                                        statusText = "✅ Selamat datang, ${match.employeeName}!\n" +
+                                            "Absen $actionLabel: ${fmt.format(Date(timestamp))}\n" +
+                                            "2FA Berhasil ✓"
+                                        statusColor = Color(0xFF69F0AE)
+                                        attendanceDone = true
+                                    } else {
+                                        // Wajah tidak cocok dengan QR yang discan
+                                        statusText = "❌ Wajah tidak sesuai dengan QR!\n" +
+                                            "QR: ${verifiedEmployee?.employeeName}\n" +
+                                            "Wajah: ${match.employeeName}"
+                                        statusColor = Color(0xFFEF5350)
+                                    }
                                 } else {
                                     statusText = "❌ Wajah tidak dikenali.\nPastikan wajah Anda sudah terdaftar."
                                     statusColor = Color(0xFFEF5350)
@@ -266,14 +309,25 @@ fun AttendanceCameraScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = actionColor),
                             enabled = faceDetected
                         ) {
-                            Text(
-                                "📷  Verifikasi & Absen $actionLabel",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
+                            Text("👤  Konfirmasi Wajah & Absen $actionLabel", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                     }
                 } else {
+                    // Success state
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF1B5E20),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("🔐 2FA Sukses", color = Color(0xFF69F0AE), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("QR ✓  +  Wajah ✓", color = Color.White, fontSize = 13.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
                     Button(
                         onClick = onSuccess,
                         modifier = Modifier.fillMaxWidth().height(54.dp),

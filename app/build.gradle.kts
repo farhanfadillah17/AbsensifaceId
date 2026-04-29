@@ -80,6 +80,11 @@ dependencies {
 // Accompanist - handle izin kamera di Compose
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")
 
+    // Scan QR pakai ML Kit
+    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+// Generate gambar QR pakai ZXing
+    implementation("com.google.zxing:core:3.5.3")
+
     // CameraX
     implementation("androidx.camera:camera-core:1.3.1")
     implementation("androidx.camera:camera-camera2:1.3.1")

@@ -20,18 +20,22 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AttendanceAppTheme {
-                AppNavigation(
-                    dbHelper = dbHelper,
-                    faceDataHelper = faceDataHelper
-                )
+                AppNavigation(dbHelper = dbHelper, faceDataHelper = faceDataHelper)
             }
         }
     }
 }
 
 enum class Screen {
-    HOME, REGISTER_FACE, ATTENDANCE_CAMERA, HISTORY
+    HOME,
+    REGISTER_FACE,
+    QR_SCAN,         // Langkah 1 — Scan QR
+    FACE_VERIFY,     // Langkah 2 — Verifikasi wajah
+    QR_GENERATOR,    // Halaman lihat/cetak QR karyawan
+    HISTORY
 }
+
+
 
 @Composable
 fun AppNavigation(
@@ -41,32 +45,57 @@ fun AppNavigation(
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
     var currentAction by remember { mutableStateOf(AttendanceAction.CHECK_IN) }
 
+    // Data yang dilewat antar screen (hasil QR scan)
+    var verifiedEmployee by remember { mutableStateOf<QREmployee?>(null) }
+
     when (currentScreen) {
         Screen.HOME -> HomeScreen(
             faceDataHelper = faceDataHelper,
             onRegisterFace = { currentScreen = Screen.REGISTER_FACE },
             onCheckIn = {
                 currentAction = AttendanceAction.CHECK_IN
-                currentScreen = Screen.ATTENDANCE_CAMERA
+                currentScreen = Screen.QR_SCAN
             },
             onCheckOut = {
                 currentAction = AttendanceAction.CHECK_OUT
-                currentScreen = Screen.ATTENDANCE_CAMERA
+                currentScreen = Screen.QR_SCAN
             },
-            onHistory = { currentScreen = Screen.HISTORY }
+            onHistory = { currentScreen = Screen.HISTORY },
+            onQRGenerator = { currentScreen = Screen.QR_GENERATOR }
         )
+
+        Screen.QR_SCAN -> QRScannerScreen(
+            action = currentAction,
+            onBack = { currentScreen = Screen.HOME },
+            onQRVerified = { employee ->
+                verifiedEmployee = employee
+                currentScreen = Screen.FACE_VERIFY
+            }
+        )
+
+        Screen.FACE_VERIFY -> AttendanceCameraScreen(
+            action = currentAction,
+            verifiedEmployee = verifiedEmployee,
+            faceDataHelper = faceDataHelper,
+            dbHelper = dbHelper,
+            onBack = { currentScreen = Screen.QR_SCAN },
+            onSuccess = {
+                verifiedEmployee = null
+                currentScreen = Screen.HOME
+            }
+        )
+
         Screen.REGISTER_FACE -> RegisterFaceScreen(
             faceDataHelper = faceDataHelper,
             onBack = { currentScreen = Screen.HOME },
             onSuccess = { currentScreen = Screen.HOME }
         )
-        Screen.ATTENDANCE_CAMERA -> AttendanceCameraScreen(
-            action = currentAction,
+
+        Screen.QR_GENERATOR -> QRGeneratorScreen(
             faceDataHelper = faceDataHelper,
-            dbHelper = dbHelper,
-            onBack = { currentScreen = Screen.HOME },
-            onSuccess = { currentScreen = Screen.HOME }
+            onBack = { currentScreen = Screen.HOME }
         )
+
         Screen.HISTORY -> AttendanceHistoryScreen(
             dbHelper = dbHelper,
             onBack = { currentScreen = Screen.HOME }

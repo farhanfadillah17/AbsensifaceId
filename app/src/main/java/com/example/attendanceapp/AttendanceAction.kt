@@ -1,6 +1,11 @@
 package com.example.attendanceapp
 
-enum class AttendanceAction {
+import android.os.Parcel
+import android.os.Parcelable
+
+enum class AttendanceAction() {
+
     CHECK_IN,
     CHECK_OUT
+
 }
