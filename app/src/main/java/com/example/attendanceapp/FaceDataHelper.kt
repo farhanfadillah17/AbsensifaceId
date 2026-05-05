@@ -1,133 +1,122 @@
 package com.example.attendanceapp
 
-import android.content.Context
-import android.content.SharedPreferences
+import android.util.Log
+import androidx.compose.ui.tooling.data.position
+// PENTING: Hapus import androidx.compose.ui.tooling.data.position
+// Import yang benar untuk landmark posisi adalah:
 import com.google.mlkit.vision.face.Face
+import com.google.mlkit.vision.face.FaceLandmark
 import kotlin.math.sqrt
 
-/**
- * Menyimpan data wajah sebagai vektor fitur (embedding) sederhana
- * berbasis bounding box + landmark ML Kit.
- * Untuk produksi, gunakan TensorFlow Lite face embedding model.
- */
-class FaceDataHelper(context: Context) {
+class FaceDataHelper(private val db: AttendanceDatabaseHelper) {
 
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("face_data", Context.MODE_PRIVATE)
-
-    data class FaceProfile(
-        val employeeId: String,
-        val employeeName: String,
-        val features: FloatArray // vektor fitur wajah
-    )
-
-    // Simpan profil wajah
-    fun saveFaceProfile(employeeId: String, employeeName: String, features: FloatArray) {
-        val featStr = features.joinToString(",")
-        prefs.edit()
-            .putString("face_$employeeId", featStr)
-            .putString("name_$employeeId", employeeName)
-            .putStringSet("employee_ids", getEmployeeIds() + employeeId)
-            .apply()
-    }
-
-    // Ambil semua profil
-    fun getAllProfiles(): List<FaceProfile> {
-        return getEmployeeIds().mapNotNull { id ->
-            val featStr = prefs.getString("face_$id", null) ?: return@mapNotNull null
-            val name = prefs.getString("name_$id", id) ?: id
-            val features = featStr.split(",").map { it.toFloat() }.toFloatArray()
-            FaceProfile(id, name, features)
-        }
-    }
-
-    fun getEmployeeIds(): Set<String> =
-        prefs.getStringSet("employee_ids", emptySet()) ?: emptySet()
-
-    fun isRegistered(): Boolean = getEmployeeIds().isNotEmpty()
-
-    fun deleteProfile(employeeId: String) {
-        val ids = getEmployeeIds().toMutableSet()
-        ids.remove(employeeId)
-        prefs.edit()
-            .remove("face_$employeeId")
-            .remove("name_$employeeId")
-            .putStringSet("employee_ids", ids)
-            .apply()
-    }
-
-    // Ekstrak fitur dari Face ML Kit
     fun extractFeatures(face: Face): FloatArray {
         val box = face.boundingBox
-        val features = mutableListOf<Float>()
+        val feat = mutableListOf<Float>()
 
-        // Geometri wajah
-        features.add(box.width().toFloat())
-        features.add(box.height().toFloat())
-        val ratio = if (box.height() > 0) box.width().toFloat() / box.height() else 0f
-        features.add(ratio)
+        val width = box.width().toFloat().coerceAtLeast(1f)
+        val height = box.height().toFloat().coerceAtLeast(1f)
 
-        // Rotasi
-        features.add(face.headEulerAngleX)
-        features.add(face.headEulerAngleY)
-        features.add(face.headEulerAngleZ)
+        feat.add(width / height)
+        feat.add(face.headEulerAngleX / 45f)
+        feat.add(face.headEulerAngleY / 45f)
+        feat.add(face.headEulerAngleZ / 45f)
 
-        // Landmark posisi relatif terhadap bounding box
-        val landmarks = face.allLandmarks
-        for (landmark in landmarks) {
-            val relX = (landmark.position.x - box.left) / box.width().coerceAtLeast(1)
-            val relY = (landmark.position.y - box.top) / box.height().coerceAtLeast(1)
-            features.add(relX)
-            features.add(relY)
-        }
+        val targetLandmarks = intArrayOf(
+            FaceLandmark.LEFT_EYE,
+            FaceLandmark.RIGHT_EYE,
+            FaceLandmark.NOSE_BASE,
+            FaceLandmark.MOUTH_LEFT,
+            FaceLandmark.MOUTH_RIGHT,
+            FaceLandmark.MOUTH_BOTTOM,
+            FaceLandmark.LEFT_CHEEK,
+            FaceLandmark.RIGHT_CHEEK
+        )
 
-        // Kontur wajah (titik-titik tepi wajah)
-        val contours = face.allContours
-        for (contour in contours) {
-            for (point in contour.points) {
-                val relX = (point.x - box.left) / box.width().coerceAtLeast(1)
-                val relY = (point.y - box.top) / box.height().coerceAtLeast(1)
-                features.add(relX)
-                features.add(relY)
+        for (landmarkType in targetLandmarks) {
+            val lm = face.getLandmark(landmarkType)
+            if (lm != null) {
+                // Gunakan lm.position (PointF dari ML Kit), bukan import Compose
+                feat.add((lm.position.x - box.left) / width)
+                feat.add((lm.position.y - box.top) / height)
+            } else {
+                feat.add(0f)
+                feat.add(0f)
             }
         }
-
-        return features.toFloatArray()
+        return feat.toFloatArray()
     }
 
-    // Hitung kemiripan cosine antara dua vektor fitur
     fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
-        val minLen = minOf(a.size, b.size)
-        if (minLen == 0) return 0f
-
+        if (a.size != b.size || a.isEmpty()) return 0f
         var dot = 0f
-        var normA = 0f
-        var normB = 0f
-        for (i in 0 until minLen) {
+        var nA = 0f
+        var nB = 0f
+        for (i in a.indices) {
             dot += a[i] * b[i]
-            normA += a[i] * a[i]
-            normB += b[i] * b[i]
+            nA += a[i] * a[i]
+            nB += b[i] * b[i]
         }
-        val denom = sqrt(normA) * sqrt(normB)
-        return if (denom == 0f) 0f else dot / denom
+        val denom = sqrt(nA.toDouble()) * sqrt(nB.toDouble())
+        return if (denom < 1e-6) 0f else (dot / denom).toFloat()
     }
 
-    // Cari wajah yang paling mirip
-    fun findBestMatch(features: FloatArray, threshold: Float = 0.82f): FaceProfile? {
-        val profiles = getAllProfiles()
-        if (profiles.isEmpty()) return null
+    fun findBestMatch(features: FloatArray, threshold: Float = 0.92f): Employee? {
+        val allMappings = db.getAllFaceMappings()
+        if (allMappings.isEmpty()) return null
 
-        var bestMatch: FaceProfile? = null
-        var bestScore = 0f
+        val scoreMap = mutableMapOf<String, MutableList<Float>>()
+        for (mapping in allMappings) {
+            val score = cosineSimilarity(features, mapping.features)
+            scoreMap.getOrPut(mapping.employeeId) { mutableListOf() }.add(score)
+        }
 
-        for (profile in profiles) {
-            val score = cosineSimilarity(features, profile.features)
-            if (score > bestScore) {
-                bestScore = score
-                bestMatch = profile
+        var bestId = ""
+        var maxAvgScore = 0f
+
+        for ((empId, scores) in scoreMap) {
+            val avg = scores.average().toFloat()
+            if (avg > maxAvgScore) {
+                maxAvgScore = avg
+                bestId = empId
             }
         }
 
-        return if (bestScore >= threshold) bestMatch else null
+        Log.d("FaceDataHelper", "Best Match ID: $bestId, Score: $maxAvgScore")
+        return if (maxAvgScore >= threshold) db.getEmployee(bestId) else null
     }
+
+    fun saveFaceSample(employeeId: String, features: FloatArray): Boolean {
+        return db.insertFaceMapping(
+            FaceMapping(employeeId = employeeId, features = features)
+        )
+    }
+
+    fun verifyFace(employeeId: String, currentFeatures: FloatArray, threshold: Float = 0.85f): Boolean {
+        // 1. Ambil semua sampel wajah yang terdaftar untuk ID ini
+        val storedMappings = db.getAllFaceMappings().filter { it.employeeId == employeeId }
+
+        if (storedMappings.isEmpty()) {
+            Log.e("FaceDataHelper", "Tidak ada data wajah untuk ID: $employeeId")
+            return false
+        }
+
+        // 2. Bandingkan wajah saat ini dengan setiap sampel yang tersimpan
+        var maxScore = 0f
+        for (mapping in storedMappings) {
+            val score = cosineSimilarity(currentFeatures, mapping.features)
+            if (score > maxScore) {
+                maxScore = score
+            }
+        }
+
+        Log.d("FaceDataHelper", "Verifikasi ID: $employeeId, Skor Tertinggi: $maxScore")
+
+        // 3. Jika skor tertinggi melewati ambang batas, maka dianggap cocok
+        return maxScore >= threshold
+    }
+
+    fun getSampleCount(employeeId: String) = db.getFaceMappingCount(employeeId)
+
+    fun hasEnoughSamples(employeeId: String) = db.hasEnoughFaceMappings(employeeId, 3)
 }

@@ -19,14 +19,17 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun HomeScreen(
     faceDataHelper: FaceDataHelper,
+    dbHelper: AttendanceDatabaseHelper, // Tambahkan dbHelper untuk cek jumlah karyawan
     onRegisterFace: () -> Unit,
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit,
     onHistory: () -> Unit,
     onQRGenerator: () -> Unit
 ) {
-    val isRegistered = remember { faceDataHelper.isRegistered() }
-    val profileCount = remember { faceDataHelper.getEmployeeIds().size }
+    // Mengambil data secara dinamis dari database
+    val allEmployees = remember { dbHelper.getAllEmployees() }
+    val isRegistered = allEmployees.isNotEmpty()
+    val profileCount = allEmployees.size
 
     Box(
         modifier = Modifier
@@ -90,7 +93,7 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = if (isRegistered) "$profileCount wajah terdaftar" else "Belum ada wajah terdaftar",
+                text = if (isRegistered) "$profileCount Karyawan Terdaftar" else "Belum ada karyawan terdaftar",
                 color = if (isRegistered) Color(0xFF81C784) else Color(0xFFEF9A9A),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium
@@ -111,9 +114,9 @@ fun HomeScreen(
                 ) {
                     Text(
                         text = if (isRegistered)
-                            "🟢 Siap absensi 2FA"
+                            "🟢 Sistem Siap Digunakan"
                         else
-                            "🔴 Daftarkan wajah & buat QR terlebih dahulu",
+                            "🔴 Silahkan Daftarkan Karyawan Terlebih Dahulu",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                         color = if (isRegistered) Color(0xFF2E7D32) else Color(0xFFC62828),
@@ -122,7 +125,7 @@ fun HomeScreen(
                     if (isRegistered) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            "Alur: Scan QR → Verifikasi Wajah → Absen",
+                            "Alur: Scan QR → Verifikasi Wajah → Selesai",
                             color = Color(0xFF78909C),
                             fontSize = 11.sp,
                             textAlign = TextAlign.Center
@@ -131,7 +134,7 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Row: Register + QR Generator
             Row(
@@ -140,59 +143,60 @@ fun HomeScreen(
             ) {
                 Button(
                     onClick = onRegisterFace,
-                    modifier = Modifier.weight(1f).height(50.dp),
+                    modifier = Modifier.weight(1f).height(56.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B))
                 ) {
-                    Text("📸 Daftar\nWajah", fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    Text("📸 Daftar\nKaryawan", fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                 }
                 Button(
                     onClick = onQRGenerator,
                     enabled = isRegistered,
-                    modifier = Modifier.weight(1f).height(50.dp),
+                    modifier = Modifier.weight(1f).height(56.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00695C))
                 ) {
-                    Text("🔲 Lihat\nQR Code", fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    Text("🔲 Generator\nQR Code", fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Check In
             Button(
                 onClick = onCheckIn,
                 enabled = isRegistered,
-                modifier = Modifier.fillMaxWidth().height(54.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3F51B5))
             ) {
                 Text("📷  ABSEN MASUK", fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Check Out
             Button(
                 onClick = onCheckOut,
                 enabled = isRegistered,
-                modifier = Modifier.fillMaxWidth().height(54.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
             ) {
                 Text("🚪  ABSEN KELUAR", fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // History
             OutlinedButton(
                 onClick = onHistory,
-                modifier = Modifier.fillMaxWidth().height(46.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                border = ButtonDefaults.outlinedButtonBorder.copy(brush = Brush.linearGradient(listOf(Color.White, Color.White)))
             ) {
-                Text("📋  Lihat Riwayat", fontSize = 14.sp)
+                Text("📋  LIHAT RIWAYAT", fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

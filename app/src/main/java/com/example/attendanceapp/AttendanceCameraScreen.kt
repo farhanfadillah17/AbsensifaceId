@@ -1,341 +1,248 @@
 package com.example.attendanceapp
 
 import android.util.Log
-import android.Manifest
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.isGranted
-import com.google.accompanist.permissions.rememberPermissionState
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
-import java.text.SimpleDateFormat
-import java.util.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
-@OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AttendanceCameraScreen(
     action: AttendanceAction,
-    verifiedEmployee: QREmployee?,   // data dari QR scan (2FA langkah 1)
+    verifiedEmployee: Employee?,
     faceDataHelper: FaceDataHelper,
     dbHelper: AttendanceDatabaseHelper,
     onBack: () -> Unit,
     onSuccess: () -> Unit
 ) {
+    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val cameraPermission = rememberPermissionState(Manifest.permission.CAMERA)
+    val scope = rememberCoroutineScope()
+
+    // --- STATE ---
+    var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_FRONT) }
+    var isFlashOn by remember { mutableStateOf(false) }
+    var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
+    var hasFlash by remember { mutableStateOf(false) }
+
+    var isVerifying by remember { mutableStateOf(false) }
+    var statusText by remember { mutableStateOf("Arahkan wajah untuk verifikasi") }
+    var faceDetected by remember { mutableStateOf(false) }
+
+    val previewView = remember { PreviewView(context) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
-    val actionLabel = if (action == AttendanceAction.CHECK_IN) "Masuk" else "Keluar"
-    val actionColor = if (action == AttendanceAction.CHECK_IN) Color(0xFF3F51B5) else Color(0xFFE53935)
-
-    var statusText by remember {
-        mutableStateOf(
-            if (verifiedEmployee != null)
-                "Halo ${verifiedEmployee.employeeName}!\nArahkan wajah Anda untuk konfirmasi identitas"
-            else
-                "Arahkan wajah Anda ke kamera"
-        )
-    }
-    var statusColor by remember { mutableStateOf(Color(0xFF90CAF9)) }
-    var faceDetected by remember { mutableStateOf(false) }
-    var isProcessing by remember { mutableStateOf(false) }
-    var attendanceDone by remember { mutableStateOf(false) }
-    var lastCapturedFeatures by remember { mutableStateOf<FloatArray?>(null) }
-
-    val faceDetectorOptions = FaceDetectorOptions.Builder()
-        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
-        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
-        .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
-        .setMinFaceSize(0.2f)
-        .build()
-    val faceDetector = remember { FaceDetection.getClient(faceDetectorOptions) }
-
-    LaunchedEffect(Unit) {
-        if (!cameraPermission.status.isGranted) cameraPermission.launchPermissionRequest()
+    val faceDetector = remember {
+        val options = FaceDetectorOptions.Builder()
+            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+            .build()
+        FaceDetection.getClient(options)
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Langkah 2 — Verifikasi Wajah", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Kembali", tint = Color.White)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = actionColor,
-                    titleContentColor = Color.White
-                )
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF121212))
-                .padding(padding),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Step indicator
-            StepIndicator(currentStep = 2)
+    LaunchedEffect(lensFacing) {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
 
-            // QR verified info bar
-            if (verifiedEmployee != null) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xFF1B3A1A)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("✅", fontSize = 18.sp)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                "QR Terverifikasi",
-                                color = Color(0xFF69F0AE),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                "${verifiedEmployee.employeeName} • ID: ${verifiedEmployee.employeeId}",
-                                color = Color.White,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-                }
+            val preview = Preview.Builder().build().also {
+                it.setSurfaceProvider(previewView.surfaceProvider)
             }
 
-            if (!cameraPermission.status.isGranted) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Button(onClick = { cameraPermission.launchPermissionRequest() }) {
-                        Text("Izinkan Kamera")
-                    }
-                }
-                return@Scaffold
-            }
+            val imageAnalysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
 
-            // Camera preview
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(340.dp)
-            ) {
-                AndroidView(
-                    factory = { ctx ->
-                        val previewView = PreviewView(ctx)
-                        val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                        cameraProviderFuture.addListener({
-                            val cameraProvider = cameraProviderFuture.get()
-                            val preview = Preview.Builder().build().also {
-                                it.setSurfaceProvider(previewView.surfaceProvider)
-                            }
-                            val imageAnalysis = ImageAnalysis.Builder()
-                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                                .build()
+            imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                @androidx.camera.core.ExperimentalGetImage
+                val mediaImage = imageProxy.image
 
-                            imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                                @androidx.camera.core.ExperimentalGetImage
-                                val mediaImage = imageProxy.image
-                                if (mediaImage != null && !attendanceDone) {
-                                    val image = InputImage.fromMediaImage(
-                                        mediaImage,
-                                        imageProxy.imageInfo.rotationDegrees
-                                    )
-                                    faceDetector.process(image)
-                                        .addOnSuccessListener { faces ->
-                                            faceDetected = faces.isNotEmpty()
-                                            if (faces.isNotEmpty()) {
-                                                lastCapturedFeatures = faceDataHelper.extractFeatures(faces[0])
-                                            }
-                                        }
-                                        .addOnCompleteListener { imageProxy.close() }
-                                } else {
-                                    imageProxy.close()
+                // FIX: Gunakan variabel lokal untuk menghindari Smart Cast error
+                val currentEmployee = verifiedEmployee
+
+                if (mediaImage != null && !isVerifying && currentEmployee != null) {
+                    val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+
+                    faceDetector.process(image)
+                        .addOnSuccessListener { faces ->
+                            faceDetected = faces.isNotEmpty()
+                            if (faces.isNotEmpty() && !isVerifying) {
+                                isVerifying = true
+                                val face = faces[0]
+
+                                scope.launch {
+                                    statusText = "Sedang memverifikasi..."
+                                    delay(1000)
+
+                                    val currentFeatures = faceDataHelper.extractFeatures(face)
+
+                                    // FIX: Gunakan currentEmployee (non-null)
+                                    val isMatched = faceDataHelper.verifyFace(currentEmployee.id, currentFeatures)
+
+                                    if (isMatched) {
+                                        statusText = "✅ Verifikasi Berhasil!"
+                                        // FIX: Gunakan currentEmployee (non-null)
+                                        dbHelper.saveAttendance(currentEmployee.id, action.name)
+                                        delay(1500)
+                                        onSuccess()
+                                    } else {
+                                        statusText = "❌ Wajah tidak cocok"
+                                        delay(2000)
+                                        isVerifying = false
+                                        statusText = "Coba arahkan wajah kembali"
+                                    }
                                 }
                             }
+                        }
+                        .addOnCompleteListener { imageProxy.close() }
+                } else {
+                    imageProxy.close()
+                }
+            }
 
-                            try {
-                                cameraProvider.unbindAll()
-                                cameraProvider.bindToLifecycle(
-                                    lifecycleOwner,
-                                    CameraSelector.DEFAULT_FRONT_CAMERA,
-                                    preview,
-                                    imageAnalysis
-                                )
-                            } catch (e: Exception) {
-                                Log.e("FaceCamera", "Error", e)
-                            }
-                        }, ContextCompat.getMainExecutor(ctx))
-                        previewView
-                    },
-                    modifier = Modifier.fillMaxSize()
+            try {
+                cameraProvider.unbindAll()
+                val camera = cameraProvider.bindToLifecycle(
+                    lifecycleOwner,
+                    CameraSelector.Builder().requireLensFacing(lensFacing).build(),
+                    preview,
+                    imageAnalysis
                 )
+                cameraControl = camera.cameraControl
+                hasFlash = camera.cameraInfo.hasFlashUnit()
+                cameraControl?.enableTorch(isFlashOn)
+            } catch (e: Exception) {
+                Log.e("AttendanceCamera", "Binding failed", e)
+            }
+        }, ContextCompat.getMainExecutor(context))
+    }
 
-                // Oval face guide
-                Box(
-                    modifier = Modifier
-                        .size(200.dp)
-                        .align(Alignment.Center)
-                        .border(
-                            width = 3.dp,
-                            color = if (attendanceDone) Color(0xFF69F0AE)
-                                    else if (faceDetected) Color(0xFFFFEB3B)
-                                    else Color(0xFFFF5252),
-                            shape = RoundedCornerShape(100.dp)
-                        )
-                )
-
-                // Top badge
-                Surface(
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
-                    color = when {
-                        attendanceDone -> Color(0xFF1B5E20)
-                        faceDetected -> Color(0xFFF57F17)
-                        else -> Color(0xFFB71C1C)
-                    },
-                    shape = RoundedCornerShape(20.dp)
-                ) {
+    // --- UI Tetap Sama ---
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF121212))) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Color(0xFF1A237E),
+                shadowElevation = 8.dp
+            ) {
+                Column(Modifier.padding(top = 40.dp, bottom = 16.dp, start = 16.dp, end = 16.dp)) {
                     Text(
-                        text = when {
-                            attendanceDone -> "✅ Identitas Terkonfirmasi"
-                            faceDetected -> "🟡 Wajah Terdeteksi"
-                            else -> "❌ Posisikan Wajah di Frame"
-                        },
+                        "Konfirmasi Wajah: ${verifiedEmployee?.name ?: "Unknown"}",
                         color = Color.White,
-                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        fontSize = 18.sp
+                    )
+                    Text(
+                        "Tujuan: Absen ${if(action == AttendanceAction.CHECK_IN) "Masuk" else "Keluar"}",
+                        color = Color(0xFF90CAF9),
+                        fontSize = 14.sp
                     )
                 }
             }
 
-            // Bottom panel
-            Column(
+            Spacer(modifier = Modifier.height(30.dp))
+
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFF1E1E1E))
-                    .padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                    .size(300.dp)
+                    .clip(CircleShape)
+                    .border(
+                        width = 4.dp,
+                        color = if (faceDetected) Color(0xFF64FFDA) else Color.Gray,
+                        shape = CircleShape
+                    )
             ) {
-                Text(
-                    text = statusText,
-                    color = statusColor,
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(bottom = 18.dp)
+                AndroidView(
+                    factory = { previewView },
+                    modifier = Modifier.fillMaxSize(),
+                    update = {
+                        cameraControl?.enableTorch(isFlashOn)
+                    }
                 )
+            }
 
-                if (!attendanceDone) {
-                    if (isProcessing) {
-                        CircularProgressIndicator(color = actionColor)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Memverifikasi wajah...", color = Color(0xFF90CAF9), fontSize = 13.sp)
-                    } else {
-                        Button(
-                            onClick = {
-                                val features = lastCapturedFeatures
-                                if (!faceDetected || features == null) {
-                                    statusText = "⚠️ Pastikan wajah terlihat jelas di frame"
-                                    statusColor = Color(0xFFFFAB40)
-                                    return@Button
-                                }
-                                isProcessing = true
+            Spacer(modifier = Modifier.height(24.dp))
 
-                                // Jika 2FA: cari match yang sesuai dengan employee dari QR
-                                val match = faceDataHelper.findBestMatch(features)
+            Text(
+                text = statusText,
+                color = if (faceDetected) Color(0xFF64FFDA) else Color.White,
+                fontWeight = FontWeight.Medium,
+                fontSize = 16.sp
+            )
 
-                                if (match != null) {
-                                    // Cek apakah wajah yang terdeteksi sesuai dengan QR (2FA check)
-                                    val isCorrectPerson = verifiedEmployee == null ||
-                                        match.employeeId == verifiedEmployee.employeeId
+            Spacer(modifier = Modifier.weight(1f))
 
-                                    if (isCorrectPerson) {
-                                        val timestamp = System.currentTimeMillis()
-                                        dbHelper.insertAttendance(
-                                            action = action.name,
-                                            timestamp = timestamp,
-                                            employeeId = match.employeeId,
-                                            employeeName = match.employeeName
-                                        )
-                                        val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-                                        statusText = "✅ Selamat datang, ${match.employeeName}!\n" +
-                                            "Absen $actionLabel: ${fmt.format(Date(timestamp))}\n" +
-                                            "2FA Berhasil ✓"
-                                        statusColor = Color(0xFF69F0AE)
-                                        attendanceDone = true
-                                    } else {
-                                        // Wajah tidak cocok dengan QR yang discan
-                                        statusText = "❌ Wajah tidak sesuai dengan QR!\n" +
-                                            "QR: ${verifiedEmployee?.employeeName}\n" +
-                                            "Wajah: ${match.employeeName}"
-                                        statusColor = Color(0xFFEF5350)
-                                    }
-                                } else {
-                                    statusText = "❌ Wajah tidak dikenali.\nPastikan wajah Anda sudah terdaftar."
-                                    statusColor = Color(0xFFEF5350)
-                                }
-                                isProcessing = false
-                            },
-                            modifier = Modifier.fillMaxWidth().height(54.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = actionColor),
-                            enabled = faceDetected
-                        ) {
-                            Text("👤  Konfirmasi Wajah & Absen $actionLabel", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 50.dp, start = 40.dp, end = 40.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.background(Color.White.copy(0.1f), CircleShape)
+                ) {
+                    Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+                }
+
+                Button(
+                    onClick = {
+                        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_FRONT)
+                            CameraSelector.LENS_FACING_BACK else CameraSelector.LENS_FACING_FRONT
+                        isFlashOn = false
+                    },
+                    shape = CircleShape,
+                    modifier = Modifier.size(64.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(0.2f))
+                ) {
+                    Icon(Icons.Default.FlipCameraAndroid, "Switch", tint = Color.White)
+                }
+
+                if (lensFacing == CameraSelector.LENS_FACING_BACK && hasFlash) {
+                    IconButton(
+                        onClick = { isFlashOn = !isFlashOn },
+                        modifier = Modifier.background(
+                            if (isFlashOn) Color.Yellow.copy(0.5f) else Color.White.copy(0.1f),
+                            CircleShape
+                        )
+                    ) {
+                        Icon(
+                            if (isFlashOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                            "Flash",
+                            tint = if (isFlashOn) Color.Black else Color.White
+                        )
                     }
                 } else {
-                    // Success state
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color(0xFF1B5E20),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("🔐 2FA Sukses", color = Color(0xFF69F0AE), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("QR ✓  +  Wajah ✓", color = Color.White, fontSize = 13.sp)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Button(
-                        onClick = onSuccess,
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B))
-                    ) {
-                        Text("🏠  Kembali ke Beranda", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    }
+                    Spacer(modifier = Modifier.size(48.dp))
                 }
             }
         }

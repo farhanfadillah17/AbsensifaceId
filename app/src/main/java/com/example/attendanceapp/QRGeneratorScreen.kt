@@ -12,6 +12,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,11 +30,11 @@ import com.google.zxing.qrcode.QRCodeWriter
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QRGeneratorScreen(
-    faceDataHelper: FaceDataHelper,
+    dbHelper: AttendanceDatabaseHelper,
     onBack: () -> Unit
 ) {
-    val profiles = remember { faceDataHelper.getAllProfiles() }
-    var selectedProfile by remember { mutableStateOf<FaceDataHelper.FaceProfile?>(null) }
+    val profiles = remember { dbHelper.getAllEmployees() }
+    var selectedEmployee by remember { mutableStateOf<Employee?>(null) }
 
     Scaffold(
         topBar = {
@@ -59,7 +61,7 @@ fun QRGeneratorScreen(
             if (profiles.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        "Belum ada karyawan terdaftar.\nDaftarkan wajah terlebih dahulu.",
+                        "Belum ada karyawan terdaftar.\nSilahkan tambah karyawan terlebih dahulu.",
                         color = Color.Gray,
                         textAlign = TextAlign.Center,
                         fontSize = 15.sp
@@ -72,15 +74,15 @@ fun QRGeneratorScreen(
                 ) {
                     item {
                         Text(
-                            text = "Tap kartu untuk tampilkan QR Code",
+                            text = "Pilih karyawan untuk menampilkan QR Code",
                             color = Color(0xFF78909C),
                             fontSize = 13.sp,
                             modifier = Modifier.padding(bottom = 4.dp)
                         )
                     }
-                    items(profiles) { profile ->
-                        EmployeeQRCard(profile = profile) {
-                            selectedProfile = profile
+                    items(profiles) { employee ->
+                        EmployeeQRCard(employee = employee) {
+                            selectedEmployee = employee
                         }
                     }
                 }
@@ -88,48 +90,39 @@ fun QRGeneratorScreen(
         }
     }
 
-    // Dialog QR Code
-    selectedProfile?.let { profile ->
-        QRDialog(profile = profile, onDismiss = { selectedProfile = null })
+    selectedEmployee?.let { employee ->
+        QRDialog(employee = employee, onDismiss = { selectedEmployee = null })
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EmployeeQRCard(profile: FaceDataHelper.FaceProfile, onClick: () -> Unit) {
+fun EmployeeQRCard(employee: Employee, onClick: () -> Unit) {
     Card(
-        onClick, Modifier.fillMaxWidth(),
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2E)),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(Color(0xFF00897B), RoundedCornerShape(24.dp)),
+                modifier = Modifier.size(48.dp).background(Color(0xFF00897B), RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center
-            ) {
-                Text("👤", fontSize = 22.sp)
-            }
+            ) { Text("👤", fontSize = 22.sp) }
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(profile.employeeName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text("ID: ${profile.employeeId}", color = Color(0xFF78909C), fontSize = 12.sp)
+                Text(employee.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("ID: ${employee.id}", color = Color(0xFF78909C), fontSize = 12.sp)
             }
-            Surface(
-                color = Color(0xFF00695C),
-                shape = RoundedCornerShape(8.dp)
-            ) {
+            Surface(color = Color(0xFF00695C), shape = RoundedCornerShape(8.dp)) {
                 Text(
-                    "🔲 QR",
+                    "LIHAT QR",
                     color = Color.White,
-                    fontSize = 12.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                 )
@@ -139,8 +132,9 @@ fun EmployeeQRCard(profile: FaceDataHelper.FaceProfile, onClick: () -> Unit) {
 }
 
 @Composable
-fun QRDialog(profile: FaceDataHelper.FaceProfile, onDismiss: () -> Unit) {
-    val qrContent = "EMP_ID:${profile.employeeId}|NAME:${profile.employeeName}"
+fun QRDialog(employee: Employee, onDismiss: () -> Unit) {
+    // PERBAIKAN: Format QR Content sekarang HANYA berisi ID saja
+    val qrContent = employee.id
     val qrBitmap = remember(qrContent) { generateQRBitmap(qrContent) }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -153,45 +147,42 @@ fun QRDialog(profile: FaceDataHelper.FaceProfile, onDismiss: () -> Unit) {
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    "QR Code Absensi",
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 18.sp,
-                    color = Color(0xFF1A237E)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(profile.employeeName, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF37474F))
-                Text("ID: ${profile.employeeId}", color = Color.Gray, fontSize = 13.sp)
-                Spacer(modifier = Modifier.height(16.dp))
+                Text("QR Code Absensi", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Color(0xFF1A237E))
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(employee.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF37474F))
+                Text("ID Karyawan: ${employee.id}", color = Color.Gray, fontSize = 13.sp)
+
+                Spacer(modifier = Modifier.height(20.dp))
 
                 if (qrBitmap != null) {
-                    Image(
-                        bitmap = qrBitmap.asImageBitmap(),
-                        contentDescription = "QR Code",
-                        modifier = Modifier
-                            .size(220.dp)
-                            .background(Color.White)
-                    )
-                } else {
-                    Box(modifier = Modifier.size(220.dp), contentAlignment = Alignment.Center) {
-                        Text("Gagal generate QR", color = Color.Red)
+                    Surface(
+                        modifier = Modifier.padding(8.dp),
+                        color = Color.White,
+                        shape = RoundedCornerShape(8.dp),
+                        shadowElevation = 2.dp
+                    ) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "QR Code",
+                            modifier = Modifier.size(220.dp)
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    "Tunjukkan QR ini saat absensi",
+                    "Gunakan kode ini untuk melakukan scan\npada mesin absensi.",
                     color = Color(0xFF78909C),
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
                 Button(
                     onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3F51B5))
-                ) { Text("Tutup", fontWeight = FontWeight.Bold) }
+                ) { Text("TUTUP", fontWeight = FontWeight.Bold) }
             }
         }
     }
@@ -209,5 +200,7 @@ fun generateQRBitmap(content: String, size: Int = 512): Bitmap? {
             }
         }
         bitmap
-    } catch (e: Exception) { null }
+    } catch (e: Exception) {
+        null
+    }
 }
