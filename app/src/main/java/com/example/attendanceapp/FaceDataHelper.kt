@@ -2,26 +2,31 @@ package com.example.attendanceapp
 
 import android.util.Log
 import androidx.compose.ui.tooling.data.position
-// PENTING: Hapus import androidx.compose.ui.tooling.data.position
-// Import yang benar untuk landmark posisi adalah:
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceLandmark
 import kotlin.math.sqrt
 
 class FaceDataHelper(private val db: AttendanceDatabaseHelper) {
 
+    /**
+     * Mengekstrak fitur wajah menjadi vektor (FloatArray).
+     * Properti 'position' sekarang merujuk ke android.graphics.PointF milik ML Kit.
+     */
     fun extractFeatures(face: Face): FloatArray {
         val box = face.boundingBox
         val feat = mutableListOf<Float>()
 
+        // Normalisasi dimensi
         val width = box.width().toFloat().coerceAtLeast(1f)
         val height = box.height().toFloat().coerceAtLeast(1f)
 
-        feat.add(width / height)
+        // 1. Fitur rotasi kepala (Euler Angles)
+        feat.add(width / height) // Aspek rasio wajah
         feat.add(face.headEulerAngleX / 45f)
         feat.add(face.headEulerAngleY / 45f)
         feat.add(face.headEulerAngleZ / 45f)
 
+        // 2. Fitur Landmark wajah
         val targetLandmarks = intArrayOf(
             FaceLandmark.LEFT_EYE,
             FaceLandmark.RIGHT_EYE,
@@ -36,10 +41,11 @@ class FaceDataHelper(private val db: AttendanceDatabaseHelper) {
         for (landmarkType in targetLandmarks) {
             val lm = face.getLandmark(landmarkType)
             if (lm != null) {
-                // Gunakan lm.position (PointF dari ML Kit), bukan import Compose
+                // Menghitung posisi relatif landmark terhadap bounding box wajah
                 feat.add((lm.position.x - box.left) / width)
                 feat.add((lm.position.y - box.top) / height)
             } else {
+                // Jika landmark tidak terdeteksi, beri nilai netral
                 feat.add(0f)
                 feat.add(0f)
             }
@@ -47,6 +53,10 @@ class FaceDataHelper(private val db: AttendanceDatabaseHelper) {
         return feat.toFloatArray()
     }
 
+    /**
+     * Menghitung skor kemiripan (Cosine Similarity) antara dua vektor.
+     * Hasilnya berkisar antara -1.0 hingga 1.0 (1.0 berarti identik).
+     */
     fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
         if (a.size != b.size || a.isEmpty()) return 0f
         var dot = 0f
@@ -61,62 +71,55 @@ class FaceDataHelper(private val db: AttendanceDatabaseHelper) {
         return if (denom < 1e-6) 0f else (dot / denom).toFloat()
     }
 
-    fun findBestMatch(features: FloatArray, threshold: Float = 0.92f): Employee? {
-        val allMappings = db.getAllFaceMappings()
-        if (allMappings.isEmpty()) return null
+    /**
+     * Memverifikasi apakah wajah saat ini cocok dengan sampel di DB.
+     * Menggunakan composite key fccode dan fcba.
+     */
+    fun verifyFace(fccode: String, fcba: String, currentFeatures: FloatArray, threshold: Float = 0.80f): Boolean {
+        // Mengambil daftar FloatArray fitur yang tersimpan di DB
+        val storedFeaturesList = db.getFaceFeaturesForEmployee(fccode, fcba)
 
-        val scoreMap = mutableMapOf<String, MutableList<Float>>()
-        for (mapping in allMappings) {
-            val score = cosineSimilarity(features, mapping.features)
-            scoreMap.getOrPut(mapping.employeeId) { mutableListOf() }.add(score)
-        }
-
-        var bestId = ""
-        var maxAvgScore = 0f
-
-        for ((empId, scores) in scoreMap) {
-            val avg = scores.average().toFloat()
-            if (avg > maxAvgScore) {
-                maxAvgScore = avg
-                bestId = empId
-            }
-        }
-
-        Log.d("FaceDataHelper", "Best Match ID: $bestId, Score: $maxAvgScore")
-        return if (maxAvgScore >= threshold) db.getEmployee(bestId) else null
-    }
-
-    fun saveFaceSample(employeeId: String, features: FloatArray): Boolean {
-        return db.insertFaceMapping(
-            FaceMapping(employeeId = employeeId, features = features)
-        )
-    }
-
-    fun verifyFace(employeeId: String, currentFeatures: FloatArray, threshold: Float = 0.85f): Boolean {
-        // 1. Ambil semua sampel wajah yang terdaftar untuk ID ini
-        val storedMappings = db.getAllFaceMappings().filter { it.employeeId == employeeId }
-
-        if (storedMappings.isEmpty()) {
-            Log.e("FaceDataHelper", "Tidak ada data wajah untuk ID: $employeeId")
+        if (storedFeaturesList.isEmpty()) {
+            Log.e("FaceDataHelper", "Verifikasi Gagal: Tidak ada sampel wajah untuk $fccode")
             return false
         }
 
-        // 2. Bandingkan wajah saat ini dengan setiap sampel yang tersimpan
         var maxScore = 0f
-        for (mapping in storedMappings) {
-            val score = cosineSimilarity(currentFeatures, mapping.features)
-            if (score > maxScore) {
-                maxScore = score
-            }
+        for (storedFeatures in storedFeaturesList) {
+            val score = cosineSimilarity(currentFeatures, storedFeatures)
+            if (score > maxScore) maxScore = score
         }
 
-        Log.d("FaceDataHelper", "Verifikasi ID: $employeeId, Skor Tertinggi: $maxScore")
+        Log.d("FaceDataHelper", "Hasil Verifikasi $fccode: Skor Tertinggi = $maxScore")
 
-        // 3. Jika skor tertinggi melewati ambang batas, maka dianggap cocok
         return maxScore >= threshold
     }
 
-    fun getSampleCount(employeeId: String) = db.getFaceMappingCount(employeeId)
+    /**
+     * Menyimpan sampel wajah baru.
+     */
+    fun saveFaceSample(fccode: String, fcba: String, features: FloatArray): Boolean {
+        return db.insertFaceMapping(
+            FaceMapping(
+                employeeId = fccode,
+                fcbaId = fcba,
+                features = features
+            )
+        )
+    }
 
-    fun hasEnoughSamples(employeeId: String) = db.hasEnoughFaceMappings(employeeId, 3)
+    /**
+     * Mengambil jumlah sampel wajah dari database helper.
+     */
+    fun getSampleCount(fccode: String, fcba: String): Int {
+        // Pastikan fungsi ini ada di AttendanceDatabaseHelper.kt
+        return db.getFaceMappingCount(fccode, fcba)
+    }
+
+    /**
+     * Mengecek kecukupan sampel wajah (minimal 3 sampel).
+     */
+    fun hasEnoughSamples(fccode: String, fcba: String): Boolean {
+        return getSampleCount(fccode, fcba) >= 3
+    }
 }

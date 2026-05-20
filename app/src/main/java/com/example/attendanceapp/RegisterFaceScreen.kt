@@ -52,19 +52,16 @@ fun RegisterFaceScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
 
-    // State untuk pendaftaran
     var samplesCount by remember { mutableStateOf(0) }
     val totalSamplesNeeded = 5
     var isProcessing by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("Arahkan wajah ke kamera") }
     var faceDetected by remember { mutableStateOf(false) }
 
-    // State Kontrol Kamera
     var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_FRONT) }
     var isFlashOn by remember { mutableStateOf(false) }
     var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
 
-    // Mempertahankan instance PreviewView agar tidak flicker saat re-bind
     val previewView = remember { PreviewView(context) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     val faceDetector = remember {
@@ -86,16 +83,13 @@ fun RegisterFaceScreen(
         if (!cameraPermission.status.isGranted) cameraPermission.launchPermissionRequest()
     }
 
-    // LOGIKA PERBAIKAN: Gunakan LaunchedEffect yang memantau 'lensFacing'
     LaunchedEffect(lensFacing) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
-
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
-
             val imageAnalysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
@@ -129,7 +123,12 @@ fun RegisterFaceScreen(
                                     scope.launch {
                                         delay(1500)
                                         val features = faceDataHelper.extractFeatures(face)
-                                        val success = faceDataHelper.saveFaceSample(employee.id, features)
+                                        // PERBAIKAN 1: Menggunakan fccode dan fcba sesuai struktur baru
+                                        val success = faceDataHelper.saveFaceSample(
+                                            fccode = employee.fccode,
+                                            fcba = employee.fcba,
+                                            features = features
+                                        )
                                         if (success) {
                                             samplesCount++
                                             statusText = "Berhasil ($samplesCount/$totalSamplesNeeded)"
@@ -159,7 +158,6 @@ fun RegisterFaceScreen(
                     imageAnalysis
                 )
                 cameraControl = camera.cameraControl
-                // Pastikan flash tetap sesuai state saat pindah kamera
                 cameraControl?.enableTorch(isFlashOn)
             } catch (e: Exception) {
                 Log.e("RegisterFace", "Error: ${e.message}")
@@ -190,37 +188,34 @@ fun RegisterFaceScreen(
                 .padding(padding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Info Karyawan
             Card(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Karyawan: ${employee.name}", color = Color.White, fontWeight = FontWeight.Bold)
-                    Text("ID: ${employee.id}", color = Color(0xFF90CAF9), fontSize = 12.sp)
+                    // PERBAIKAN 2: Mengganti employee.id menjadi employee.fccode
+                    Text("ID: ${employee.fccode}", color = Color(0xFF90CAF9), fontSize = 12.sp)
                 }
             }
 
-            // Preview Kamera & Kontrol
             Box(
                 modifier = Modifier.size(300.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (cameraPermission.status.isGranted) {
                     AndroidView(
-                        factory = { previewView }, // Gunakan instance previewView yang sama
+                        factory = { previewView },
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(CircleShape)
                             .border(4.dp, if (faceDetected) Color(0xFF64FFDA) else Color.Gray, CircleShape),
                         update = {
-                            // Update flash secara real-time lewat state
                             cameraControl?.enableTorch(isFlashOn)
                         }
                     )
                 }
 
-                // Overlay Tombol Flash & Switch (Kiri/Kanan Kamera)
                 Row(
                     modifier = Modifier.fillMaxSize().padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -230,7 +225,7 @@ fun RegisterFaceScreen(
                         onClick = {
                             lensFacing = if (lensFacing == CameraSelector.LENS_FACING_FRONT)
                                 CameraSelector.LENS_FACING_BACK else CameraSelector.LENS_FACING_FRONT
-                            isFlashOn = false // Reset flash saat ganti kamera
+                            isFlashOn = false
                         },
                         modifier = Modifier.background(Color.Black.copy(0.5f), CircleShape)
                     ) {
@@ -268,7 +263,7 @@ fun RegisterFaceScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             LinearProgressIndicator(
-                progress = samplesCount.toFloat() / totalSamplesNeeded.toFloat(),
+                progress = { samplesCount.toFloat() / totalSamplesNeeded.toFloat() },
                 modifier = Modifier.fillMaxWidth(0.7f).height(8.dp),
                 color = Color(0xFF3F51B5),
                 trackColor = Color.Gray

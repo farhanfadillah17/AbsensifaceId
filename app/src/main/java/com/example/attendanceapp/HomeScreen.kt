@@ -27,7 +27,7 @@ fun HomeScreen(
     onQRGenerator: () -> Unit
 ) {
     // Mengambil data secara dinamis dari database
-    val allEmployees = remember { dbHelper.getAllEmployees() }
+    val allEmployees = remember<List<Employee>> { dbHelper.getAllMasterEmployees() }
     val isRegistered = allEmployees.isNotEmpty()
     val profileCount = allEmployees.size
 

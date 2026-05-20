@@ -128,7 +128,8 @@ fun QRScannerScreen(
 
                                                     if (scannedId.isNotEmpty() && !scanned) {
                                                         // Cari karyawan di DB berdasarkan ID mentah tersebut
-                                                        val employee = dbHelper.getEmployee(scannedId.trim())
+                                                        // SESUDAH (Menggunakan fungsi pencarian tunggal yang baru dibuat)
+                                                        val employee = dbHelper.getEmployeeByOnlyCode(scannedId.trim())
 
                                                         if (employee != null) {
                                                             scanned = true

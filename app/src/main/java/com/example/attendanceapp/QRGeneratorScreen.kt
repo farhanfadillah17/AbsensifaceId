@@ -33,7 +33,8 @@ fun QRGeneratorScreen(
     dbHelper: AttendanceDatabaseHelper,
     onBack: () -> Unit
 ) {
-    val profiles = remember { dbHelper.getAllEmployees() }
+    // PERBAIKAN: Gunakan getAllMasterEmployees() dan tentukan tipe secara eksplisit
+    val profiles = remember { dbHelper.getAllMasterEmployees() }
     var selectedEmployee by remember { mutableStateOf<Employee?>(null) }
 
     Scaffold(
@@ -116,7 +117,8 @@ fun EmployeeQRCard(employee: Employee, onClick: () -> Unit) {
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(employee.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text("ID: ${employee.id}", color = Color(0xFF78909C), fontSize = 12.sp)
+                // PERBAIKAN: .id diganti menjadi .fccode
+                Text("ID: ${employee.fccode}", color = Color(0xFF78909C), fontSize = 12.sp)
             }
             Surface(color = Color(0xFF00695C), shape = RoundedCornerShape(8.dp)) {
                 Text(
@@ -133,8 +135,8 @@ fun EmployeeQRCard(employee: Employee, onClick: () -> Unit) {
 
 @Composable
 fun QRDialog(employee: Employee, onDismiss: () -> Unit) {
-    // PERBAIKAN: Format QR Content sekarang HANYA berisi ID saja
-    val qrContent = employee.id
+    // PERBAIKAN: .id diganti menjadi .fccode
+    val qrContent = employee.fccode
     val qrBitmap = remember(qrContent) { generateQRBitmap(qrContent) }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -150,7 +152,8 @@ fun QRDialog(employee: Employee, onDismiss: () -> Unit) {
                 Text("QR Code Absensi", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Color(0xFF1A237E))
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(employee.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF37474F))
-                Text("ID Karyawan: ${employee.id}", color = Color.Gray, fontSize = 13.sp)
+                // PERBAIKAN: .id diganti menjadi .fccode
+                Text("ID Karyawan: ${employee.fccode}", color = Color.Gray, fontSize = 13.sp)
 
                 Spacer(modifier = Modifier.height(20.dp))
 

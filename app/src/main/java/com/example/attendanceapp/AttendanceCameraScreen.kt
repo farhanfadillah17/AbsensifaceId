@@ -101,13 +101,24 @@ fun AttendanceCameraScreen(
 
                                     val currentFeatures = faceDataHelper.extractFeatures(face)
 
-                                    // FIX: Gunakan currentEmployee (non-null)
-                                    val isMatched = faceDataHelper.verifyFace(currentEmployee.id, currentFeatures)
+                                    // PERBAIKAN 1: Ganti .id menjadi .fccode dan tambahkan .fcba
+                                    // Pastikan fungsi verifyFace di FaceDataHelper juga menerima fcba
+                                    val isMatched = faceDataHelper.verifyFace(
+                                        currentEmployee.fccode,
+                                        currentEmployee.fcba,
+                                        currentFeatures
+                                    )
 
                                     if (isMatched) {
                                         statusText = "✅ Verifikasi Berhasil!"
-                                        // FIX: Gunakan currentEmployee (non-null)
-                                        dbHelper.saveAttendance(currentEmployee.id, action.name)
+
+                                        // PERBAIKAN 2: Sesuaikan parameter saveAttendance (fccode, fcba, action)
+                                        dbHelper.saveAttendance(
+                                            currentEmployee.fccode,
+                                            currentEmployee.fcba,
+                                            action.name
+                                        )
+
                                         delay(1500)
                                         onSuccess()
                                     } else {
