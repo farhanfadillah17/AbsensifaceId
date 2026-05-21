@@ -19,7 +19,7 @@ data class Employee(
     val address: String = "",
     val companyNik: String = "",
     val faceEmbedding: String? = null,
-    val lastUpdate: Long = System.currentTimeMillis()
+    val lastUpdate: Long = System.currentTimeMillis(),
 )
 
 data class FaceMapping(
@@ -27,7 +27,7 @@ data class FaceMapping(
     val employeeId: String,
     val fcbaId: String,
     val features: FloatArray,
-    val capturedAt: Long = System.currentTimeMillis()
+    val capturedAt: Long = System.currentTimeMillis(),
 )
 
 data class AttendanceRecord(
@@ -36,7 +36,13 @@ data class AttendanceRecord(
     val fcbaId: String,
     val employeeName: String,
     val action: String,
-    val timestamp: Long
+    val timestamp: Long,
+)
+
+data class User(
+    val fccode: String,
+    val fcba: String,
+    val name: String
 )
 
 // ─── Database ─────────────────────────────────────────────────────────────────
@@ -46,8 +52,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     companion object {
         const val DATABASE_NAME = "attendance.db"
-        // Dinaikkan ke 5 agar database di-reset dan mengimpor file SQL baru
-        const val DATABASE_VERSION = 5
+        // Naikkan ke 8 untuk memastikan database lama yang rusak terhapus total
+        const val DATABASE_VERSION = 18
 
         const val T_EMP = "EMPLOYEE"
         const val E_FCCODE = "FCCODE"
@@ -58,7 +64,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
         const val E_POSITION = "POSITION"
         const val E_GENDER = "GENDER"
         const val E_ADDRESS = "ADDRESS"
-        const val E_NIK = "COMPANY_NIK"
+        const val E_NIK = "IDENTITYCARD"
+        const val E_COMPANY_NIK = "COMPANY_NIK"
         const val E_FACE_EMB = "FACEEMBEDDING"
         const val E_LAST_UPDATE = "LASTUPDATE"
 
@@ -79,7 +86,6 @@ class AttendanceDatabaseHelper(private val context: Context) :
     }
 
     override fun onCreate(db: SQLiteDatabase) {
-        // 1. Buat Tabel Employee dengan kolom lengkap sesuai file SQL
         db.execSQL("""
             CREATE TABLE $T_EMP (
                 $E_FCCODE TEXT NOT NULL,
@@ -89,7 +95,6 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 DATEOFBIRTH TEXT,
                 RELIGION TEXT,
                 RACE TEXT,
-                IDENTITYCARD TEXT,
                 HIGHESTEDUCATION TEXT,
                 YEAROFGRADUATION TEXT,
                 DATEOFJOIN TEXT,
@@ -129,7 +134,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 $E_ADDRESS TEXT,
                 BPJSKES_CATEGORY TEXT,
                 BPJSKES_NO TEXT,
-                $E_NIK TEXT,
+                $E_NIK TEXT, 
+                COMPANY_NIK TEXT,
                 SUBGRADE TEXT,
                 EMP_TYPE TEXT,
                 PRESENTGRADE2 TEXT,
@@ -160,7 +166,6 @@ class AttendanceDatabaseHelper(private val context: Context) :
             )
         """)
 
-        // 2. Buat Tabel Face Mapping
         db.execSQL("""
             CREATE TABLE $T_FACE (
                 $F_ID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -172,19 +177,17 @@ class AttendanceDatabaseHelper(private val context: Context) :
             )
         """)
 
-        // 3. Buat Tabel Attendance
         db.execSQL("""
             CREATE TABLE $T_ATT (
                 $A_ID INTEGER PRIMARY KEY AUTOINCREMENT,
                 $A_EMP_ID TEXT NOT NULL,
                 $A_FCBA TEXT NOT NULL,
                 $A_EMP_NAME TEXT NOT NULL,
-                "$A_ACTION" TEXT NOT NULL,
-                "$A_TIMESTAMP" DATETIME DEFAULT CURRENT_TIMESTAMP
+                $A_ACTION TEXT NOT NULL,
+                $A_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
-        // 4. Import data dari assets
         importSqlFromAssets(db, context)
     }
 
@@ -203,50 +206,58 @@ class AttendanceDatabaseHelper(private val context: Context) :
     private fun importSqlFromAssets(db: SQLiteDatabase, context: Context) {
         try {
             val inputStream = context.assets.open("EMPLOYEE_202605200755.sql")
-            val reader = inputStream.bufferedReader()
 
-            // Membaca seluruh isi file sebagai satu String
-            val fullSql = reader.readText()
+            // Membaca file dan membersihkan karakter sampah di awal (BOM)
+            var fullSql = inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            fullSql = fullSql.replace("\uFEFF", "")
 
-            // Membersihkan sintaks TIMESTAMP yang tidak didukung SQLite
-            // Mengubah TIMESTAMP'2025-01-01 00:00:00.0' menjadi '2025-01-01 00:00:00.0'
-            val cleanedSql = fullSql.replace("TIMESTAMP'", "'")
+            // Pembersihan Sintaks agar cocok dengan SQLite
+            val cleanedSql = fullSql
+                .replace("TIMESTAMP'", "'") // Ubah TIMESTAMP'2025...' jadi '2025...'
+                .replace(Regex("(?i)TO_CLOB\\('(.*?)'\\)"), "'$1'") // Bersihkan TO_CLOB jika ada
+                .replace("\"DBA\".", "") // Hapus schema
+                .replace("\"POSITION\"", "POSITION") // Hapus kutip pada kata cadangan
+                .replace("\"EMPLOYEE\"", "EMPLOYEE") // Nama tabel tanpa kutip
 
-            // Memisahkan berdasarkan titik koma (;) untuk mengeksekusi perintah satu per satu
+            // Pisahkan berdasarkan titik koma (;) untuk mendapatkan setiap blok INSERT
             val statements = cleanedSql.split(";")
 
             db.beginTransaction()
             try {
-                for (statement in statements) {
-                    val st = statement.trim()
-                    if (st.isNotEmpty() && st.uppercase().startsWith("INSERT")) {
+                var totalDataInput = 0
+                for (st in statements) {
+                    val sql = st.trim()
+                    if (sql.isNotEmpty() && sql.uppercase().contains("INSERT INTO")) {
                         try {
-                            db.execSQL(st)
+                            db.execSQL("$sql;")
+                            totalDataInput++
                         } catch (e: Exception) {
-                            // Jika satu baris gagal (misal kolom tidak cocok),
-                            // aplikasi tidak akan Force Close, hanya mencatat error di log
-                            Log.e("DB_IMPORT_ERROR", "Gagal eksekusi baris: ${e.message}")
+                            Log.e("DB_IMPORT_ERROR", "Gagal di blok INSERT: ${e.message}")
                         }
                     }
                 }
                 db.setTransactionSuccessful()
-                Log.d("DB_IMPORT", "Proses Import Selesai")
+
+                // Cek jumlah data yang benar-benar masuk ke tabel
+                val cursor = db.rawQuery("SELECT COUNT(*) FROM EMPLOYEE", null)
+                if (cursor.moveToFirst()) {
+                    val count = cursor.getInt(0)
+                    Log.d("DB_IMPORT", "BERHASIL! Total data di database: $count")
+                }
+                cursor.close()
+
             } finally {
                 db.endTransaction()
             }
         } catch (e: Exception) {
-            Log.e("DB_IMPORT", "Gagal Membaca File SQL: ${e.message}")
+            Log.e("DB_IMPORT", "KESALAHAN FATAL: ${e.message}")
         }
     }
-
-    // ── Employees & Master Data ────────────────────────────────────────────────
 
     fun getAllMasterEmployees(): List<Employee> {
         val list = mutableListOf<Employee>()
         val db = readableDatabase
-        // OPTIMASI: Hanya ambil kolom yang benar-benar dibutuhkan untuk list
         val query = "SELECT $E_FCCODE, $E_FCBA, $E_NAME, $E_SECTION, $E_GANG, $E_POSITION, $E_NIK FROM $T_EMP ORDER BY $E_NAME ASC"
-
         db.rawQuery(query, null).use { c ->
             while (c.moveToNext()) {
                 list += Employee(
@@ -263,57 +274,10 @@ class AttendanceDatabaseHelper(private val context: Context) :
         return list
     }
 
-    fun getEmployeeByOnlyCode(fccode: String): Employee? {
-        val db = readableDatabase
-        val query = "SELECT *, strftime('%s', $E_LAST_UPDATE) * 1000 AS last_upd_ms FROM $T_EMP WHERE $E_FCCODE = ?"
-        return try {
-            db.rawQuery(query, arrayOf(fccode)).use { c ->
-                if (c.moveToFirst()) {
-                    Employee(
-                        fccode = c.getString(c.getColumnIndexOrThrow(E_FCCODE)),
-                        fcba = c.getString(c.getColumnIndexOrThrow(E_FCBA)),
-                        name = c.getString(c.getColumnIndexOrThrow(E_NAME)),
-                        sectionName = c.getString(c.getColumnIndexOrThrow(E_SECTION)),
-                        gangCode = c.getString(c.getColumnIndexOrThrow(E_GANG)),
-                        position = c.getString(c.getColumnIndexOrThrow(E_POSITION)) ?: "",
-                        gender = c.getString(c.getColumnIndexOrThrow(E_GENDER)) ?: "",
-                        address = c.getString(c.getColumnIndexOrThrow(E_ADDRESS)) ?: "",
-                        companyNik = c.getString(c.getColumnIndexOrThrow(E_NIK)) ?: "",
-                        faceEmbedding = c.getString(c.getColumnIndexOrThrow(E_FACE_EMB)),
-                        lastUpdate = c.getLong(c.getColumnIndexOrThrow("last_upd_ms"))
-                    )
-                } else null
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    fun insertEmployee(emp: Employee): Boolean {
-        return try {
-            val db = writableDatabase
-            val cv = ContentValues().apply {
-                put(E_FCCODE, emp.fccode)
-                put(E_FCBA, emp.fcba)
-                put(E_NAME, emp.name)
-                put(E_SECTION, emp.sectionName)
-                put(E_GANG, emp.gangCode)
-                put(E_POSITION, emp.position)
-                put(E_GENDER, emp.gender)
-                put(E_ADDRESS, emp.address)
-                put(E_NIK, emp.companyNik)
-                put(E_FACE_EMB, emp.faceEmbedding)
-            }
-            db.insertWithOnConflict(T_EMP, null, cv, SQLiteDatabase.CONFLICT_REPLACE) != -1L
-        } catch (e: Exception) {
-            false
-        }
-    }
-
     fun getEmployee(fccode: String, fcba: String): Employee? {
         val db = readableDatabase
         return try {
-            val query = "SELECT *, strftime('%s', $E_LAST_UPDATE) * 1000 AS last_upd_ms FROM $T_EMP WHERE $E_FCCODE=? AND $E_FCBA=?"
+            val query = "SELECT * FROM $T_EMP WHERE $E_FCCODE=? AND $E_FCBA=?"
             db.rawQuery(query, arrayOf(fccode, fcba)).use { c ->
                 if (c.moveToFirst()) {
                     Employee(
@@ -326,17 +290,62 @@ class AttendanceDatabaseHelper(private val context: Context) :
                         gender = c.getString(c.getColumnIndexOrThrow(E_GENDER)) ?: "",
                         address = c.getString(c.getColumnIndexOrThrow(E_ADDRESS)) ?: "",
                         companyNik = c.getString(c.getColumnIndexOrThrow(E_NIK)) ?: "",
-                        faceEmbedding = c.getString(c.getColumnIndexOrThrow(E_FACE_EMB)),
-                        lastUpdate = c.getLong(c.getColumnIndexOrThrow("last_upd_ms"))
+                        faceEmbedding = c.getString(c.getColumnIndexOrThrow(E_FACE_EMB))
                     )
                 } else null
             }
+        } catch (e: Exception) { null }
+    }
+
+    fun getEmployeeByOnlyCode(fccode: String): Employee? {
+        val db = readableDatabase
+        val query = "SELECT * FROM $T_EMP WHERE $E_FCCODE = ?"
+        return try {
+            db.rawQuery(query, arrayOf(fccode.trim())).use { c ->
+                if (c.moveToFirst()) {
+                    Employee(
+                        fccode = c.getString(c.getColumnIndexOrThrow(E_FCCODE)),
+                        fcba = c.getString(c.getColumnIndexOrThrow(E_FCBA)),
+                        name = c.getString(c.getColumnIndexOrThrow(E_NAME)),
+                        sectionName = c.getString(c.getColumnIndexOrThrow(E_SECTION)) ?: "",
+                        gangCode = c.getString(c.getColumnIndexOrThrow(E_GANG)) ?: "",
+                        position = c.getString(c.getColumnIndexOrThrow(E_POSITION)) ?: "",
+                        companyNik = c.getString(c.getColumnIndexOrThrow(E_NIK)) ?: "",
+                        gender = c.getString(c.getColumnIndexOrThrow(E_GENDER)) ?: "",
+                        address = c.getString(c.getColumnIndexOrThrow(E_ADDRESS)) ?: "",
+                        faceEmbedding = c.getString(c.getColumnIndexOrThrow(E_FACE_EMB))
+                    )
+                } else null
+            }
+        } catch (e: Exception) { null }
+    }
+
+    fun checkLogin(fccode: String, passwordKtp: String): User? { // Hapus com.google.firebase...
+        val db = readableDatabase
+        val query = """
+        SELECT $E_FCCODE, $E_FCBA, $E_NAME 
+        FROM $T_EMP 
+        WHERE UPPER(TRIM($E_FCCODE)) = UPPER(TRIM(?)) 
+        AND UPPER(TRIM($E_NIK)) = UPPER(TRIM(?))
+    """.trimIndent()
+
+        return try {
+            db.rawQuery(query, arrayOf(fccode, passwordKtp)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    User( // Gunakan User class yang baru kita buat
+                        fccode = cursor.getString(0),
+                        fcba = cursor.getString(1),
+                        name = cursor.getString(2)
+                    )
+                } else {
+                    null
+                }
+            }
         } catch (e: Exception) {
+            Log.e("DB_ERROR", "Login failed: ${e.message}")
             null
         }
     }
-
-    // ── Face Mappings ──────────────────────────────────────────────────────────
 
     fun insertFaceMapping(mapping: FaceMapping): Boolean {
         val db = writableDatabase
@@ -348,11 +357,6 @@ class AttendanceDatabaseHelper(private val context: Context) :
         return db.insert(T_FACE, null, cv) != -1L
     }
 
-    // ── Face Mappings ──────────────────────────────────────────────────────────
-
-    /**
-     * Menghitung jumlah sampel wajah yang tersimpan untuk karyawan tertentu.
-     */
     fun getFaceMappingCount(fccode: String, fcba: String): Int {
         val db = readableDatabase
         val query = "SELECT COUNT(*) FROM $T_FACE WHERE $F_EMP_ID = ? AND $F_FCBA = ?"
@@ -360,9 +364,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
             db.rawQuery(query, arrayOf(fccode, fcba)).use { c ->
                 if (c.moveToFirst()) c.getInt(0) else 0
             }
-        } catch (e: Exception) {
-            0
-        }
+        } catch (e: Exception) { 0 }
     }
 
     fun getFaceFeaturesForEmployee(fccode: String, fcba: String): List<FloatArray> {
@@ -377,12 +379,9 @@ class AttendanceDatabaseHelper(private val context: Context) :
         return list
     }
 
-    // ── Attendance ─────────────────────────────────────────────────────────────
-
     fun saveAttendance(fccode: String, fcba: String, action: String): Long {
         val employee = getEmployee(fccode, fcba)
         val name = employee?.name ?: "Unknown"
-
         val db = writableDatabase
         val cv = ContentValues().apply {
             put(A_EMP_ID, fccode)
@@ -396,8 +395,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
     fun getAllAttendance(): List<AttendanceRecord> {
         val list = mutableListOf<AttendanceRecord>()
         val db = readableDatabase
-        val query = "SELECT *, strftime('%s', $A_TIMESTAMP) * 1000 AS ts_ms FROM $T_ATT ORDER BY $A_TIMESTAMP DESC"
-
+        val query = "SELECT * FROM $T_ATT ORDER BY $A_TIMESTAMP DESC"
         db.rawQuery(query, null).use { c ->
             while (c.moveToNext()) {
                 list += AttendanceRecord(
@@ -406,14 +404,10 @@ class AttendanceDatabaseHelper(private val context: Context) :
                     fcbaId = c.getString(c.getColumnIndexOrThrow(A_FCBA)),
                     employeeName = c.getString(c.getColumnIndexOrThrow(A_EMP_NAME)),
                     action = c.getString(c.getColumnIndexOrThrow(A_ACTION)),
-                    timestamp = c.getLong(c.getColumnIndexOrThrow("ts_ms"))
+                    timestamp = System.currentTimeMillis()
                 )
             }
         }
         return list
-    }
-
-    fun deleteEmployee(fccode: String, fcba: String): Int {
-        return writableDatabase.delete(T_EMP, "$E_FCCODE=? AND $E_FCBA=?", arrayOf(fccode, fcba))
     }
 }

@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,17 +20,21 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun HomeScreen(
-    faceDataHelper: FaceDataHelper,
-    dbHelper: AttendanceDatabaseHelper, // Tambahkan dbHelper untuk cek jumlah karyawan
+    sessionManager: SessionManager, // Tambahkan SessionManager
+    dbHelper: AttendanceDatabaseHelper,
     onRegisterFace: () -> Unit,
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit,
     onHistory: () -> Unit,
-    onQRGenerator: () -> Unit
+    onQRGenerator: () -> Unit,
+    onLogout: () -> Unit // Tambahkan callback logout
 ) {
-    // Mengambil data secara dinamis dari database
-    val allEmployees = remember<List<Employee>> { dbHelper.getAllMasterEmployees() }
-    val isRegistered = allEmployees.isNotEmpty()
+    // Ambil data nama dari SessionManager
+    val userName = remember { sessionManager.getName() ?: "User" }
+
+    // Mengambil data master secara dinamis
+    val allEmployees = remember { dbHelper.getAllMasterEmployees() }
+    val isDataReady = allEmployees.isNotEmpty()
     val profileCount = allEmployees.size
 
     Box(
@@ -40,6 +46,16 @@ fun HomeScreen(
                 )
             )
     ) {
+        // Tombol Logout di pojok kanan atas
+        IconButton(
+            onClick = onLogout,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 40.dp, end = 16.dp)
+        ) {
+            Icon(Icons.Default.ExitToApp, contentDescription = "Logout", tint = Color.White)
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -47,14 +63,23 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Header
+            // Profil User yang Login
+            Text(
+                text = "Halo, $userName",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
             Text(
                 text = "SISTEM ABSENSI",
                 fontSize = 26.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = Color.White,
-                letterSpacing = 3.sp
+                letterSpacing = 3.sp,
+                modifier = Modifier.padding(top = 8.dp)
             )
+
             Text(
                 text = "QR Code + Face Recognition",
                 fontSize = 13.sp,
@@ -77,29 +102,27 @@ fun HomeScreen(
                 )
             }
 
-            // Face icon
+            // Status Icon
             Box(
                 modifier = Modifier
-                    .size(130.dp)
+                    .size(100.dp)
                     .clip(CircleShape)
-                    .background(
-                        if (isRegistered) Color(0xFF1B5E20).copy(alpha = 0.8f)
-                        else Color(0xFF283593).copy(alpha = 0.8f)
-                    ),
+                    .background(Color.White.copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = if (isRegistered) "✅" else "👤", fontSize = 60.sp)
+                Text(text = "🛡️", fontSize = 50.sp)
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
             Text(
-                text = if (isRegistered) "$profileCount Karyawan Terdaftar" else "Belum ada karyawan terdaftar",
-                color = if (isRegistered) Color(0xFF81C784) else Color(0xFFEF9A9A),
-                fontSize = 13.sp,
+                text = "$profileCount Data Master Termuat",
+                color = if (isDataReady) Color(0xFF81C784) else Color(0xFFEF9A9A),
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Status card
             Card(
@@ -113,90 +136,77 @@ fun HomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = if (isRegistered)
-                            "🟢 Sistem Siap Digunakan"
-                        else
-                            "🔴 Silahkan Daftarkan Karyawan Terlebih Dahulu",
+                        text = if (isDataReady) "🟢 Koneksi Database Aktif" else "🔴 Database Kosong",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        color = if (isRegistered) Color(0xFF2E7D32) else Color(0xFFC62828),
-                        textAlign = TextAlign.Center
+                        color = if (isDataReady) Color(0xFF2E7D32) else Color(0xFFC62828)
                     )
-                    if (isRegistered) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            "Alur: Scan QR → Verifikasi Wajah → Selesai",
-                            color = Color(0xFF78909C),
-                            fontSize = 11.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Gunakan menu di bawah untuk operasional",
+                        color = Color.Gray,
+                        fontSize = 11.sp
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Row: Register + QR Generator
+            // Grid Menu Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Button(
                     onClick = onRegisterFace,
-                    modifier = Modifier.weight(1f).height(56.dp),
+                    modifier = Modifier.weight(1f).height(60.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B))
                 ) {
-                    Text("📸 Daftar\nKaryawan", fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    Text("📸 Daftar\nWajah", textAlign = TextAlign.Center, fontSize = 12.sp)
                 }
                 Button(
                     onClick = onQRGenerator,
-                    enabled = isRegistered,
-                    modifier = Modifier.weight(1f).height(56.dp),
+                    modifier = Modifier.weight(1f).height(60.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00695C))
                 ) {
-                    Text("🔲 Generator\nQR Code", fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    Text("🔲 Gen\nQR Code", textAlign = TextAlign.Center, fontSize = 12.sp)
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Check In
+            // Main Action Buttons
             Button(
                 onClick = onCheckIn,
-                enabled = isRegistered,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3F51B5))
             ) {
-                Text("📷  ABSEN MASUK", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text("📷  ABSEN MASUK", fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Check Out
             Button(
                 onClick = onCheckOut,
-                enabled = isRegistered,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
             ) {
-                Text("🚪  ABSEN KELUAR", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text("🚪  ABSEN KELUAR", fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // History
             OutlinedButton(
                 onClick = onHistory,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                 border = ButtonDefaults.outlinedButtonBorder.copy(brush = Brush.linearGradient(listOf(Color.White, Color.White)))
             ) {
-                Text("📋  LIHAT RIWAYAT", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("📋  RIWAYAT", color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
     }

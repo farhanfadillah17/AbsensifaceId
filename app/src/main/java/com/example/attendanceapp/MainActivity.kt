@@ -6,78 +6,125 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.attendanceapp.ui.theme.AttendanceAppTheme
 
-class MainActivity : ComponentActivity() {
+// 1. Enum Screen untuk Navigasi
+enum class Screen {
+    LOGIN,
+    DASHBOARD,
+    HOME,
+    EMPLOYEE_FORM,
+    REGISTER_FACE,
+    QR_SCAN,
+    FACE_VERIFY,
+    QR_GENERATOR,
+    HISTORY
+}
 
+class MainActivity : ComponentActivity() {
     private lateinit var db: AttendanceDatabaseHelper
     private lateinit var faceHelper: FaceDataHelper
+    private lateinit var sessionManager: SessionManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Inisialisasi Database dan Helper
         db = AttendanceDatabaseHelper(this)
         faceHelper = FaceDataHelper(db)
+        sessionManager = SessionManager(this)
 
         setContent {
             AttendanceAppTheme {
-                AppNavigation(db = db, faceHelper = faceHelper)
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    AppNavigation(db = db, faceHelper = faceHelper, sessionManager = sessionManager)
+                }
             }
         }
     }
 }
 
-enum class Screen {
-    HOME,
-    EMPLOYEE_FORM,      // Isi data karyawan (Nama, ID, dll)
-    REGISTER_FACE,      // Scan wajah (Simpan ke DB)
-    QR_SCAN,            // Langkah 1 Absensi: Scan QR
-    FACE_VERIFY,        // Langkah 2 Absensi: Verifikasi Wajah
-    QR_GENERATOR,       // Menu untuk melihat/generate QR Code
-    HISTORY             // Riwayat Absensi
-}
-
 @Composable
-fun AppNavigation(db: AttendanceDatabaseHelper, faceHelper: FaceDataHelper) {
-    // Back-stack sederhana menggunakan StateList
-    val backStack = remember { mutableStateListOf(Screen.HOME) }
+fun AppNavigation(
+    db: AttendanceDatabaseHelper,
+    faceHelper: FaceDataHelper,
+    sessionManager: SessionManager,
+) {
+    val initialScreen = if (sessionManager.isLoggedIn()) Screen.DASHBOARD else Screen.LOGIN
+    val backStack = remember { mutableStateListOf(initialScreen) }
     val currentScreen = backStack.last()
 
-    // State untuk menyimpan data sementara antar layar
     var pendingEmployee by remember { mutableStateOf<Employee?>(null) }
     var currentAction by remember { mutableStateOf(AttendanceAction.CHECK_IN) }
     var verifiedEmployee by remember { mutableStateOf<Employee?>(null) }
 
-    // Fungsi Navigasi
-    fun navigateTo(screen: Screen) { backStack.add(screen) }
-    fun navigateBack() { if (backStack.size > 1) backStack.removeLast() }
-    fun navigateHome() {
-        backStack.clear()
-        backStack.add(Screen.HOME)
+    fun navigateTo(screen: Screen) {
+        backStack.add(screen)
     }
 
-    // Menangani tombol back sistem Android
+    fun navigateBack() {
+        if (backStack.size > 1) backStack.removeLast()
+    }
+
+    fun navigateDashboard() {
+        backStack.clear()
+        backStack.add(Screen.DASHBOARD)
+    }
+
+    fun logout() {
+        sessionManager.logout()
+        backStack.clear()
+        backStack.add(Screen.LOGIN)
+    }
+
     val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-    DisposableEffect(dispatcher) {
+    DisposableEffect(dispatcher, currentScreen) {
         val callback = object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (backStack.size > 1) navigateBack() else dispatcher?.onBackPressed()
+                if (currentScreen == Screen.DASHBOARD || currentScreen == Screen.LOGIN) {
+                    return
+                }
+                navigateBack()
             }
         }
         dispatcher?.addCallback(callback)
         onDispose { callback.remove() }
     }
 
-    // Routing Layar
     when (currentScreen) {
-        Screen.HOME -> HomeScreen(
+        Screen.LOGIN -> LoginScreen(
             dbHelper = db,
-            faceDataHelper = faceHelper,
+            sessionManager = sessionManager,
+            onLoginSuccess = { navigateDashboard() }
+        )
+
+        Screen.DASHBOARD -> DashboardScreen(
+            userName = sessionManager.getUserName() ?: "Karyawan",
+            onStartAttendance = { navigateTo(Screen.HOME) },
+            onLogout = { logout() } // onHistory dihapus
+        )
+
+        Screen.HOME -> HomeScreen(
+            sessionManager = sessionManager,
+            dbHelper = db,
             onRegisterFace = { navigateTo(Screen.EMPLOYEE_FORM) },
             onCheckIn = {
                 currentAction = AttendanceAction.CHECK_IN
@@ -88,7 +135,8 @@ fun AppNavigation(db: AttendanceDatabaseHelper, faceHelper: FaceDataHelper) {
                 navigateTo(Screen.QR_SCAN)
             },
             onHistory = { navigateTo(Screen.HISTORY) },
-            onQRGenerator = { navigateTo(Screen.QR_GENERATOR) }
+            onQRGenerator = { navigateTo(Screen.QR_GENERATOR) },
+            onLogout = { logout() }
         )
 
         Screen.EMPLOYEE_FORM -> EmployeeFormScreen(
@@ -101,16 +149,15 @@ fun AppNavigation(db: AttendanceDatabaseHelper, faceHelper: FaceDataHelper) {
         )
 
         Screen.REGISTER_FACE -> {
-            // Pastikan pendingEmployee tidak null sebelum membuka layar pendaftaran
             pendingEmployee?.let { employee ->
                 RegisterFaceScreen(
-                    dbHelper = db, // Pastikan di RegisterFaceScreen.kt juga menerima dbHelper jika dibutuhkan
+                    dbHelper = db,
                     employee = employee,
                     faceDataHelper = faceHelper,
                     onBack = { navigateBack() },
                     onSuccess = {
                         pendingEmployee = null
-                        navigateHome()
+                        navigateDashboard()
                     }
                 )
             }
@@ -134,7 +181,7 @@ fun AppNavigation(db: AttendanceDatabaseHelper, faceHelper: FaceDataHelper) {
             onBack = { navigateBack() },
             onSuccess = {
                 verifiedEmployee = null
-                navigateHome()
+                navigateDashboard()
             }
         )
 
@@ -147,5 +194,104 @@ fun AppNavigation(db: AttendanceDatabaseHelper, faceHelper: FaceDataHelper) {
             dbHelper = db,
             onBack = { navigateBack() }
         )
+    }
+}
+
+// ─── UI COMPONENTS ────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DashboardScreen(
+    userName: String,
+    onStartAttendance: () -> Unit,
+    onLogout: () -> Unit
+) {
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("MENU UTAMA", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp) },
+                actions = {
+                    IconButton(onClick = onLogout) {
+                        Icon(Icons.Default.ExitToApp, contentDescription = "Logout", tint = MaterialTheme.colorScheme.error)
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Selamat Datang,", color = MaterialTheme.colorScheme.onPrimary, fontSize = 14.sp)
+                    Text(
+                        userName.uppercase(),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(64.dp)) // Jarak lebih luas untuk estetika satu menu
+
+            // Menggunakan Box atau Grid 1 kolom agar menu Absensi berada di tengah
+            DashboardCard(
+                title = "MASUK MENU ABSENSI",
+                icon = Icons.Default.CameraFront,
+                onClick = onStartAttendance,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Text(
+                text = "Silakan tekan tombol di atas untuk memulai absensi",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+    }
+}
+
+@Composable
+fun DashboardCard(title: String, icon: ImageVector, onClick: () -> Unit, color: androidx.compose.ui.graphics.Color) {
+    ElevatedCard(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth(0.8f) // Dibuat agak lebar tapi tidak full
+            .height(160.dp),
+        shape = MaterialTheme.shapes.large
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = color.copy(alpha = 0.1f),
+                modifier = Modifier.size(60.dp)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.padding(12.dp).size(36.dp),
+                    tint = color
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
     }
 }
