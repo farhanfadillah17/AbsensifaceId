@@ -7,8 +7,6 @@ import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -23,7 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.attendanceapp.ui.theme.AttendanceAppTheme
 
-// 1. Enum Screen untuk Navigasi
+// 1. Enum Screen - Tetap ada HISTORY untuk diakses dari layar HOME
 enum class Screen {
     LOGIN,
     DASHBOARD,
@@ -32,7 +30,6 @@ enum class Screen {
     REGISTER_FACE,
     QR_SCAN,
     FACE_VERIFY,
-    QR_GENERATOR,
     HISTORY
 }
 
@@ -119,7 +116,7 @@ fun AppNavigation(
         Screen.DASHBOARD -> DashboardScreen(
             userName = sessionManager.getUserName() ?: "Karyawan",
             onStartAttendance = { navigateTo(Screen.HOME) },
-            onLogout = { logout() } // onHistory dihapus
+            onLogout = { logout() }
         )
 
         Screen.HOME -> HomeScreen(
@@ -135,8 +132,8 @@ fun AppNavigation(
                 navigateTo(Screen.QR_SCAN)
             },
             onHistory = { navigateTo(Screen.HISTORY) },
-            onQRGenerator = { navigateTo(Screen.QR_GENERATOR) },
             onLogout = { logout() }
+
         )
 
         Screen.EMPLOYEE_FORM -> EmployeeFormScreen(
@@ -183,11 +180,6 @@ fun AppNavigation(
                 verifiedEmployee = null
                 navigateDashboard()
             }
-        )
-
-        Screen.QR_GENERATOR -> QRGeneratorScreen(
-            dbHelper = db,
-            onBack = { navigateBack() }
         )
 
         Screen.HISTORY -> AttendanceHistoryScreen(
@@ -243,9 +235,9 @@ fun DashboardScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(64.dp)) // Jarak lebih luas untuk estetika satu menu
+            Spacer(modifier = Modifier.height(80.dp))
 
-            // Menggunakan Box atau Grid 1 kolom agar menu Absensi berada di tengah
+            // Menu Utama hanya menampilkan Absensi
             DashboardCard(
                 title = "MASUK MENU ABSENSI",
                 icon = Icons.Default.CameraFront,
@@ -260,6 +252,8 @@ fun DashboardScreen(
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.outline
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -269,8 +263,8 @@ fun DashboardCard(title: String, icon: ImageVector, onClick: () -> Unit, color: 
     ElevatedCard(
         onClick = onClick,
         modifier = Modifier
-            .fillMaxWidth(0.8f) // Dibuat agak lebar tapi tidak full
-            .height(160.dp),
+            .fillMaxWidth(0.85f)
+            .height(180.dp),
         shape = MaterialTheme.shapes.large
     ) {
         Column(
@@ -281,17 +275,17 @@ fun DashboardCard(title: String, icon: ImageVector, onClick: () -> Unit, color: 
             Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = color.copy(alpha = 0.1f),
-                modifier = Modifier.size(60.dp)
+                modifier = Modifier.size(70.dp)
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    modifier = Modifier.padding(12.dp).size(36.dp),
+                    modifier = Modifier.padding(15.dp).size(40.dp),
                     tint = color
                 )
             }
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Spacer(modifier = Modifier.height(20.dp))
+            Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
         }
     }
 }
