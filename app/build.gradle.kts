@@ -44,6 +44,12 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        // Tambahkan baris di bawah ini untuk menghilangkan error API eksperimental
+        freeCompilerArgs += listOf(
+            "-opt-in=com.google.accompanist.permissions.ExperimentalPermissionsApi",
+            "-opt-in=androidx.camera.core.ExperimentalGetImage",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
+        )
     }
 }
 

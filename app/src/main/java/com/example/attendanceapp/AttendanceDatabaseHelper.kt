@@ -274,6 +274,43 @@ class AttendanceDatabaseHelper(private val context: Context) :
         return list
     }
 
+    fun updateEmployeeFaceData(fccode: String, fcba: String, faceData: String): Boolean {
+        val db = this.writableDatabase
+        val values = ContentValues().apply {
+            // Asumsi nama kolom di tabel karyawan Anda adalah 'face_embedding'
+            // atau sesuaikan dengan nama kolom yang Anda buat di onCreate
+            put("face_embedding", faceData)
+        }
+
+        // Mengupdate berdasarkan FCCode dan FCBA (kunci unik karyawan)
+        val result = db.update(
+            "TABLE_EMPLOYEE", // Ganti dengan nama konstanta tabel karyawan Anda
+            values,
+            "fccode = ? AND fcba = ?",
+            arrayOf(fccode, fcba)
+        )
+
+        return result > 0
+    }
+
+    fun insertAttendance(fccode: String, fcba: String, name: String, action: String): Boolean {
+        val db = writableDatabase
+        return try {
+            val values = ContentValues().apply {
+                put(A_EMP_ID, fccode)
+                put(A_FCBA, fcba)
+                put(A_EMP_NAME, name)
+                put(A_ACTION, action)
+                // A_TIMESTAMP akan terisi otomatis oleh DEFAULT CURRENT_TIMESTAMP
+            }
+            val result = db.insert(T_ATT, null, values)
+            result != -1L
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal simpan absen: ${e.message}")
+            false
+        }
+    }
+
     fun getEmployee(fccode: String, fcba: String): Employee? {
         val db = readableDatabase
         return try {

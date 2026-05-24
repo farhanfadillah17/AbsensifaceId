@@ -8,9 +8,12 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.FlashOff
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
@@ -54,6 +57,10 @@ fun QRScannerScreen(
     var statusColor by remember { mutableStateOf(Color(0xFFB0BEC5)) }
     var scanned by remember { mutableStateOf(false) }
 
+    // State untuk kontrol Flash
+    var isFlashOn by remember { mutableStateOf(false) }
+    var camera by remember { mutableStateOf<Camera?>(null) }
+
     DisposableEffect(Unit) {
         onDispose {
             cameraExecutor.shutdown()
@@ -72,6 +79,18 @@ fun QRScannerScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Kembali", tint = Color.White)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        isFlashOn = !isFlashOn
+                        camera?.cameraControl?.enableTorch(isFlashOn)
+                    }) {
+                        Icon(
+                            imageVector = if (isFlashOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                            contentDescription = "Senter",
+                            tint = if (isFlashOn) Color.Yellow else Color.White
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -123,24 +142,17 @@ fun QRScannerScreen(
                                         barcodeScanner.process(image)
                                             .addOnSuccessListener { barcodes ->
                                                 for (barcode in barcodes) {
-                                                    // PERBAIKAN: Ambil ID langsung dari QR
                                                     val scannedId = barcode.rawValue ?: continue
-
                                                     if (scannedId.isNotEmpty() && !scanned) {
-                                                        // Cari karyawan di DB berdasarkan ID mentah tersebut
-                                                        // SESUDAH (Menggunakan fungsi pencarian tunggal yang baru dibuat)
                                                         val employee = dbHelper.getEmployeeByOnlyCode(scannedId.trim())
-
                                                         if (employee != null) {
                                                             scanned = true
                                                             statusText = "✅ Berhasil: ${employee.name}"
                                                             statusColor = Color(0xFF69F0AE)
-
                                                             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                                                 onQRVerified(employee)
                                                             }, 600)
                                                         } else {
-                                                            // Jika ID terbaca tapi tidak ada di database kita
                                                             statusText = "❌ ID ($scannedId) tidak terdaftar"
                                                             statusColor = Color(0xFFEF5350)
                                                         }
@@ -158,7 +170,8 @@ fun QRScannerScreen(
 
                                 try {
                                     cameraProvider.unbindAll()
-                                    cameraProvider.bindToLifecycle(
+                                    // Simpan referensi camera untuk kontrol flash
+                                    camera = cameraProvider.bindToLifecycle(
                                         lifecycleOwner,
                                         CameraSelector.DEFAULT_BACK_CAMERA,
                                         preview,
@@ -173,18 +186,23 @@ fun QRScannerScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    // Scanner Overlay
+                    // Scanner Overlay Kotak Putih
                     Box(
                         modifier = Modifier
                             .size(240.dp)
                             .align(Alignment.Center)
                             .border(
-                                width = 2.dp,
-                                color = if (scanned) Color(0xFF69F0AE) else Color.White.copy(alpha = 0.5f),
+                                width = 1.dp,
+                                color = if (scanned) Color(0xFF69F0AE) else Color.White.copy(alpha = 0.3f),
                                 shape = RoundedCornerShape(16.dp)
                             )
                     )
-                    QRCornerBrackets(modifier = Modifier.align(Alignment.Center), color = if (scanned) Color(0xFF69F0AE) else Color.White)
+
+                    // Memanggil fungsi siku-siku dekoratif
+                    QRCornerBrackets(
+                        modifier = Modifier.align(Alignment.Center),
+                        color = if (scanned) Color(0xFF69F0AE) else Color.White
+                    )
                 }
 
                 Column(
@@ -228,6 +246,10 @@ fun QRScannerScreen(
     }
 }
 
+/**
+ * Fungsi pembantu untuk menggambar siku-siku dekoratif (brackets)
+ * di sekeliling area scan kamera.
+ */
 @Composable
 fun QRCornerBrackets(modifier: Modifier = Modifier, color: Color) {
     val size = 240.dp
@@ -235,22 +257,22 @@ fun QRCornerBrackets(modifier: Modifier = Modifier, color: Color) {
     val thickness = 4.dp
 
     Box(modifier = modifier.size(size)) {
-        // Top Left
+        // Pojok Kiri Atas
         Box(modifier = Modifier.size(bracketSize).align(Alignment.TopStart)) {
             Box(modifier = Modifier.fillMaxWidth().height(thickness).background(color))
             Box(modifier = Modifier.width(thickness).fillMaxHeight().background(color))
         }
-        // Top Right
+        // Pojok Kanan Atas
         Box(modifier = Modifier.size(bracketSize).align(Alignment.TopEnd)) {
             Box(modifier = Modifier.fillMaxWidth().height(thickness).background(color).align(Alignment.TopEnd))
             Box(modifier = Modifier.width(thickness).fillMaxHeight().background(color).align(Alignment.TopEnd))
         }
-        // Bottom Left
+        // Pojok Kiri Bawah
         Box(modifier = Modifier.size(bracketSize).align(Alignment.BottomStart)) {
             Box(modifier = Modifier.fillMaxWidth().height(thickness).background(color).align(Alignment.BottomStart))
             Box(modifier = Modifier.width(thickness).fillMaxHeight().background(color).align(Alignment.BottomStart))
         }
-        // Bottom Right
+        // Pojok Kanan Bawah
         Box(modifier = Modifier.size(bracketSize).align(Alignment.BottomEnd)) {
             Box(modifier = Modifier.fillMaxWidth().height(thickness).background(color).align(Alignment.BottomEnd))
             Box(modifier = Modifier.width(thickness).fillMaxHeight().background(color).align(Alignment.BottomEnd))

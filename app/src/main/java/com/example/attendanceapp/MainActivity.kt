@@ -1,12 +1,14 @@
 package com.example.attendanceapp
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -15,13 +17,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.attendanceapp.ui.theme.AttendanceAppTheme
+import androidx.compose.foundation.shape.CircleShape
 
-// 1. Enum Screen - Tetap ada HISTORY untuk diakses dari layar HOME
 enum class Screen {
     LOGIN,
     DASHBOARD,
@@ -50,7 +55,7 @@ class MainActivity : ComponentActivity() {
             AttendanceAppTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = Color.White // Menggunakan latar putih agar selaras
                 ) {
                     AppNavigation(db = db, faceHelper = faceHelper, sessionManager = sessionManager)
                 }
@@ -65,6 +70,7 @@ fun AppNavigation(
     faceHelper: FaceDataHelper,
     sessionManager: SessionManager,
 ) {
+    val context = LocalContext.current
     val initialScreen = if (sessionManager.isLoggedIn()) Screen.DASHBOARD else Screen.LOGIN
     val backStack = remember { mutableStateListOf(initialScreen) }
     val currentScreen = backStack.last()
@@ -132,8 +138,10 @@ fun AppNavigation(
                 navigateTo(Screen.QR_SCAN)
             },
             onHistory = { navigateTo(Screen.HISTORY) },
-            onLogout = { logout() }
-
+            onLogout = { logout() },
+            // Menambahkan parameter fitur baru agar tidak error
+            onFeature2 = { Toast.makeText(context, "Fitur 2 Segera Hadir", Toast.LENGTH_SHORT).show() },
+            onFeature3 = { Toast.makeText(context, "Fitur 3 Segera Hadir", Toast.LENGTH_SHORT).show() }
         )
 
         Screen.EMPLOYEE_FORM -> EmployeeFormScreen(
@@ -196,20 +204,19 @@ fun AppNavigation(
 fun DashboardScreen(
     userName: String,
     onStartAttendance: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
 ) {
     Scaffold(
+        containerColor = Color.White, // Background Putih
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("MENU UTAMA", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp) },
+                title = { Text("DASHBOARD", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp) },
                 actions = {
                     IconButton(onClick = onLogout) {
-                        Icon(Icons.Default.ExitToApp, contentDescription = "Logout", tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Default.ExitToApp, contentDescription = "Logout", tint = Color.Red)
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.White)
             )
         }
     ) { padding ->
@@ -220,72 +227,141 @@ fun DashboardScreen(
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Card Selamat Datang
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A3A8F)),
+                shape = RoundedCornerShape(20.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Selamat Datang,", color = MaterialTheme.colorScheme.onPrimary, fontSize = 14.sp)
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text("Selamat Datang,", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
                     Text(
                         userName.uppercase(),
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = Color.White,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(80.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
-            // Menu Utama hanya menampilkan Absensi
-            DashboardCard(
-                title = "MASUK MENU ABSENSI",
-                icon = Icons.Default.CameraFront,
-                onClick = onStartAttendance,
-                color = MaterialTheme.colorScheme.primary
+            Text(
+                text = "PILIH MENU",
+                modifier = Modifier.fillMaxWidth(),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Gray,
+                letterSpacing = 1.sp
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Baris Menu: Absensi dan Fitur 2 (Berdampingan)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                DashboardCard(
+                    title = "ABSENSI",
+                    icon = Icons.Default.CameraFront,
+                    onClick = onStartAttendance,
+                    color = Color(0xFF1A3A8F),
+                    modifier = Modifier.weight(1f)
+                )
+
+                DashboardCard(
+                    title = "FITUR 2",
+                    icon = Icons.Default.Extension,
+                    onClick = { /* Aksi Fitur 2 */ },
+                    color = Color.Gray,
+                    isUpcoming = true,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Baris Menu: Fitur 3
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                DashboardCard(
+                    title = "FITUR 3",
+                    icon = Icons.Default.AddCircleOutline,
+                    onClick = { /* Aksi Fitur 3 */ },
+                    color = Color.Gray,
+                    isUpcoming = true,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Spacer agar Fitur 3 tetap di kiri dan ukurannya konsisten
+                Spacer(modifier = Modifier.weight(1f))
+            }
 
             Spacer(modifier = Modifier.weight(1f))
 
             Text(
-                text = "Silakan tekan tombol di atas untuk memulai absensi",
+                text = "Versi Aplikasi 1.0.0",
                 fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.outline
+                color = Color.LightGray
             )
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
 @Composable
-fun DashboardCard(title: String, icon: ImageVector, onClick: () -> Unit, color: androidx.compose.ui.graphics.Color) {
+fun DashboardCard(
+    title: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    color: Color,
+    isUpcoming: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
     ElevatedCard(
         onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth(0.85f)
-            .height(180.dp),
-        shape = MaterialTheme.shapes.large
+        modifier = modifier.height(140.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = Color.White)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Surface(
-                shape = MaterialTheme.shapes.medium,
+                shape = CircleShape,
                 color = color.copy(alpha = 0.1f),
-                modifier = Modifier.size(70.dp)
+                modifier = Modifier.size(50.dp)
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    modifier = Modifier.padding(15.dp).size(40.dp),
+                    modifier = Modifier
+                        .padding(12.dp)
+                        .size(24.dp),
                     tint = color
                 )
             }
-            Spacer(modifier = Modifier.height(20.dp))
-            Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = title,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 14.sp,
+                color = if (isUpcoming) Color.Gray else Color(0xFF1A3A8F),
+                textAlign = TextAlign.Center
+            )
+            if (isUpcoming) {
+                Text(
+                    text = "Segera Hadir",
+                    fontSize = 10.sp,
+                    color = Color.LightGray
+                )
+            }
         }
     }
 }
