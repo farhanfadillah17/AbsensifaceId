@@ -13,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -28,7 +27,8 @@ fun AttendanceHistoryScreen(
     dbHelper: AttendanceDatabaseHelper,
     onBack: () -> Unit
 ) {
-    val records = remember { dbHelper.getAllAttendance() }
+    // FIX: Menentukan tipe data secara eksplisit agar compiler tidak bingung
+    val records: List<AttendanceRecord> = remember { dbHelper.getAllAttendance() }
 
     Scaffold(
         topBar = {
@@ -65,7 +65,7 @@ fun AttendanceHistoryScreen(
             } else {
                 LazyColumn(
                     contentPadding = PaddingValues(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(records) { record ->
                         AttendanceItemCard(record)
@@ -82,8 +82,19 @@ fun AttendanceItemCard(record: AttendanceRecord) {
     val actionLabel = if (isCheckIn) "✅ Masuk" else "🔴 Keluar"
     val cardAccent = if (isCheckIn) Color(0xFF3F51B5) else Color(0xFFE53935)
 
-    val fmt = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
-    val timeStr = fmt.format(Date(record.timestamp))
+    // FIX LOGIKA TANGGAL:
+    // record.timestamp adalah String dari SQLite (format: yyyy-MM-dd HH:mm:ss)
+    // Kita ubah menjadi format yang lebih enak dibaca (dd MMM yyyy, HH:mm)
+    val formattedTime = remember(record.timestamp) {
+        try {
+            val parser = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val formatter = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
+            val date = parser.parse(record.timestamp)
+            date?.let { formatter.format(it) } ?: record.timestamp
+        } catch (e: Exception) {
+            record.timestamp // Jika gagal parsing, tampilkan teks aslinya
+        }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -97,7 +108,7 @@ fun AttendanceItemCard(record: AttendanceRecord) {
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Action circle icon
+            // Icon Indikator
             Box(
                 modifier = Modifier
                     .size(52.dp)
@@ -117,22 +128,23 @@ fun AttendanceItemCard(record: AttendanceRecord) {
                 Text(
                     text = record.employeeName,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
+                    fontSize = 16.sp,
                     color = Color(0xFF1A237E)
                 )
                 Text(
                     text = "ID: ${record.employeeId}",
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     color = Color.Gray
                 )
                 Text(
-                    text = timeStr,
+                    text = formattedTime,
                     fontSize = 12.sp,
-                    color = Color(0xFF5C6BC0)
+                    color = Color(0xFF5C6BC0),
+                    fontWeight = FontWeight.Medium
                 )
             }
 
-            // Badge
+            // Badge Status
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = cardAccent.copy(alpha = 0.12f)
