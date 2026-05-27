@@ -168,10 +168,12 @@ fun LoginScreen(
                     if (userProfile != null) {
                         Log.d("LOGIN_UI", "SUCCESS: Berhasil sebagai ${userProfile.username}")
 
+                        // Pastikan saat panggil saveSession, tambahkan role dari hasil query database
                         sessionManager.saveSession(
                             fccode = userProfile.empcode,
                             fcba = userProfile.fcba,
-                            name = userProfile.username
+                            name = userProfile.username,
+                            role = userProfile.role // Ambil role dari objek userProfile
                         )
 
                         Toast.makeText(context, "Selamat Datang, ${userProfile.username}", Toast.LENGTH_SHORT).show()

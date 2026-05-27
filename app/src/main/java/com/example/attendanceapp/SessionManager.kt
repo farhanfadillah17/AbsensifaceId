@@ -4,46 +4,49 @@ import android.content.Context
 import android.content.SharedPreferences
 
 class SessionManager(context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("attendance_prefs", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("user_session", Context.MODE_PRIVATE)
 
     companion object {
         private const val KEY_LOGIN_TIMESTAMP = "login_timestamp"
-        private const val SESSION_DURATION = 3600000L // 1 Jam dalam milidetik (60 * 60 * 1000)
+        private const val KEY_ROLE = "user_role" // Kunci baru untuk Role
+        private const val SESSION_DURATION = 3600000L // 1 Jam
     }
 
     /**
-     * Menyimpan data login ke SharedPreferences termasuk waktu login
+     * PERBAIKAN: Menambahkan parameter 'role' saat menyimpan sesi
      */
-    fun saveSession(fccode: String, fcba: String, name: String) {
+    fun saveSession(fccode: String, fcba: String, name: String, role: String) {
         val editor = prefs.edit()
         editor.putString("fccode", fccode)
         editor.putString("fcba", fcba)
         editor.putString("name", name)
+        editor.putString(KEY_ROLE, role) // Simpan Role (ADMIN/MANDOR/KERANI)
         editor.putBoolean("is_logged_in", true)
-        // Simpan waktu saat ini sebagai waktu login
         editor.putLong(KEY_LOGIN_TIMESTAMP, System.currentTimeMillis())
         editor.apply()
     }
 
     /**
-     * Mengambil status apakah user sudah login dan mengecek durasi sesi
+     * Mengecek apakah sesi masih aktif
      */
     fun isLoggedIn(): Boolean {
         val isLoggedIn = prefs.getBoolean("is_logged_in", false)
         if (!isLoggedIn) return false
 
-        // Ambil waktu login dan waktu sekarang
         val loginTimestamp = prefs.getLong(KEY_LOGIN_TIMESTAMP, 0L)
         val currentTime = System.currentTimeMillis()
 
-        // Cek apakah selisih waktu lebih besar dari durasi sesi (1 jam)
         if (currentTime - loginTimestamp > SESSION_DURATION) {
-            logout() // Otomatis hapus data jika sudah lewat 1 jam
+            logout()
             return false
         }
-
         return true
     }
+
+    /**
+     * MENGAMBIL ROLE USER (Sangat penting untuk Dashboard)
+     */
+    fun getUserRole(): String? = prefs.getString(KEY_ROLE, "MANDOR")
 
     /**
      * Mengambil Nama Karyawan
@@ -61,8 +64,10 @@ class SessionManager(context: Context) {
         prefs.edit().clear().apply()
     }
 
-    /**
-     * Fungsi alias jika Anda masih ingin menggunakan getName() di tempat lain
-     */
     fun getName(): String? = getUserName()
+
+    fun getEmpCode(): String? {
+        // Pastikan "emp_code" adalah kunci yang sama saat kamu menyimpan data di login
+        return prefs.getString("emp_code", null)
+    }
 }
