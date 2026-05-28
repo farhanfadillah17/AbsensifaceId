@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.attendanceapp.ui.theme.AttendanceAppTheme
+import com.example.attendanceapp.SPBFormScreen // Adjust path if necessary
 
 // 1. Data Class untuk Menu
 data class MenuConfig(
@@ -139,7 +140,18 @@ fun AppNavigation(
 
         Screen.REGISTER_FACE -> {
             pendingEmployee?.let { emp ->
-                RegisterFaceScreen(dbHelper = db, employee = emp, faceDataHelper = faceHelper, onBack = { navigateBack() }, onSuccess = { pendingEmployee = null; navigateDashboard() })
+                RegisterFaceScreen(
+                    dbHelper = db,
+                    employee = emp,
+                    faceDataHelper = faceHelper,
+                    onBack = { navigateBack() },
+                    onSuccess = {
+                        pendingEmployee = null
+                        while (backStack.lastOrNull() != Screen.HOME && backStack.size > 1) {
+                            backStack.removeLast()
+                        }
+                    }
+                )
             } ?: LaunchedEffect(Unit) { navigateBack() }
         }
 
@@ -147,7 +159,19 @@ fun AppNavigation(
 
         Screen.FACE_VERIFY -> {
             verifiedEmployee?.let { emp ->
-                AttendanceCameraScreen(action = currentAction, verifiedEmployee = emp, faceDataHelper = faceHelper, dbHelper = db, onBack = { navigateBack() }, onSuccess = { verifiedEmployee = null; navigateDashboard() })
+                AttendanceCameraScreen(
+                    action = currentAction,
+                    verifiedEmployee = emp,
+                    faceDataHelper = faceHelper,
+                    dbHelper = db,
+                    onBack = { navigateBack() },
+                    onSuccess = {
+                        verifiedEmployee = null
+                        while (backStack.lastOrNull() != Screen.HOME && backStack.size > 1) {
+                            backStack.removeLast()
+                        }
+                    }
+                )
             } ?: LaunchedEffect(Unit) { navigateBack() }
         }
 
@@ -161,10 +185,24 @@ fun AppNavigation(
 
         Screen.ANCAK_PANEN -> AncakPanenScreen(dbHelper = db, empId = sessionManager.getFccode() ?: "", onBack = { navigateBack() }, onSuccess = { navigateDashboard() })
 
-        Screen.SPB_MENU -> SPBMenuScreen(onBack = { navigateBack() }, onCategorySelected = { cat -> selectedSpbCategory = cat; navigateTo(Screen.SPB_FORM) })
+        // Perbaikan SPB_MENU
+        Screen.SPB_MENU -> SPBMenuScreen(
+            onBack = { navigateBack() },
+            onCategorySelected = { cat: String ->
+                selectedSpbCategory = cat
+                navigateTo(Screen.SPB_FORM)
+            }
+        )
 
-        Screen.SPB_FORM -> SPBFormScreen(category = selectedSpbCategory, dbHelper = db, empId = sessionManager.getFccode() ?: "", onBack = { navigateBack() }, onSuccess = { navigateDashboard() })
+        Screen.SPB_FORM -> SPBFormScreen(
+            category = selectedSpbCategory,
+            dbHelper = db,
+            empId = sessionManager.getFccode() ?: "",
+            onBack = { navigateBack() },
+            onSuccess = { navigateDashboard() }
+        )
 
+        // Penambahan AKP_FORM (Agar Exhaustive)
         Screen.AKP_FORM -> AKPScreen(
             dbHelper = db,
             empId = sessionManager.getFccode() ?: "",
@@ -179,6 +217,8 @@ fun AppNavigation(
         )
     }
 }
+
+
 
 // ─── DASHBOARD COMPONENTS ──────────────────────────────────────────────────────
 
@@ -195,7 +235,6 @@ fun DashboardScreen(userName: String, userRole: String, onNavigate: (Screen) -> 
         MenuConfig("AKP", Icons.Default.Assessment, listOf("ADMIN", "MANDOR")),
         MenuConfig("RKH", Icons.Default.Assignment, listOf("ADMIN", "MANDOR", "KERANI")),
         MenuConfig("MASTER DATA", Icons.Default.Storage, listOf("ADMIN"), color = Color(0xFFD32F2F))
-
     )
     val filteredMenus = allMenus.filter { it.roles.contains(userRole.uppercase()) }
 
@@ -266,7 +305,4 @@ fun DashboardCard(title: String, icon: ImageVector, hasSub: Boolean, color: Colo
         }
     }
 }
-
-
-
 
