@@ -8,6 +8,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -24,13 +26,15 @@ fun HomeScreen(
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit,
     onHistory: () -> Unit,
-    onLogout: () -> Unit,
-    // TAMBAHKAN DUA BARIS DI BAWAH INI
-    onFeature2: () -> Unit,
-    onFeature3: () -> Unit
+    // onLogout dihapus dari parameter karena tombol ditiadakan
+    onFeature2: () -> Unit, // Untuk Transfer Data
+    onFeature3: () -> Unit  // Untuk Receive Data
 ) {
     // Ambil data nama dari SessionManager
     val userName = remember { sessionManager.getUserName() ?: "User" }
+
+    // State untuk mengontrol tampilan menu titik tiga
+    var showMenu by remember { mutableStateOf(false) }
 
     // Definisi Warna Tema
     val primaryColor = Color(0xFF1A3A8F)
@@ -47,7 +51,7 @@ fun HomeScreen(
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header: Nama & Tombol Logout
+            // Header: Nama & Menu Titik Tiga
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -63,20 +67,52 @@ fun HomeScreen(
                     )
                     Text(
                         text = userName.uppercase(),
-                        color = primaryColor, // Nama berwarna Indigo
+                        color = primaryColor,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
                 }
-                IconButton(
-                    onClick = onLogout,
-                    modifier = Modifier.background(secondaryColor, RoundedCornerShape(12.dp))
-                ) {
-                    Icon(Icons.Default.ExitToApp, contentDescription = "Logout", tint = primaryColor)
+
+                // Menu Titik Tiga menggantikan Tombol Logout
+                Box {
+                    IconButton(
+                        onClick = { showMenu = true },
+                        modifier = Modifier.background(secondaryColor, RoundedCornerShape(12.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "Menu",
+                            tint = primaryColor
+                        )
+                    }
+
+                    // Di dalam HomeScreen.kt pada bagian DropdownMenu
+
+                    // Di dalam HomeScreen.kt pada bagian DropdownMenu
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Kirim Data") }, // Ubah label
+                            leadingIcon = { Icon(Icons.Default.Upload, contentDescription = null) },
+                            onClick = {
+                                showMenu = false
+                                onFeature2() // Menjalankan Screen.TRANSFER_DATA (Menampilkan Barcode)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Terima Data") }, // Ubah label
+                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
+                            onClick = {
+                                showMenu = false
+                                onFeature3() // Menjalankan Screen.QR_SCAN dengan action RECEIVE
+                            }
+                        )
+                    }
+
                 }
             }
-
-            // Status Card telah dihapus untuk tampilan yang lebih simpel
 
             Spacer(modifier = Modifier.height(40.dp))
 

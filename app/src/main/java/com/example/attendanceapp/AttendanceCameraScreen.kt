@@ -113,10 +113,13 @@ fun AttendanceCameraScreen(
                                         statusText = "✅ Verifikasi Berhasil!"
 
                                         // PERBAIKAN 2: Sesuaikan parameter saveAttendance (fccode, fcba, action)
+                                        // PERBAIKAN: Masukkan semua parameter yang dibutuhkan oleh DatabaseHelper
                                         dbHelper.saveAttendance(
-                                            currentEmployee.fccode,
-                                            currentEmployee.fcba,
-                                            action.name
+                                            empId = currentEmployee.fccode,
+                                            fcba = currentEmployee.fcba,
+                                            name = currentEmployee.name, // Kamu sebelumnya lupa memasukkan parameter 'name'
+                                            action = action.name,         // Ini adalah parameter 'action'
+                                            source = "FACE"               // Ini adalah parameter 'source'
                                         )
 
                                         delay(1500)

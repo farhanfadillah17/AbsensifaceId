@@ -1,6 +1,8 @@
 package com.example.attendanceapp
 
 import android.Manifest
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -8,7 +10,6 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -51,13 +52,22 @@ fun QRScannerScreen(
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     val barcodeScanner = remember { BarcodeScanning.getClient() }
 
-    val actionLabel = if (action == AttendanceAction.CHECK_IN) "Masuk" else "Keluar"
+    // --- LOGIKA TEMA VISUAL ---
+    val isReceiveMode = action == AttendanceAction.RECEIVE
+    val themeColor = if (isReceiveMode) Color(0xFF1A3A8F) else Color(0xFF37474F)
+    val titleText = if (isReceiveMode) "SINKRONISASI DATA" else "Langkah 1 — Scan QR"
+    val actionLabel = when (action) {
+        AttendanceAction.RECEIVE -> "Terima Data"
+        AttendanceAction.CHECK_IN -> "Masuk"
+        else -> "Keluar"
+    }
 
-    var statusText by remember { mutableStateOf("Arahkan QR Code karyawan ke kamera") }
+    var statusText by remember {
+        mutableStateOf(if (isReceiveMode) "Arahkan Kamera ke QR Mandor" else "Arahkan QR Code karyawan ke kamera")
+    }
     var statusColor by remember { mutableStateOf(Color(0xFFB0BEC5)) }
     var scanned by remember { mutableStateOf(false) }
 
-    // State untuk kontrol Flash
     var isFlashOn by remember { mutableStateOf(false) }
     var camera by remember { mutableStateOf<Camera?>(null) }
 
@@ -75,7 +85,14 @@ fun QRScannerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Langkah 1 — Scan QR", fontWeight = FontWeight.Bold) },
+                title = {
+                    Column {
+                        Text(titleText, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        if (isReceiveMode) {
+                            Text("Mode Penerimaan Data Kerani", fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f))
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Kembali", tint = Color.White)
@@ -94,7 +111,7 @@ fun QRScannerScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF37474F),
+                    containerColor = themeColor, // Berubah jadi Biru jika mode Terima
                     titleContentColor = Color.White
                 )
             )
@@ -135,7 +152,7 @@ fun QRScannerScreen(
                                     .build()
 
                                 imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                                    @androidx.camera.core.ExperimentalGetImage
+                                    @ExperimentalGetImage
                                     val mediaImage = imageProxy.image
                                     if (mediaImage != null && !scanned) {
                                         val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
@@ -144,24 +161,50 @@ fun QRScannerScreen(
                                                 for (barcode in barcodes) {
                                                     val scannedId = barcode.rawValue ?: continue
                                                     if (scannedId.isNotEmpty() && !scanned) {
-                                                        val employee = dbHelper.getEmployeeByOnlyCode(scannedId.trim())
-                                                        if (employee != null) {
+
+                                                        if (isReceiveMode) {
+                                                            // JIKA TERIMA DATA: Langsung bypass validasi DB karyawan
                                                             scanned = true
-                                                            statusText = "✅ Berhasil: ${employee.name}"
+                                                            statusText = "✅ Data Mandor Terdeteksi"
                                                             statusColor = Color(0xFF69F0AE)
-                                                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                                                onQRVerified(employee)
+
+                                                            Handler(Looper.getMainLooper()).postDelayed({
+                                                                onQRVerified(
+                                                                    Employee(
+                                                                        fccode = scannedId,
+                                                                        name = "Data Transfer",
+                                                                        fcba = "",
+                                                                        sectionName = "",
+                                                                        gangCode = "",
+                                                                        position = "",
+                                                                        gender = "",
+                                                                        address = "",
+                                                                        companyNik = "",
+                                                                        faceEmbedding = null,
+                                                                        lastUpdate = ""
+                                                                    )
+                                                                )
                                                             }, 600)
-                                                        } else {
-                                                            statusText = "❌ ID ($scannedId) tidak terdaftar"
-                                                            statusColor = Color(0xFFEF5350)
+                                                        }
+                                                        else {
+                                                            // JIKA ABSEN BIASA
+                                                            val employee = dbHelper.getEmployeeByOnlyCode(scannedId.trim())
+                                                            if (employee != null) {
+                                                                scanned = true
+                                                                statusText = "✅ Berhasil: ${employee.name}"
+                                                                statusColor = Color(0xFF69F0AE)
+                                                                Handler(Looper.getMainLooper()).postDelayed({
+                                                                    onQRVerified(employee)
+                                                                }, 600)
+                                                            } else {
+                                                                statusText = "❌ ID ($scannedId) tidak terdaftar"
+                                                                statusColor = Color(0xFFEF5350)
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
-                                            .addOnFailureListener {
-                                                Log.e("QRScanner", "Scan failed", it)
-                                            }
+                                            .addOnFailureListener { Log.e("QRScanner", "Scan failed", it) }
                                             .addOnCompleteListener { imageProxy.close() }
                                     } else {
                                         imageProxy.close()
@@ -170,23 +213,20 @@ fun QRScannerScreen(
 
                                 try {
                                     cameraProvider.unbindAll()
-                                    // Simpan referensi camera untuk kontrol flash
                                     camera = cameraProvider.bindToLifecycle(
                                         lifecycleOwner,
                                         CameraSelector.DEFAULT_BACK_CAMERA,
                                         preview,
                                         imageAnalysis
                                     )
-                                } catch (e: Exception) {
-                                    Log.e("QRScanner", "Binding failed", e)
-                                }
+                                } catch (e: Exception) { Log.e("QRScanner", "Binding failed", e) }
                             }, ContextCompat.getMainExecutor(ctx))
                             previewView
                         },
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    // Scanner Overlay Kotak Putih
+                    // Scanner Overlay
                     Box(
                         modifier = Modifier
                             .size(240.dp)
@@ -198,7 +238,6 @@ fun QRScannerScreen(
                             )
                     )
 
-                    // Memanggil fungsi siku-siku dekoratif
                     QRCornerBrackets(
                         modifier = Modifier.align(Alignment.Center),
                         color = if (scanned) Color(0xFF69F0AE) else Color.White
@@ -221,20 +260,25 @@ fun QRScannerScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(16.dp))
+
+                    // --- FOOTER DENGAN TEMA BERUBAH ---
                     Surface(
-                        color = Color(0xFF263238),
+                        color = if (isReceiveMode) Color(0xFF1A3A8F).copy(alpha = 0.2f) else Color(0xFF263238),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            text = "🔐 Absen $actionLabel — Langkah 1/2",
-                            color = Color(0xFF90A4AE),
+                            text = if (isReceiveMode) "📥 PENERIMAAN DATA OFFLINE" else "🔐 Absen $actionLabel — Langkah 1/2",
+                            color = if (isReceiveMode) Color(0xFF448AFF) else Color(0xFF90A4AE),
                             fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Silahkan scan QR Code karyawan.\nSistem akan mencocokkan ID dengan database.",
+                        text = if (isReceiveMode)
+                            "Arahkan kamera ke QR Code yang ditampilkan oleh Mandor.\nPastikan layar HP Mandor cukup terang."
+                        else "Silahkan scan QR Code karyawan.\nSistem akan mencocokkan ID dengan database.",
                         color = Color.Gray,
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center,
@@ -246,10 +290,6 @@ fun QRScannerScreen(
     }
 }
 
-/**
- * Fungsi pembantu untuk menggambar siku-siku dekoratif (brackets)
- * di sekeliling area scan kamera.
- */
 @Composable
 fun QRCornerBrackets(modifier: Modifier = Modifier, color: Color) {
     val size = 240.dp
@@ -257,22 +297,18 @@ fun QRCornerBrackets(modifier: Modifier = Modifier, color: Color) {
     val thickness = 4.dp
 
     Box(modifier = modifier.size(size)) {
-        // Pojok Kiri Atas
         Box(modifier = Modifier.size(bracketSize).align(Alignment.TopStart)) {
             Box(modifier = Modifier.fillMaxWidth().height(thickness).background(color))
             Box(modifier = Modifier.width(thickness).fillMaxHeight().background(color))
         }
-        // Pojok Kanan Atas
         Box(modifier = Modifier.size(bracketSize).align(Alignment.TopEnd)) {
             Box(modifier = Modifier.fillMaxWidth().height(thickness).background(color).align(Alignment.TopEnd))
             Box(modifier = Modifier.width(thickness).fillMaxHeight().background(color).align(Alignment.TopEnd))
         }
-        // Pojok Kiri Bawah
         Box(modifier = Modifier.size(bracketSize).align(Alignment.BottomStart)) {
             Box(modifier = Modifier.fillMaxWidth().height(thickness).background(color).align(Alignment.BottomStart))
             Box(modifier = Modifier.width(thickness).fillMaxHeight().background(color).align(Alignment.BottomStart))
         }
-        // Pojok Kanan Bawah
         Box(modifier = Modifier.size(bracketSize).align(Alignment.BottomEnd)) {
             Box(modifier = Modifier.fillMaxWidth().height(thickness).background(color).align(Alignment.BottomEnd))
             Box(modifier = Modifier.width(thickness).fillMaxHeight().background(color).align(Alignment.BottomEnd))

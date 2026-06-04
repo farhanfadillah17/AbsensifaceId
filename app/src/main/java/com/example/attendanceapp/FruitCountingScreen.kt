@@ -75,8 +75,12 @@ fun FruitCountingScreen(
                 onClick = {
                     val count = qty.toIntOrNull() ?: 0
                     if (count > 0 && location.isNotBlank()) {
-                        dbHelper.saveFruitCounting(empId, count, location)
-                        onSuccess()
+                        val success = dbHelper.saveFruitCounting(empId, count, location)
+                        if (success) {
+                            onSuccess() // Kembali ke layar sebelumnya jika berhasil
+                        } else {
+                            // Tampilkan pesan error jika gagal (opsional)
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),

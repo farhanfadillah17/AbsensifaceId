@@ -25,6 +25,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun LoginScreen(
@@ -34,7 +37,8 @@ fun LoginScreen(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
-    val scrollState = rememberScrollState() // Tambah scroll agar tidak terpotong keyboard
+    val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
 
     // State untuk input
     var username by remember { mutableStateOf("") }
@@ -42,18 +46,74 @@ fun LoginScreen(
     var error by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
+    // --- STATE BARU UNTUK IMPORT DATA ---
+    var isImporting by remember { mutableStateOf(false) }
+    var importStatus by remember { mutableStateOf("") }
+
+    // Logic untuk impor data otomatis saat aplikasi dibuka
+    LaunchedEffect(Unit) {
+        scope.launch {
+            // Cek apakah data employee sudah ada
+            val existingData = withContext(Dispatchers.IO) {
+                dbHelper.getAllMasterEmployees().size
+            }
+
+            if (existingData == 0) {
+                isImporting = true
+                importStatus = "Menyiapkan data karyawan..."
+
+                withContext(Dispatchers.IO) {
+                    // Panggil fungsi import yang sudah kita buat di DatabaseHelper
+                    dbHelper.importSqlFromAssets { count ->
+                        importStatus = "Mengimpor $count data..."
+                    }
+                }
+
+                isImporting = false
+                importStatus = "Data karyawan siap!"
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212)) // Tema Dark
-            .verticalScroll(scrollState) // Biar bisa scroll kalau layar kecil
+            .background(Color(0xFF121212))
+            .verticalScroll(scrollState)
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        // --- TAMPILAN STATUS IMPORT (Hanya muncul jika sedang proses) ---
+        if (isImporting || importStatus.contains("siap")) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isImporting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.Cyan
+                        )
+                        Spacer(Modifier.width(12.dp))
+                    }
+                    Text(
+                        text = importStatus,
+                        color = if (isImporting) Color.Gray else Color.Green,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+
         Text(
             text = "ATTENDANCE SYSTEM",
-            color = Color.Cyan, // Beri sedikit warna biar menarik
+            color = Color.Cyan,
             fontSize = 28.sp,
             fontWeight = FontWeight.ExtraBold,
             textAlign = TextAlign.Center
@@ -71,7 +131,7 @@ fun LoginScreen(
         OutlinedTextField(
             value = username,
             onValueChange = {
-                username = it // Jangan lowercase di sini agar user tidak bingung saat mengetik
+                username = it
                 error = ""
             },
             label = { Text("Username") },
@@ -149,7 +209,7 @@ fun LoginScreen(
         // TOMBOL LOGIN
         Button(
             onClick = {
-                val inputUser = username.trim().lowercase() // Kita lowercase di sini saat submit
+                val inputUser = username.trim().lowercase()
                 val inputPass = password.trim()
 
                 if (inputUser.isEmpty() || inputPass.isEmpty()) {
@@ -158,24 +218,20 @@ fun LoginScreen(
                 }
 
                 isLoading = true
-                focusManager.clearFocus() // Tutup keyboard otomatis
+                focusManager.clearFocus()
                 Log.d("LOGIN_UI", "Mencoba Login -> User: '$inputUser'")
 
                 try {
-                    // Panggil Database Helper
                     val userProfile = dbHelper.checkLogin(inputUser, inputPass)
 
                     if (userProfile != null) {
                         Log.d("LOGIN_UI", "SUCCESS: Berhasil sebagai ${userProfile.username}")
-
-                        // Pastikan saat panggil saveSession, tambahkan role dari hasil query database
                         sessionManager.saveSession(
                             fccode = userProfile.empcode,
                             fcba = userProfile.fcba,
                             name = userProfile.username,
-                            role = userProfile.role // Ambil role dari objek userProfile
+                            role = userProfile.role
                         )
-
                         Toast.makeText(context, "Selamat Datang, ${userProfile.username}", Toast.LENGTH_SHORT).show()
                         onLoginSuccess()
                     } else {
@@ -218,7 +274,7 @@ fun LoginScreen(
         }
 
         Text(
-            text = "App Version 1.0.44", // Update versi biar gampang cek saat build
+            text = "App Version 1.0.45",
             color = Color.DarkGray,
             fontSize = 10.sp,
             modifier = Modifier.padding(top = 16.dp)
