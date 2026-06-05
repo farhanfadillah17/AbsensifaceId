@@ -61,11 +61,11 @@ dependencies {
 
     // 🔥 Jetpack Compose - UPDATE VERSI KE 1.7.0+ DAN MATERIAL3 KE 1.2.1+
     // Versi ini wajib untuk menghilangkan error 'fcba'
-    implementation("androidx.compose.ui:ui:1.7.0")
-    implementation("androidx.compose.material3:material3:1.2.1")
-    implementation("androidx.compose.ui:ui-tooling-preview:1.7.0")
+    implementation("androidx.compose.ui:ui:1.7.5")
+    implementation("androidx.compose.material3:material3:1.3.1")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.7.5")
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.0")
-    implementation("androidx.activity:activity-compose:1.9.2")
+    implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.material:material-icons-extended:1.7.0")
 
     // Biometric

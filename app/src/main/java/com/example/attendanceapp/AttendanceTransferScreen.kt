@@ -38,6 +38,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import java.util.concurrent.Executors
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AttendanceTransferScreen(
@@ -47,16 +48,35 @@ fun AttendanceTransferScreen(
 ) {
     var showScanner by remember { mutableStateOf(false) }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    var isDataEmpty by remember { mutableStateOf(false) } // Tambahkan state data kosong
     val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        if (userRole == "MANDOR") {
+            isLoading = true
+            isDataEmpty = false
+            try {
+                val data = dbHelper.getAttendanceForQRCode()
+                if (data.isNotEmpty()) {
+                    qrBitmap = generateQRCode(data)
+                } else {
+                    isDataEmpty = true // Tandai jika data kosong
+                }
+            } catch (e: Exception) {
+                Log.e("QR_ERROR", "Gagal: ${e.message}")
+            } finally {
+                isLoading = false
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Transfer Data Lapangan") },
                 navigationIcon = {
-                    IconButton(onClick = if (showScanner || qrBitmap != null) {
-                        { showScanner = false; qrBitmap = null }
-                    } else onBack) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
                     }
                 }
@@ -65,44 +85,70 @@ fun AttendanceTransferScreen(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).background(Color(0xFFF5F7FA))) {
             when {
-                showScanner -> {
-                    QRScannerView(
-                        onCodeScanned = { result ->
-                            dbHelper.receiveTransferredData(result)
-                            showScanner = false
-                            Toast.makeText(context, "Data Berhasil Diterima!", Toast.LENGTH_SHORT).show()
-                        }
-                    )
+                // 1. SAAT LOADING
+                isLoading -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFF2E7D32))
+                        Spacer(Modifier.height(16.dp))
+                        Text("Menyiapkan data QR...", fontWeight = FontWeight.Medium)
+                    }
                 }
+
+                // 2. SAAT QR BERHASIL DIBUAT
                 qrBitmap != null -> {
                     Column(
                         modifier = Modifier.fillMaxSize().padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Text("Scan oleh Kerani", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Spacer(Modifier.height(16.dp))
-                        Image(
-                            bitmap = qrBitmap!!.asImageBitmap(),
-                            contentDescription = "QR Code",
-                            modifier = Modifier.size(300.dp).background(Color.White).padding(10.dp)
-                        )
+                        Text("SCAN OLEH KERANI", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color(0xFF2E7D32))
                         Spacer(Modifier.height(24.dp))
-                        Button(onClick = { qrBitmap = null }) { Text("Tutup QR") }
+                        Surface(
+                            shadowElevation = 8.dp,
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White
+                        ) {
+                            Image(
+                                bitmap = qrBitmap!!.asImageBitmap(),
+                                contentDescription = "QR Code",
+                                modifier = Modifier.size(320.dp).padding(16.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(24.dp))
+                        Text("Mandor: Tunjukkan layar ini ke Kerani", color = Color.Gray)
                     }
                 }
+
+                // 3. SAAT SCANNER AKTIF (Untuk Kerani)
+                showScanner -> {
+                    QRScannerView(onCodeScanned = { result ->
+                        dbHelper.receiveTransferredData(result)
+                        showScanner = false
+                        Toast.makeText(context, "Data Berhasil Diterima!", Toast.LENGTH_SHORT).show()
+                    })
+                }
+
+                // 4. JIKA DATA KOSONG (Khusus Mandor)
+                isDataEmpty && userRole == "MANDOR" -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("Tidak ada data absen untuk dikirim hari ini", color = Color.Red)
+                        Spacer(Modifier.height(16.dp))
+                        Button(onClick = onBack) { Text("Kembali") }
+                    }
+                }
+
+                // 5. DEFAULT MENU (Hanya untuk Kerani/Admin - Tombol Kirim Dihapus)
                 else -> {
                     TransferMenu(
                         userRole = userRole,
-                        onSendClick = {
-                            val data = dbHelper.getAttendanceForQRCode()
-                            if (data.isNotEmpty()) {
-                                qrBitmap = generateQRCode(data)
-                                Log.e("QR_CODE", data)
-                            } else {
-                                Toast.makeText(context, "Tidak ada data absen hari ini", Toast.LENGTH_SHORT).show()
-                            }
-                        },
                         onReceiveClick = { showScanner = true }
                     )
                 }
@@ -112,27 +158,16 @@ fun AttendanceTransferScreen(
 }
 
 @Composable
-fun TransferMenu(userRole: String, onSendClick: () -> Unit, onReceiveClick: () -> Unit) {
+fun TransferMenu(userRole: String, onReceiveClick: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (userRole == "MANDOR" || userRole == "ADMIN") {
-            Button(
-                onClick = onSendClick,
-                modifier = Modifier.fillMaxWidth().height(80.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-            ) {
-                Icon(Icons.Default.Send, null)
-                Spacer(Modifier.width(12.dp))
-                Text("KIRIM DATA (MANDOR)", fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.height(16.dp))
-        }
+        // Tombol Kirim Data Mandor SUDAH DIHAPUS dari sini agar tidak muncul lagi
 
         if (userRole == "KERANI" || userRole == "ADMIN") {
+            Text("Mode Penerima Data", fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
             Button(
                 onClick = onReceiveClick,
                 modifier = Modifier.fillMaxWidth().height(80.dp),
@@ -143,6 +178,9 @@ fun TransferMenu(userRole: String, onSendClick: () -> Unit, onReceiveClick: () -
                 Spacer(Modifier.width(12.dp))
                 Text("TERIMA DATA (KERANI)", fontWeight = FontWeight.Bold)
             }
+        } else if (userRole == "MANDOR") {
+            // Pesan fallback jika otomatisasi gagal
+            Text("Menunggu data...")
         }
     }
 }

@@ -94,11 +94,11 @@ fun HomeScreen(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Kirim Data") }, // Ubah label
+                            text = { Text("Kirim Data") },
                             leadingIcon = { Icon(Icons.Default.Upload, contentDescription = null) },
                             onClick = {
                                 showMenu = false
-                                onFeature2() // Menjalankan Screen.TRANSFER_DATA (Menampilkan Barcode)
+                                onFeature2() // Ini akan memicu navigasi ke layar Transfer Data
                             }
                         )
                         DropdownMenuItem(
