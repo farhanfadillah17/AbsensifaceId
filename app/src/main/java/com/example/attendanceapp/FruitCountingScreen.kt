@@ -1,7 +1,6 @@
 package com.example.attendanceapp
 
-import android.app.DatePickerDialog
-import android.content.Context // Tambahkan ini
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -21,23 +20,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.util.*
 import com.google.gson.Gson
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FruitCountingScreen(
     dbHelper: AttendanceDatabaseHelper,
-    empId: String,        // <--- Tambahkan ini
-    fcba: String,         // <--- Tambahkan ini
+    empId: String,
+    fcba: String,
     onBack: () -> Unit,
     onSuccess: () -> Unit
 ) {
     val context = LocalContext.current
     val sharedPref = context.getSharedPreferences("UserSession", Context.MODE_PRIVATE)
 
-    // 1. Ambil FCBA dari Shared Preferences (Read Only)
-    val fcba = sharedPref.getString("fcba", "") ?: ""
+    // 1. Ambil FCBA dari Shared Preferences
+    val fcbaUser = sharedPref.getString("fcba", "41") ?: "41"
 
     // Form States
     var selectedRKH by remember { mutableStateOf<Map<String, String>?>(null) }
@@ -45,20 +43,37 @@ fun FruitCountingScreen(
     var supervisi2 by remember { mutableStateOf("") }
     var supervisi3 by remember { mutableStateOf("") }
     var supervisi4 by remember { mutableStateOf("") }
-    val selectedWorkers = remember { mutableStateListOf<String>() }
+    var selectedWorkers by remember { mutableStateOf(setOf<String>()) }
     var unit by remember { mutableStateOf("") }
     var output by remember { mutableStateOf("") }
+    var rate by remember { mutableStateOf("") } // Tambahkan Rate
     var selectedTPH by remember { mutableStateOf("") }
     var isBeras by remember { mutableStateOf(false) }
     var lembur by remember { mutableStateOf("0") }
 
     // Master Data Load
-    val rkhList = remember { dbHelper.getRKHData() } // Ambil dari tabel RKH
-    val empList = remember { dbHelper.getDropdownData("EMPLOYEE", fcba) }// Master Karyawan
-    val presentWorkers = remember { dbHelper.getPresentWorkers(fcba) } // Hanya yang sudah absen
-    val tphList = remember(selectedRKH) {
-        selectedRKH?.get("loc")?.let { dbHelper.getTPHByLocation(it) } ?: emptyList()
+    val rkhList = remember { dbHelper.getRKHList() }
+    val supervisorOptions = remember { dbHelper.getSupervisors() }
+    val presentWorkers = remember { dbHelper.getEmployeesAlreadyCheckedIn(fcbaUser) }
+
+    // TPH dinamis berdasarkan Location RKH
+    val locationCodeFromRKH = selectedRKH?.get("location") ?: ""
+    // Perbaiki baris yang error menjadi seperti ini:
+    val tphList = remember(locationCodeFromRKH) {
+        if (locationCodeFromRKH.isNotEmpty()) {
+            dbHelper.getTPHByLocation(locationCodeFromRKH)
+        } else {
+            emptyList<String>() // Tambahkan <String> di sini
+        }
     }
+
+
+    // Warna untuk Field Read Only
+    val readOnlyColors = TextFieldDefaults.colors(
+        focusedContainerColor = Color(0xFFF0F0F0),
+        unfocusedContainerColor = Color(0xFFF0F0F0),
+        disabledContainerColor = Color(0xFFF0F0F0)
+    )
 
     Scaffold(
         topBar = {
@@ -78,75 +93,106 @@ fun FruitCountingScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // FCBA (Read Only)
-            OutlinedTextField(value = fcba, onValueChange = {}, label = { Text("FCBA") }, readOnly = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = fcbaUser, onValueChange = {}, label = { Text("FCBA") }, readOnly = true, modifier = Modifier.fillMaxWidth(), colors = readOnlyColors)
 
-            // Dropdown RKH
-            RKHDropdownMap("No RKH", selectedRKH?.get("id") ?: "", rkhList) { selectedRKH = it }
+            // 1. Dropdown RKH (Format RKH:1 - AFD-01)
+            RKHDropdownMap(
+                label = "No RKH",
+                selected = if (selectedRKH != null) "RKH:${selectedRKH?.get("no_rkh")} - ${selectedRKH?.get("location")}" else "",
+                options = rkhList
+            ) {
+                selectedRKH = it
+                selectedTPH = "" // Reset TPH jika RKH berubah
+            }
 
-            // Gang Code & Location (Otomatis dari RKH - Read Only)
+            // 2. Gang Code & Location (Read Only dari RKH)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = selectedRKH?.get("gang") ?: "", onValueChange = {}, label = { Text("Gang Code") }, modifier = Modifier.weight(1f), readOnly = true)
-                OutlinedTextField(value = selectedRKH?.get("loc") ?: "", onValueChange = {}, label = { Text("Location") }, modifier = Modifier.weight(1f), readOnly = true)
+                OutlinedTextField(value = selectedRKH?.get("gang_code") ?: "", onValueChange = {}, label = { Text("Gang Code") }, modifier = Modifier.weight(1f), readOnly = true, colors = readOnlyColors)
+                OutlinedTextField(value = selectedRKH?.get("location") ?: "", onValueChange = {}, label = { Text("Location") }, modifier = Modifier.weight(1f), readOnly = true, colors = readOnlyColors)
             }
 
-            // Supervisi 1 - 4
-            Text("Personil Supervisi", fontWeight = FontWeight.Bold)
-            RKHDropdown("Supervisi 1", supervisi1, empList) { supervisi1 = it }
-            RKHDropdown("Supervisi 2", supervisi2, empList) { supervisi2 = it }
-            RKHDropdown("Supervisi 3", supervisi3, empList) { supervisi3 = it }
-            RKHDropdown("Supervisi 4", supervisi4, empList) { supervisi4 = it }
+            // 3. Supervisi 1 - 4
+            Text("Personil Supervisi (Master Karyawan)", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+            RKHDropdownSimple("Supervisi 1 (Wajib)", supervisi1, supervisorOptions) { supervisi1 = it }
+            RKHDropdownSimple("Supervisi 2 (Hitung Buah)", supervisi2, supervisorOptions) { supervisi2 = it }
+            RKHDropdownSimple("Supervisi 3", supervisi3, supervisorOptions) { supervisi3 = it }
+            RKHDropdownSimple("Supervisi 4", supervisi4, supervisorOptions) { supervisi4 = it }
 
-            // Multi Select Karyawan (Hanya yang sudah absen)
-            Text("Pilih Karyawan (Sudah Absen)", fontWeight = FontWeight.Bold)
-            if (presentWorkers.isEmpty()) {
-                Text("Belum ada karyawan yang absen di FCBA ini", color = Color.Red, fontSize = 12.sp)
-            }
-            presentWorkers.forEach { (id, name) ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = selectedWorkers.contains(id), onCheckedChange = {
-                        if (it) selectedWorkers.add(id) else selectedWorkers.remove(id)
-                    })
-                    Text("$id - $name", fontSize = 14.sp)
+            // 4. Karyawan (Hanya yang sudah absen)
+            Text("Pilih Karyawan (Sudah Absen)", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))) {
+                Column(Modifier.padding(8.dp)) {
+                    if (presentWorkers.isEmpty()) {
+                        Text("Belum ada karyawan yang absen hari ini", color = Color.Red, fontSize = 12.sp)
+                    }
+                    presentWorkers.forEach { staff ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = selectedWorkers.contains(staff["id"]), onCheckedChange = { isChecked ->
+                                val current = selectedWorkers.toMutableSet()
+                                if (isChecked) current.add(staff["id"]!!) else current.remove(staff["id"])
+                                selectedWorkers = current
+                            })
+                            Text("${staff["id"]} - ${staff["name"]}", fontSize = 13.sp)
+                        }
+                    }
                 }
             }
 
-            // Unit & Output (Input Number)
-            OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("Unit") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = output, onValueChange = { output = it }, label = { Text("Output") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+            // Info Validasi HK
+            val maxHk = selectedRKH?.get("jumlah_hk")?.toDoubleOrNull() ?: 0.0
+            Text(
+                text = "Terpilih: ${selectedWorkers.size} Karyawan (Target HK RKH: $maxHk)",
+                fontSize = 11.sp,
+                color = if (selectedWorkers.size > maxHk && maxHk > 0) Color.Red else Color.Gray
+            )
 
-            // TPH (Berdasarkan Location)
-            RKHDropdown("Pilih TPH", selectedTPH, tphList) { selectedTPH = it }
+            // 5. Unit, Output, Rate
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("Unit") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                OutlinedTextField(value = output, onValueChange = { output = it }, label = { Text("Output") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                OutlinedTextField(value = rate, onValueChange = { rate = it }, label = { Text("Rate") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+            }
 
-            // Beras & Lembur
+            // 6. TPH (Berdasarkan Location RKH)
+            RKHDropdownSimple("Pilih TPH", selectedTPH, tphList) { selectedTPH = it }
+
+            // 7. Beras & Lembur
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = isBeras, onCheckedChange = { isBeras = it })
                 Text("Beras")
+                Spacer(Modifier.width(16.dp))
+                OutlinedTextField(value = lembur, onValueChange = { lembur = it }, label = { Text("Lembur (Jam)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
             }
-            OutlinedTextField(value = lembur, onValueChange = { lembur = it }, label = { Text("Lembur (Jam)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
 
             Spacer(Modifier.height(16.dp))
 
-            // Tombol Simpan & Transfer
+            // 8. Tombol Simpan
             Button(
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 onClick = {
-                    // VALIDASI BISNIS
-                    val maxHk = selectedRKH?.get("hk")?.toDoubleOrNull() ?: 0.0
-                    val outVal = output.toDoubleOrNull() ?: 0.0
-                    val unitVal = unit.toDoubleOrNull() ?: 0.0
-                    val lemburVal = lembur.toDoubleOrNull() ?: -1.0
-
                     when {
                         selectedRKH == null -> Toast.makeText(context, "Pilih No RKH!", Toast.LENGTH_SHORT).show()
-                        selectedWorkers.size > maxHk -> Toast.makeText(context, "Karyawan melebihi HK ($maxHk)!", Toast.LENGTH_SHORT).show()
-                        unitVal <= 0 -> Toast.makeText(context, "Unit harus > 0", Toast.LENGTH_SHORT).show()
-                        outVal <= 0 -> Toast.makeText(context, "Output harus > 0", Toast.LENGTH_SHORT).show()
-                        lemburVal < 0 -> Toast.makeText(context, "Lembur minimal 0", Toast.LENGTH_SHORT).show()
+                        supervisi1.isEmpty() -> Toast.makeText(context, "Supervisi 1 Wajib!", Toast.LENGTH_SHORT).show()
+                        selectedWorkers.isEmpty() -> Toast.makeText(context, "Pilih minimal 1 karyawan!", Toast.LENGTH_SHORT).show()
+                        selectedWorkers.size > maxHk && maxHk > 0 -> Toast.makeText(context, "Jumlah karyawan melebihi HK RKH!", Toast.LENGTH_SHORT).show()
                         selectedTPH.isEmpty() -> Toast.makeText(context, "Pilih TPH!", Toast.LENGTH_SHORT).show()
                         else -> {
-                            // LOGIK SIMPAN SQLITE
-                            saveToSQLite(dbHelper, /* parameter */)
-                            Toast.makeText(context, "Data Tersimpan Offline", Toast.LENGTH_SHORT).show()
+                            dbHelper.saveFruitCalculation(
+                                fcba = fcbaUser,
+                                rkh = selectedRKH!!["no_rkh"] ?: "",
+                                gang = selectedRKH!!["gang_code"] ?: "",
+                                supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
+                                employees = selectedWorkers.toList(),
+                                location = locationCodeFromRKH,
+                                tph = selectedTPH,
+                                unit = unit.toDoubleOrNull() ?: 0.0,
+                                output = output.toDoubleOrNull() ?: 0.0,
+                                rate = rate.toDoubleOrNull() ?: 0.0,
+                                beras = if (isBeras) 1 else 0,
+                                lembur = lembur.toDoubleOrNull() ?: 0.0
+                            )
+                            Toast.makeText(context, "Data Berhasil Disimpan", Toast.LENGTH_SHORT).show()
+                            onSuccess()
                         }
                     }
                 },
@@ -157,22 +203,73 @@ fun FruitCountingScreen(
                 Text("SIMPAN DATA")
             }
 
+            // 9. Tombol NFC
             Button(
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 onClick= {
-                    val jsonData = prepareNfcJson(
-                        selectedRKH, supervisi1, supervisi2, supervisi3, supervisi4,
-                        selectedWorkers, unit, output, selectedTPH, isBeras, lembur
-                    )
-                    // Selanjutnya kirim jsonData ini melalui fungsi NFC Hardware Anda
-                    android.util.Log.d("NFC_PAYLOAD", jsonData)
-                    Toast.makeText(context, "Data siap dikirim via NFC", Toast.LENGTH_SHORT).show()
+                    if (selectedRKH == null || selectedTPH.isEmpty()) {
+                        Toast.makeText(context, "Lengkapi data sebelum transfer NFC", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val jsonData = prepareNfcJson(
+                            selectedRKH, supervisi1, supervisi2, supervisi3, supervisi4,
+                            selectedWorkers.toList(), unit, output, selectedTPH, isBeras, lembur
+                        )
+                        android.util.Log.d("NFC_PAYLOAD", jsonData)
+                        Toast.makeText(context, "NFC Ready: Tempelkan Tag Kerani Kirim", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
             ) {
                 Icon(Icons.Default.Nfc, null)
                 Spacer(Modifier.width(8.dp))
-                Text("TRANSFER NFC")
+                Text("TRANSFER KE NFC")
+            }
+        }
+    }
+}
+
+// Fungsi Bantu Dropdown Map (RKH)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RKHDropdownMap(label: String, selected: String, options: List<Map<String, String>>, onSelect: (Map<String, String>) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+        OutlinedTextField(
+            value = selected,
+            onValueChange = {},
+            label = { Text(label) },
+            readOnly = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier.fillMaxWidth().menuAnchor()
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { item ->
+                DropdownMenuItem(
+                    text = { Text("RKH:${item["no_rkh"]} - ${item["location"]}") },
+                    onClick = { onSelect(item); expanded = false }
+                )
+            }
+        }
+    }
+}
+
+// Fungsi Bantu Dropdown List String (TPH / Supervisi)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RKHDropdownSimple(label: String, selected: String, options: List<String>, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+        OutlinedTextField(
+            value = selected,
+            onValueChange = {},
+            label = { Text(label) },
+            readOnly = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier.fillMaxWidth().menuAnchor()
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { item ->
+                DropdownMenuItem(text = { Text(item) }, onClick = { onSelect(item); expanded = false })
             }
         }
     }
@@ -180,60 +277,21 @@ fun FruitCountingScreen(
 
 fun prepareNfcJson(
     rkh: Map<String, String>?,
-    s1: String,
-    s2: String,
-    s3: String,
-    s4: String,
+    s1: String, s2: String, s3: String, s4: String,
     workers: List<String>,
-    unit: String,
-    output: String,
-    tph: String,
-    beras: Boolean,
-    lembur: String
+    unit: String, output: String, tph: String, beras: Boolean, lembur: String
 ): String {
     val data = mutableMapOf<String, Any>()
-
-    // Header & Info Utama
-    data["id"] = System.currentTimeMillis() // Unique ID untuk cek duplikasi di penerima
-    data["noRkh"] = rkh?.get("id") ?: ""
-    data["gangCode"] = rkh?.get("gang") ?: ""
-    data["location"] = rkh?.get("loc") ?: ""
+    data["id"] = System.currentTimeMillis()
+    data["noRkh"] = rkh?.get("no_rkh") ?: ""
+    data["gangCode"] = rkh?.get("gang_code") ?: ""
+    data["location"] = rkh?.get("location") ?: ""
     data["tph"] = tph
-
-    // Data Perhitungan
     data["unit"] = unit
     data["output"] = output
     data["beras"] = if (beras) 1 else 0
     data["lembur"] = lembur
-
-    // Personil
-    data["supervisor1"] = s1
-    data["supervisor2"] = s2
-    data["supervisor3"] = s3
-    data["supervisor4"] = s4
-    data["daftarKaryawan"] = workers // List ID Karyawan
-
-    // Mengonversi Map ke String JSON
+    data["supervisors"] = listOf(s1, s2, s3, s4)
+    data["workers"] = workers
     return Gson().toJson(data)
-}
-
-/**
- * Fungsi Placeholder untuk Simpan ke SQLite
- */
-fun saveToSQLite(dbHelper: AttendanceDatabaseHelper, /* parameter lain */) {
-    // Logika dbHelper.insertFruitCounting(...) Anda di sini
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun RKHDropdownMap(label: String, selected: String, options: List<Map<String, String>>, onSelect: (Map<String, String>) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-        OutlinedTextField(value = selected, onValueChange = {}, label = { Text(label) }, readOnly = true, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) }, modifier = Modifier.fillMaxWidth().menuAnchor())
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { item ->
-                DropdownMenuItem(text = { Text("RKH: ${item["id"]} - ${item["afd"]}") }, onClick = { onSelect(item); expanded = false })
-            }
-        }
-    }
 }

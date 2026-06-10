@@ -1310,6 +1310,53 @@ fun checkFaceDataStatus(fccode: String): String {
         return list
     }
 
+    fun saveFruitCalculation(
+        fcba: String,
+        rkh: String,
+        gang: String,
+        supervisors: List<String>, // List berisi supervisi 1 sampai 4
+        employees: List<String>,   // List ID karyawan yang dipilih
+        location: String,
+        tph: String,
+        unit: Double,
+        output: Double,
+        rate: Double,
+        beras: Int,
+        lembur: Double,
+        category: String = "PERHITUNGAN_BUAH"
+    ): Long {
+        val db = this.writableDatabase
+        return try {
+            val values = ContentValues().apply {
+                put("fcba", fcba)
+                put("no_rkh", rkh)
+                put("gang_code", gang)
+                // Simpan supervisi 1-4
+                put("supervisi1", supervisors.getOrNull(0) ?: "")
+                put("supervisi2", supervisors.getOrNull(1) ?: "")
+                put("supervisi3", supervisors.getOrNull(2) ?: "")
+                put("supervisi4", supervisors.getOrNull(3) ?: "")
+                // Karyawan dipisahkan koma
+                put("karyawan_ids", employees.joinToString(","))
+                put("location_code", location)
+                put("tph_code", tph)
+                put("unit", unit)
+                put("output", output)
+                put("rate", rate)
+                put("is_beras", beras)
+                put("lembur", lembur)
+                put("category", category)
+                put("status", "NFC_READY") // Status siap diangkut Kerani Kirim via NFC
+                put("timestamp", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
+            }
+            // Pastikan tabel T_MAINTENANCE atau tabel progres baru memiliki kolom-kolom di atas
+            db.insert("T_MAINTENANCE", null, values)
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal simpan perhitungan buah: ${e.message}")
+            -1L
+        }
+    }
+
 
     // Ambil Blok berdasarkan Location Code
     fun getBlocksByLocation(locationCode: String): List<String> {
