@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.util.Log
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.geometry.isEmpty
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -40,8 +41,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     companion object {
         // Ganti nama ke v11 untuk reset total terakhir kali
-        const val DATABASE_NAME = "attendance_reset_final_v234.db"
-        const val DATABASE_VERSION = 234
+        const val DATABASE_NAME = "attendance_reset_final_v278.db"
+        const val DATABASE_VERSION = 278
 
         const val T_EMP = "EMPLOYEE"
         const val E_FCCODE = "FCCODE"
@@ -128,20 +129,18 @@ class AttendanceDatabaseHelper(private val context: Context) :
         const val T_RKH = "table_rkh"
         const val T_AFDELING = "afdeling"
         const val T_GANG = "gangcode"
-        const val T_JOB = "job_code"
+        const val T_JOB = "JOB"
         const val T_LOCATION = "location_code"
 
         const val T_FRUIT_COUNTING = "fruit_counting"
-        const val T_TPH = "master_tph"
+        const val T_TPH = "TPH"
 
     }
 
 
     override fun onCreate(db: SQLiteDatabase) {
         try {
-            Log.d("DB_CHECK", "--- Memulai Pembuatan Database v221 ---")
-
-            // === LANGKAH 1: BUAT SEMUA TABEL TERLEBIH DAHULU ===
+            Log.d("DB_CHECK", "--- Memulai Pembuatan Database v$DATABASE_VERSION ---")
 
             // 1. Tabel Users
             db.execSQL("CREATE TABLE IF NOT EXISTS $T_USERS ($U_USERNAME TEXT PRIMARY KEY COLLATE NOCASE, $U_PASSWORD TEXT, $U_EMPCODE TEXT, $U_FCBA TEXT, $U_DIVISI TEXT, $U_GANG TEXT, $U_ROLE TEXT)")
@@ -151,40 +150,110 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
             // 3. Tabel Akses Menu
             db.execSQL("""
-            CREATE TABLE IF NOT EXISTS $T_MENU_ACCESS (
-                ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                EMP_ID TEXT,
-                MENU_CODE INTEGER,
-                IS_GRANTED INTEGER DEFAULT 1,
-                VALID_UNTIL LONG
-            )
-        """.trimIndent())
+                CREATE TABLE IF NOT EXISTS $T_MENU_ACCESS (
+                    ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    EMP_ID TEXT,
+                    MENU_CODE INTEGER,
+                    IS_GRANTED INTEGER DEFAULT 1,
+                    VALID_UNTIL LONG
+                )
+            """.trimIndent())
 
             // 4. Tabel Master Dropdown RKH
-            db.execSQL("CREATE TABLE IF NOT EXISTS $T_AFDELING (name TEXT)")
-            db.execSQL("CREATE TABLE IF NOT EXISTS $T_GANG (name TEXT)")
-            db.execSQL("CREATE TABLE IF NOT EXISTS $T_JOB (name TEXT)")
-            db.execSQL("CREATE TABLE IF NOT EXISTS $T_LOCATION (name TEXT)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS $T_AFDELING (FCCODE TEXT PRIMARY KEY, FCNAME TEXT, FCBA TEXT)")
+
+            db.execSQL("DROP TABLE IF EXISTS $T_GANG")
+            db.execSQL("CREATE TABLE IF NOT EXISTS $T_GANG (FCCODE TEXT PRIMARY KEY, FCNAME TEXT, FCBA TEXT, FCENTRY TEXT, FCEDIT TEXT)")
+
+            // PERBAIKAN DI SINI: Tabel JOB sudah dibersihkan dari error string
+            db.execSQL("DROP TABLE IF EXISTS $T_JOB")
+            val createJobTable = """
+    CREATE TABLE IF NOT EXISTS $T_JOB (
+        FCCODE TEXT PRIMARY KEY,
+        FCNAME TEXT,
+        JOBGROUPCODE TEXT,
+        JOB_FORCROPTYPE TEXT,
+        JOB_FORFIELDSTATUS TEXT,
+        JOB_CATEGORY TEXT,
+        UNITOFMEASUREMENT TEXT,
+        ACCOUNTCODE TEXT,
+        FCENTRY TEXT,
+        FCEDIT TEXT,
+        FCIP TEXT,
+        FCBA TEXT,
+        JOB_FORACCOUNTTYPE TEXT,
+        LASTUPDATE TEXT,
+        LASTTIME TEXT,
+        JOB_FORBALANCESHEETCODE TEXT,
+        JOB_FORBALANCESHEETNAME TEXT,
+        JOB_FORPROFITANDLOSSCODE TEXT,
+        JOB_FORPROFITANDLOSSNAME TEXT,
+        JOB_OWN_TB TEXT,
+        PASIVA_AKTIVA TEXT,
+        RATE REAL,
+        HK TEXT,
+        JOB_FORCASHFLOWCODE TEXT,
+        JOB_FORCASHFLOWNAME TEXT,
+        AKTIVA_01 TEXT,
+        AKTIVA_02 TEXT,
+        AKTIVA_03 TEXT,
+        AKTIVA_04 TEXT,
+        AKTIVA_05 TEXT,
+        AKTIVA_06 TEXT,
+        AKTIVA_07 TEXT,
+        AKTIVA_08 TEXT,
+        AKTIVA_09 TEXT,
+        PASIVA_01 TEXT,
+        PASIVA_02 TEXT,
+        PASIVA_03 TEXT,
+        PASIVA_04 TEXT,
+        PASIVA_05 TEXT,
+        PASIVA_06 TEXT,
+        PASIVA_07 TEXT,
+        PASIVA_08 TEXT,
+        PASIVA_09 TEXT,
+        COA TEXT,
+        COA_NAME TEXT,
+        OPENING_TB REAL,
+        UOM_UNIT TEXT,
+        HEADCODE TEXT,
+        HEADNAME TEXT,
+        SUB_GROUP_CODE TEXT,
+        SUB_GROUP_NAME TEXT,
+        PROFITANDLOSS_01 TEXT,
+        PROFITANDLOSS_02 TEXT,
+        PROFITANDLOSS_03 TEXT,
+        PROFITANDLOSS_04 TEXT,
+        PROFITANDLOSS_05 TEXT,
+        PROFITANDLOSS_06 TEXT,
+        PROFITANDLOSS_07 TEXT,
+        PROFITANDLOSS_08 TEXT
+    )
+""".trimIndent()
+            db.execSQL(createJobTable)
+
+            db.execSQL("CREATE TABLE IF NOT EXISTS $T_LOCATION (FCCODE TEXT PRIMARY KEY, FCNAME TEXT, FCBA TEXT)")
 
             // 5. Tabel RKH
             db.execSQL("""
-            CREATE TABLE IF NOT EXISTS $T_RKH (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                fcba TEXT,
-                afdeling TEXT,
-                gangcode TEXT,
-                job_code TEXT,
-                location_code TEXT,
-                jumlah_hk REAL,
-                unit REAL,
-                output REAL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """.trimIndent())
+                CREATE TABLE IF NOT EXISTS $T_RKH (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fcba TEXT,
+                    afdeling TEXT,
+                    gangcode TEXT,
+                    job_code TEXT,
+                    location_code TEXT,
+                    jumlah_hk REAL,
+                    unit REAL,
+                    output REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """.trimIndent())
 
-            // 6. Tabel Employee (Pastikan ini dibuat SEBELUM ada proses insert data master)
-            val createEmpTable = """
-            CREATE TABLE IF NOT EXISTS $T_EMP (
+            // 6. Tabel Employee
+            db.execSQL("DROP TABLE IF EXISTS $T_EMP")
+            db.execSQL("""
+    CREATE TABLE IF NOT EXISTS $T_EMP (
                 FCCODE TEXT NOT NULL, FCNAME TEXT, SECTIONNAME TEXT, GANGCODE TEXT,
                 DATEOFBIRTH TEXT, RELIGION TEXT, RACE TEXT, IDENTITYCARD TEXT,
                 HIGHESTEDUCATION TEXT, YEAROFGRADUATION TEXT, DATEOFJOIN TEXT,
@@ -208,99 +277,61 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 GET_JP TEXT, FACEEMBEDDING TEXT,
                 PRIMARY KEY (FCCODE, FCBA)
             )
-        """.trimIndent()
+        """.trimIndent() )
 
 
-            db.execSQL(createEmpTable)
-
-            // 7. Tabel Transaksi & Absensi
+                    // 7. Tabel Transaksi & Absensi
             db.execSQL("CREATE TABLE IF NOT EXISTS $T_ATT ($A_ID INTEGER PRIMARY KEY AUTOINCREMENT, $A_EMP_ID TEXT NOT NULL, $A_FCBA TEXT NOT NULL, $A_EMP_NAME TEXT NOT NULL, $A_ACTION TEXT NOT NULL, $A_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP, $A_SOURCE TEXT DEFAULT 'INPUT')")
             db.execSQL("CREATE TABLE IF NOT EXISTS $T_FACE ($F_ID INTEGER PRIMARY KEY AUTOINCREMENT, $F_EMP_ID TEXT NOT NULL, $F_FCBA TEXT NOT NULL, $F_FEATURES TEXT NOT NULL, $F_CAPTURED DATETIME DEFAULT CURRENT_TIMESTAMP)")
+
             db.execSQL("""
-    CREATE TABLE IF NOT EXISTS $T_MAINTENANCE (
-        $M_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-        $M_FCBA TEXT,
-        $M_RKH TEXT,
-        $M_GANG TEXT,
-        $M_S1 TEXT,
-        $M_S2 TEXT,
-        $M_S3 TEXT,
-        $M_S4 TEXT,
-        $M_WORKERS TEXT, 
-        $M_LOCATION TEXT,
-        $M_UNIT REAL,
-        $M_OUTPUT REAL,
-        $M_RATE REAL,
-        $M_BERAS INTEGER,
-        $M_LEMBUR REAL,
-        $M_CREATED TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                CREATE TABLE IF NOT EXISTS $T_MAINTENANCE (
+                    $M_ID INTEGER PRIMARY KEY AUTOINCREMENT, $M_FCBA TEXT, $M_RKH TEXT, $M_GANG TEXT,
+                    $M_S1 TEXT, $M_S2 TEXT, $M_S3 TEXT, $M_S4 TEXT, $M_WORKERS TEXT, 
+                    $M_LOCATION TEXT, $M_UNIT REAL, $M_OUTPUT REAL, $M_RATE REAL,
+                    $M_BERAS INTEGER, $M_LEMBUR REAL, $M_CREATED TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS $T_PROGRESS (
+                    $P_ID INTEGER PRIMARY KEY AUTOINCREMENT, $P_RKH TEXT, $P_CATEGORY TEXT,
+                    $P_EMP_ID TEXT, $P_EMP_IDS TEXT, $P_BLOCK TEXT, $P_UNIT REAL,
+                    $P_OUTPUT REAL, $P_RATE REAL, $P_LEMBUR REAL, $P_BERAS INTEGER,
+                    $P_RESULT TEXT, $P_NOTES TEXT, $P_STATUS TEXT, $P_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS $T_FRUIT_COUNTING (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, fcba TEXT, tanggal TEXT, no_rkh TEXT,
+                    gang_code TEXT, supervisi1 TEXT, supervisi2 TEXT, supervisi3 TEXT, supervisi4 TEXT,
+                    karyawan_ids TEXT, location_code TEXT, unit REAL, output REAL, tph_code TEXT,
+                    is_beras INTEGER, lembur REAL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """.trimIndent())
+
+            db.execSQL("DROP TABLE IF EXISTS TPH")
+            db.execSQL("""
+    CREATE TABLE IF NOT EXISTS TPH (
+        FCCODE TEXT PRIMARY KEY, FCNAME TEXT, FIELDCODE TEXT, 
+        "SECTION" TEXT, FCBA TEXT, LATITUDE REAL, LONGITUDE REAL,
+        TDATE TEXT, LT REAL, LG REAL,
+        FCENTRY TEXT, FCEDIT TEXT, FCIP TEXT -- Tambahkan ini
     )
 """.trimIndent())
 
-            db.execSQL("""
-            CREATE TABLE IF NOT EXISTS $T_PROGRESS (
-                $P_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                $P_RKH TEXT,
-                $P_CATEGORY TEXT,
-                $P_EMP_ID TEXT,
-                $P_EMP_IDS TEXT,
-                $P_BLOCK TEXT,
-                $P_UNIT REAL,
-                $P_OUTPUT REAL,
-                $P_RATE REAL,
-                $P_LEMBUR REAL,
-                $P_BERAS INTEGER,
-                $P_RESULT TEXT,
-                $P_NOTES TEXT,
-                $P_STATUS TEXT,
-                $P_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """.trimIndent())
+            // === LANGKAH 2: ISI DATA AWAL ===
 
-
-            db.execSQL("""
-    CREATE TABLE IF NOT EXISTS $T_FRUIT_COUNTING (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        fcba TEXT,
-        tanggal TEXT,
-        no_rkh TEXT,
-        gang_code TEXT,
-        supervisi1 TEXT,
-        supervisi2 TEXT,
-        supervisi3 TEXT,
-        supervisi4 TEXT,
-        karyawan_ids TEXT, -- Disimpan sebagai String dipisah koma (CSV)
-        location_code TEXT,
-        unit REAL,
-        output REAL,
-        tph_code TEXT,
-        is_beras INTEGER,
-        lembur REAL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-""".trimIndent())
-
-            db.execSQL("CREATE TABLE IF NOT EXISTS $T_TPH (id INTEGER PRIMARY KEY AUTOINCREMENT, location_code TEXT, name TEXT)")
-            // === LANGKAH 2: ISI DATA AWAL (SETELAH SEMUA TABEL JADI) ===
-
-            // Isi Master Menu
-            db.execSQL("INSERT INTO $T_MENU VALUES (1, 'ABSENSI', 'HOME')")
-            db.execSQL("INSERT INTO $T_MENU VALUES (2, 'PROGRESS KERJA', 'PROGRESS_MENU')")
-            db.execSQL("INSERT INTO $T_MENU VALUES (3, 'PERHITUNGAN BUAH', 'FRUIT_COUNTING')")
-            db.execSQL("INSERT INTO $T_MENU VALUES (4, 'PEMBUATAN SPB', 'SPB_MENU')")
-            db.execSQL("INSERT INTO $T_MENU VALUES (5, 'ANCAK PANEN', 'ANCAK_PANEN')")
-            db.execSQL("INSERT INTO $T_MENU VALUES (6, 'AKP', 'AKP_FORM')")
-            db.execSQL("INSERT INTO $T_MENU VALUES (7, 'MASTER DATA', 'EMPLOYEE_FORM')")
-            db.execSQL("INSERT INTO $T_MENU VALUES (8, 'RENCANA KERJA', 'RKH_VIEW')")
-
-            // Isi Master Dropdown RKH (Gunakan $ agar merujuk ke nama tabel yang benar)
-            db.execSQL("INSERT INTO $T_AFDELING VALUES ('AFDELING ALPHA'), ('AFDELING BETA')")
-            db.execSQL("INSERT INTO $T_GANG VALUES ('GANG 01'), ('GANG 02'), ('GANG 03')")
-            db.execSQL("INSERT INTO $T_JOB VALUES ('PANEN'), ('PEMUPUKAN'), ('SEMPROT')")
-            db.execSQL("INSERT INTO $T_LOCATION VALUES ('BLOCK A10'), ('BLOCK B12'), ('BLOCK C05')")
-
-            db.execSQL("INSERT INTO $T_TPH (location_code, name) VALUES ('BLOCK A10', 'TPH 01'), ('BLOCK A10', 'TPH 02'), ('BLOCK B12', 'TPH 05')")
-
+            // Isi Master Menu (Gunakan INSERT OR REPLACE agar tidak error jika dijalankan ulang)
+            db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (1, 'ABSENSI', 'HOME')")
+            db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (2, 'PROGRESS KERJA', 'PROGRESS_MENU')")
+            db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (3, 'PERHITUNGAN BUAH', 'FRUIT_COUNTING')")
+            db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (4, 'PEMBUATAN SPB', 'SPB_MENU')")
+            db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (5, 'ANCAK PANEN', 'ANCAK_PANEN')")
+            db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (6, 'AKP', 'AKP_FORM')")
+            db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (7, 'MASTER DATA', 'EMPLOYEE_FORM')")
+            db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (8, 'RENCANA KERJA', 'RKH_VIEW')")
 
             // Isi User Default & Hak Akses
             insertDefaultUsers(db)
@@ -309,6 +340,18 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
         } catch (e: Exception) {
             Log.e("DB_ERROR", "Gagal di onCreate: ${e.message}")
+        }
+    }
+
+    override fun onOpen(db: SQLiteDatabase) {
+        super.onOpen(db)
+        // Cara Ampuh: Paksa input user setiap kali DB dibuka
+        // agar tidak bergantung pada suksesnya onCreate
+        try {
+            insertDefaultUsers(db)
+            Log.d("DB_CHECK", "onOpen: Memastikan user default tersedia.")
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal di onOpen: ${e.message}")
         }
     }
 
@@ -321,25 +364,26 @@ class AttendanceDatabaseHelper(private val context: Context) :
             arrayOf("kerani1", "1234", "KRN01", "KERANI", "41"),
             arrayOf("kerani2", "pass123", "KRN02", "KERANI", "41"),
             arrayOf("tester_expired", "1234", "EXP01", "KERANI", "41")
-        )
+        ) // TIDAK ADA KURUNG TUTUP FUNGSI DI SINI
 
         users.forEach { user ->
             val username = user[0]
             val password = user[1]
             val empCode = user[2]
             val role = user[3]
-            val fcba = user[4] // Tambahkan BA Code
+            val fcba = user[4]
 
             val cvUser = ContentValues().apply {
                 put(U_USERNAME, username)
                 put(U_PASSWORD, password)
                 put(U_EMPCODE, empCode)
                 put(U_ROLE, role)
-                put(U_FCBA, fcba) // Pastikan FCBA disimpan agar tidak kosong saat login
+                put(U_FCBA, fcba)
             }
+            // Menggunakan insertWithOnConflict agar data masuk/terupdate
             db.insertWithOnConflict(T_USERS, null, cvUser, SQLiteDatabase.CONFLICT_REPLACE)
 
-            // Berikan hak akses menu
+            // Logika Hak Akses Menu
             when (role) {
                 "ADMIN", "MANDOR" -> {
                     for (menuCode in 1..8) {
@@ -348,7 +392,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 }
                 "KERANI" -> {
                     if (username == "tester_expired") {
-                        insertAccess(db, empCode, 1, isGranted = 1, daysValid = -1) // Sudah expired
+                        insertAccess(db, empCode, 1, isGranted = 1, daysValid = -1)
                     } else {
                         listOf(1, 4).forEach { menuCode ->
                             insertAccess(db, empCode, menuCode, isGranted = 1, daysValid = 30)
@@ -357,9 +401,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 }
             }
         }
-
         Log.d("DB_CHECK", "Data Tester dan Hak Akses berhasil dimasukkan.")
-    }
+    } // KURUNG TUTUP FUNGSI SEHARUSNYA DI SINI
 
     // Fungsi pembantu (helper) agar kode lebih rapi
     private fun insertAccess(db: SQLiteDatabase, empId: String, menuCode: Int, isGranted: Int, daysValid: Int) {
@@ -389,28 +432,42 @@ class AttendanceDatabaseHelper(private val context: Context) :
     fun checkLogin(username: String, pass: String): UserProfile? {
         val u = username.trim()
         val p = pass.trim()
+
         return try {
             val db = readableDatabase
-            db.rawQuery("SELECT * FROM $T_USERS WHERE $U_USERNAME = ? COLLATE NOCASE", arrayOf(u)).use { c ->
+            val query = "SELECT * FROM $T_USERS WHERE $U_USERNAME = ? COLLATE NOCASE"
+
+            db.rawQuery(query, arrayOf(u)).use { c ->
                 if (c.moveToFirst()) {
                     val dbPass = c.getString(c.getColumnIndexOrThrow(U_PASSWORD))
+
+                    Log.d("LOGIN_DEBUG", "User ditemukan! DB_Pass: '$dbPass' | Input: '$p'")
+
                     if (dbPass == p) {
-                        UserProfile(
+                        return UserProfile(
                             username = c.getString(c.getColumnIndexOrThrow(U_USERNAME)),
-                            empcode = c.getString(c.getColumnIndexOrThrow(U_EMPCODE)) ?: "",
+                            empcode = c.getString(c.getColumnIndexOrThrow(U_EMPCODE)),
                             fcba = c.getString(c.getColumnIndexOrThrow(U_FCBA)) ?: "",
                             divisi = c.getString(c.getColumnIndexOrThrow(U_DIVISI)) ?: "",
                             gang = c.getString(c.getColumnIndexOrThrow(U_GANG)) ?: "",
-                            role = c.getString(c.getColumnIndexOrThrow(U_ROLE)) ?: "MANDOR"
+                            role = c.getString(c.getColumnIndexOrThrow(U_ROLE)) ?: ""
                         )
-                    } else null
-                } else null
+                    } else {
+                        Log.e("LOGIN_DEBUG", "Password salah.")
+                    }
+                } else {
+                    Log.e("LOGIN_DEBUG", "Username '$u' tidak ditemukan di tabel $T_USERS")
+                }
+                null
             }
         } catch (e: Exception) {
-            Log.e("LOGIN_ERROR", "Login Gagal: ${e.message}")
+            Log.e("DB_ERROR", "Login failed: ${e.message}")
             null
         }
     }
+
+    // Tambahkan kurung tutup untuk class AttendanceDatabaseHelper di paling bawah
+
 
     // --- FUNGSI SAVE (TANPA DB.CLOSE()) ---
 
@@ -701,45 +758,62 @@ fun checkFaceDataStatus(fccode: String): String {
         return list
     }
 
-    fun importSqlFromAssets(onProgress: (Int) -> Unit = {}) {
+    // Tambahkan parameter kedua: onProgress (sebuah fungsi callback)
+    fun importSqlFromAssets(fileName: String, onProgress: (Int) -> Unit = {}) {
         val db = writableDatabase
         try {
-            context.assets.open("EMPLOYEE_202605200755.sql").bufferedReader().use { reader ->
-                db.beginTransaction()
-                try {
-                    val statement = StringBuilder()
-                    var count = 0
-                    reader.forEachLine { line ->
-                        val trimmed = line.trim()
-                        if (trimmed.isEmpty() || trimmed.startsWith("--")) return@forEachLine
-                        statement.append(trimmed).append(" ")
-                        if (trimmed.endsWith(";")) {
-                            var sql = statement.toString().trim()
-                            // Bersihkan sintaks Oracle
-                            sql = sql.replace(Regex("(?i)TIMESTAMP\\s*'"), "'")
-                            val clobRegex = Regex("(?i)TO_CLOB\\s*\\(\\s*(.*?)\\s*\\)", RegexOption.DOT_MATCHES_ALL)
-                            sql = clobRegex.replace(sql) { it.groupValues[1] }
-                            sql = sql.replace("INSERT INTO", "INSERT OR REPLACE INTO", true)
+            val inputStream = context.assets.open(fileName)
+            val content = inputStream.bufferedReader().use { it.readText() }
 
-                            db.execSQL(sql)
-                            count++
-                            if (count % 20 == 0) onProgress(count)
-                            statement.setLength(0)
+            // 1. Bersihkan sintaks Oracle: TIMESTAMP'...' menjadi '...'
+            var cleanSql = content.replace("TIMESTAMP'", "'", ignoreCase = true)
+
+            // 2. Pecah per perintah SQL berdasarkan titik koma
+            val statements = cleanSql.split(";")
+
+            db.beginTransaction()
+            try {
+                statements.forEach { statement ->
+                    val sql = statement.trim()
+                    if (sql.isNotEmpty()) {
+                        // Gunakan REPLACE agar tidak error jika data duplikat
+                        val finalSql = if (sql.uppercase().startsWith("INSERT INTO")) {
+                            sql.replaceFirst("INSERT INTO", "INSERT OR REPLACE INTO", ignoreCase = true)
+                        } else {
+                            sql
+                        }
+                        try {
+                            db.execSQL(finalSql)
+                        } catch (e: Exception) {
+                            Log.e("IMPORT_ERROR", "Gagal di $fileName: ${e.message}")
                         }
                     }
-                    db.setTransactionSuccessful()
-                    Log.d("DB_CHECK", "IMPORT SELESAI: $count data.")
-                } finally {
-                    db.endTransaction()
                 }
+                db.setTransactionSuccessful()
+                Log.d("DB_CHECK", "IMPORT BERHASIL: $fileName")
+            } finally {
+                db.endTransaction()
             }
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal baca file SQL: ${e.message}")
+            Log.e("DB_ERROR", "Error membaca file $fileName: ${e.message}")
         }
     }
 
-    // --- FITUR TRANSFER QR CODE ---
-    // --- FITUR TRANSFER QR CODE ---
+    fun getSupervisors(): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        // Mencari karyawan yang jabatannya mengandung kata MANDOR atau SUPERVISI
+        val query = "SELECT $E_NAME FROM $T_EMP WHERE $E_POSITION LIKE '%MANDOR%' OR $E_POSITION LIKE '%SUPERVISI%'"
+        val cursor = db.rawQuery(query, null)
+        while (cursor.moveToNext()) {
+            list.add(cursor.getString(0))
+        }
+        cursor.close()
+        return list.ifEmpty { listOf("Tidak ada data Supervisi") }
+    }
+
+
+
     fun getAttendanceForQRCode(): String {
         val db = readableDatabase
         val result = StringBuilder()
@@ -798,21 +872,72 @@ fun checkFaceDataStatus(fccode: String): String {
         return count
     }
 
-    fun getDropdownData(tableName: String): List<String> {
+    fun getDropdownData(type: String, userFcba: String): List<String> {
         val list = mutableListOf<String>()
         val db = readableDatabase
-        val actualTable = if (tableName == "EMPLOYEE") T_EMP else tableName
-        val column = if (tableName == "EMPLOYEE") E_NAME else "name"
+
+        // 1. Sinkronisasi Nama Tabel (Case Insensitive & Mapping UI Key)
+        val tableName = when (type.uppercase()) {
+            "JOB", "JOB_CODE" -> T_JOB        // Tabel: JOB
+            "GANG", "GANGCODE" -> T_GANG      // Tabel: gangcode
+            "AFDELING" -> T_AFDELING          // Tabel: afdeling
+            "LOCATION", "LOCATION_CODE" -> T_LOCATION
+            "BLOCK" -> "TPH"                  // Tabel: TPH
+            else -> ""
+        }
+
+        if (tableName.isEmpty()) {
+            Log.e("DB_ERROR", "Tabel untuk type $type tidak ditemukan")
+            return list
+        }
 
         try {
-            db.rawQuery("SELECT $column FROM $actualTable", null).use { cursor ->
+            // 2. Tentukan Kolom yang akan diambil
+            // JOB menggunakan FCNAME, TPH (Block) menggunakan FIELDCODE
+            val column = when (type.uppercase()) {
+                "BLOCK" -> "FIELDCODE"
+                "LOCATION", "LOCATION_CODE" -> "FCCODE" // Biasanya Location Code mengambil ID/FCCODE
+                else -> "FCNAME"
+            }
+
+            // 3. Query dengan Filter FCBA (Penting agar data SRE tidak muncul di BA lain)
+            // Jika Admin (99), tampilkan semua. Jika mandor, filter sesuai BA-nya.
+            val query: String
+            val args: Array<String>?
+
+            if (userFcba == "99") {
+                query = "SELECT DISTINCT $column FROM $tableName WHERE $column IS NOT NULL ORDER BY $column ASC"
+                args = null
+            } else {
+                query = "SELECT DISTINCT $column FROM $tableName WHERE FCBA = ? AND $column IS NOT NULL ORDER BY $column ASC"
+                args = arrayOf(userFcba)
+            }
+
+            db.rawQuery(query, args).use { cursor ->
                 while (cursor.moveToNext()) {
-                    list.add(cursor.getString(0))
+                    val value = cursor.getString(0)
+                    if (!value.isNullOrEmpty()) {
+                        list.add(value)
+                    }
                 }
             }
-        } catch (e: Exception) { Log.e("DB_ERROR", "getDropdownData: ${e.message}") }
+            Log.d("DB_CHECK", "Dropdown $type berhasil mengambil ${list.size} data")
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil dropdown $type: ${e.message}")
+        }
         return list
     }
+
+    fun getAllJobs(): List<Pair<String, String>> {
+        val list = mutableListOf<Pair<String, String>>()
+        val cursor = readableDatabase.rawQuery("SELECT FCCODE, FCNAME FROM $T_JOB", null)
+        while (cursor.moveToNext()) {
+            list.add(cursor.getString(0) to cursor.getString(1))
+        }
+        cursor.close()
+        return list
+    }
+
 
     fun insertRKH(fcba: String, afd: String, gang: String, job: String, loc: String, hk: Double, unit: Double, out: Double): Long {
         val db = writableDatabase
@@ -983,34 +1108,50 @@ fun checkFaceDataStatus(fccode: String): String {
         return list
     }
 
-    fun getPresentWorkers(fcba: String, date: String): List<Pair<String, String>> {
+    fun getPresentWorkers(fcba: String): List<Pair<String, String>> {
         val list = mutableListOf<Pair<String, String>>()
         val db = readableDatabase
-        try {
-            // Kita join tabel attendance dan employee
-            val query = """
-                SELECT DISTINCT a.$A_EMP_ID, e.$E_NAME 
-                FROM $T_ATT a
-                JOIN $T_EMP e ON a.$A_EMP_ID = e.$E_FCCODE
-                WHERE a.$A_FCBA = ? AND date(a.$A_TIMESTAMP) = date(?)
-            """.trimIndent()
-
-            db.rawQuery(query, arrayOf(fcba, date)).use { cursor ->
-                while (cursor.moveToNext()) {
-                    list.add(cursor.getString(0) to cursor.getString(1))
-                }
+        // Ambil dari tabel absensi hari ini
+        val query = "SELECT $A_EMP_ID, $A_EMP_NAME FROM $T_ATT WHERE $A_FCBA = ? AND date($A_TIMESTAMP) = date('now')"
+        db.rawQuery(query, arrayOf(fcba)).use { cursor ->
+            while (cursor.moveToNext()) {
+                list.add(cursor.getString(0) to cursor.getString(1))
             }
-        } catch (e: Exception) { Log.e("DB_ERROR", "getPresentWorkers: ${e.message}") }
+        }
         return list
     }
 
-    fun getTPHByLocation(loc: String): List<String> {
+    fun getRKHNumbers(): List<String> {
         val list = mutableListOf<String>()
         try {
-            readableDatabase.rawQuery("SELECT name FROM $T_TPH WHERE location_code = ?", arrayOf(loc)).use {
-                while (it.moveToNext()) list.add(it.getString(0))
+            val db = readableDatabase
+            // T_RKH_MENU adalah tabel hasil import SQL RKH
+            db.rawQuery("SELECT DISTINCT fcnorkh FROM T_RKH_MENU", null).use { c ->
+                while (c.moveToNext()) {
+                    list.add(c.getString(0))
+                }
             }
-        } catch (e: Exception) { Log.e("DB_ERROR", "getTPHByLocation: ${e.message}") }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil No RKH: ${e.message}")
+        }
+        return list
+    }
+
+
+    fun getTPHByLocation(locationCode: String): List<String> {
+        val list = mutableListOf<String>()
+        try {
+            val db = readableDatabase
+            // Pakai FIELDCODE sesuai isi file TPH_202606011225.sql
+            val query = "SELECT FCCODE FROM TPH WHERE FIELDCODE = ?"
+            db.rawQuery(query, arrayOf(locationCode)).use { cursor ->
+                while (cursor.moveToNext()) {
+                    list.add(cursor.getString(0))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil TPH: ${e.message}")
+        }
         return list
     }
 
@@ -1038,23 +1179,20 @@ fun checkFaceDataStatus(fccode: String): String {
     fun getRKHList(): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        // Pastikan kolom jumlah_hk (atau target_hk) ikut diambil
-        val query = "SELECT no_rkh, gangcode, location_code, jumlah_hk FROM table_rkh"
+        // Ambil semua kolom yang diperlukan
+        val cursor = db.rawQuery("SELECT id, fcba, gangcode, job_code, location_code, jumlah_hk FROM $T_RKH", null)
 
-        try {
-            db.rawQuery(query, null).use { cursor ->
-                while (cursor.moveToNext()) {
-                    list.add(mapOf(
-                        "no_rkh" to (cursor.getString(0) ?: "-"),
-                        "gang_code" to (cursor.getString(1) ?: "-"),
-                        "location" to (cursor.getString(2) ?: "-"),
-                        "target_hk" to (cursor.getString(3) ?: "0") // KEY INI WAJIB ADA
-                    ))
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("DB_ERROR", "Error getRKHList: ${e.message}")
+        while (cursor.moveToNext()) {
+            val map = mutableMapOf<String, String>()
+            map["no_rkh"] = cursor.getString(0) // id rkh
+            map["gang_code"] = cursor.getString(2)
+            map["job_code"] = cursor.getString(3)
+            // PERBAIKAN DI SINI: Samakan kunci dengan yang dipanggil UI
+            map["location"] = cursor.getString(4)
+            map["jumlah_hk"] = cursor.getString(5)
+            list.add(map)
         }
+        cursor.close()
         return list
     }
 
@@ -1088,25 +1226,193 @@ fun checkFaceDataStatus(fccode: String): String {
         return list
     }
 
-    // Fungsi untuk mengambil menu yang diizinkan untuk ID Karyawan tertentu
-    // --- FUNGSI HAK AKSES MENU (FIX EXPIRED) ---
-    fun getAllowedMenusForUser(empId: String): List<String> {
-        val routes = mutableListOf<String>()
-        val db = this.readableDatabase
-        val currentTime = System.currentTimeMillis()
+    fun getBlockList(userFcba: String): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        val query = if (userFcba == "99") "SELECT DISTINCT FIELDCODE FROM $T_TPH ORDER BY FIELDCODE ASC"
+        else "SELECT DISTINCT FIELDCODE FROM $T_TPH WHERE FCBA = ? ORDER BY FIELDCODE ASC"
+        val args = if (userFcba == "99") null else arrayOf(userFcba)
+
         try {
-            val query = """
-                SELECT m.ROUTE FROM $T_MENU m
-                JOIN $T_MENU_ACCESS ma ON m.CODE = ma.MENU_CODE
-                WHERE ma.EMP_ID = ? AND ma.IS_GRANTED = 1 
-                AND (ma.VALID_UNTIL IS NULL OR ma.VALID_UNTIL > ?)
-            """.trimIndent()
-            db.rawQuery(query, arrayOf(empId, currentTime.toString())).use { cursor ->
-                if (cursor.moveToFirst()) {
-                    do { routes.add(cursor.getString(0)) } while (cursor.moveToNext())
+            db.rawQuery(query, args).use { c ->
+                while (c.moveToNext()) {
+                    c.getString(0)?.let { list.add(it) }
                 }
             }
-        } catch (e: Exception) { Log.e("DB_ERROR", "Error getAllowedMenus: ${e.message}") }
-        return routes
+        } catch (e: Exception) { Log.e("DB_ERROR", "Block: ${e.message}") }
+        return list
     }
+
+    // Ambil Master Pekerjaan (Job)
+    fun getMasterJobs(): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        db.rawQuery("SELECT name FROM $T_JOB", null).use { cursor ->
+            while (cursor.moveToNext()) list.add(cursor.getString(0))
+        }
+        return list
+    }
+
+    fun getAllBlocks(): List<String> {
+        val list = mutableListOf<String>()
+        val cursor = readableDatabase.rawQuery("SELECT FCCODE FROM TPH", null)
+        while (cursor.moveToNext()) {
+            list.add(cursor.getString(0))
+        }
+        cursor.close()
+        return list
+    }
+
+    // 1. Ambil JOB (Pekerjaan)
+    fun getJobList(userFcba: String): List<String> {
+        val list = mutableListOf<String>()
+        try {
+            val db = readableDatabase
+            // Jika admin (99), lihat semua.
+            // Jika data masih kosong, coba hilangkan filter FCBA sementara untuk testing
+            val query = if (userFcba == "99") {
+                "SELECT DISTINCT FCNAME FROM $T_JOB ORDER BY FCNAME ASC"
+            } else {
+                // Coba ganti query ini jika data tetap tidak muncul:
+                // "SELECT DISTINCT FCNAME FROM $T_JOB ORDER BY FCNAME ASC" (Tanpa filter FCBA)
+                "SELECT DISTINCT FCNAME FROM $T_JOB WHERE FCBA = ? ORDER BY FCNAME ASC"
+            }
+
+            val args = if (userFcba == "99") null else arrayOf(userFcba)
+
+            db.rawQuery(query, args).use { c ->
+                while (c.moveToNext()) {
+                    list.add(c.getString(0))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil Job: ${e.message}")
+        }
+        return list
+    }
+
+
+    fun getTPHByBlock(blockCode: String): List<String> {
+        val list = mutableListOf<String>()
+        try {
+            val db = readableDatabase
+            // FIELDCODE adalah blok (F04SR), FCCODE adalah nomor TPH (TPH-A)
+            val query = "SELECT FCCODE FROM $T_TPH WHERE FIELDCODE = ? ORDER BY FCCODE ASC"
+
+            db.rawQuery(query, arrayOf(blockCode)).use { cursor ->
+                while (cursor.moveToNext()) {
+                    list.add(cursor.getString(0))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil TPH: ${e.message}")
+        }
+        return list
+    }
+
+
+    // Ambil Blok berdasarkan Location Code
+    fun getBlocksByLocation(locationCode: String): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        // Query ini mengasumsikan tabel master data memiliki hubungan antara blok dan lokasi
+        // Jika data blok ada di tabel T_LOCATION, sesuaikan nama kolomnya
+        val query = "SELECT DISTINCT name FROM $T_LOCATION WHERE name LIKE '$locationCode%'"
+
+        try {
+            db.rawQuery(query, null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    list.add(cursor.getString(0))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "getBlocksByLocation: ${e.message}")
+        }
+        return list
+    }
+
+    fun getRkhDetail(rkhId: String): Map<String, String>? {
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT gangcode, location_code FROM $T_RKH WHERE id = ?", arrayOf(rkhId))
+        var result: Map<String, String>? = null
+        if (cursor.moveToFirst()) {
+            result = mapOf(
+                "gang" to cursor.getString(0),
+                "location" to cursor.getString(1)
+            )
+        }
+        cursor.close()
+        return result
+    }
+
+    // Di dalam AttendanceDatabaseHelper.kt
+    fun importJobMaster(db: SQLiteDatabase, context: Context) {
+        val inputStream = context.assets.open("JOB_202606011226.sql")
+        val reader = inputStream.bufferedReader()
+        reader.forEachLine { line ->
+            if (line.isNotBlank() && line.startsWith("INSERT")) {
+                db.execSQL(line)
+            }
+        }
+    }
+
+    fun getAfdelingList(userFcba: String): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        // Di SQL anda, Afdeling ada di kolom "SECTION" pada tabel TPH
+        val query = if (userFcba == "99") "SELECT DISTINCT \"SECTION\" FROM $T_TPH WHERE \"SECTION\" IS NOT NULL"
+        else "SELECT DISTINCT \"SECTION\" FROM $T_TPH WHERE FCBA = ?"
+        val args = if (userFcba == "99") null else arrayOf(userFcba)
+
+        try {
+            db.rawQuery(query, args).use { c ->
+                while (c.moveToNext()) list.add(c.getString(0))
+            }
+        } catch (e: Exception) { Log.e("DB_ERROR", "Afd: ${e.message}") }
+        return list
+    }
+
+    fun getGangList(userFcba: String): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        val query = if (userFcba == "99") "SELECT DISTINCT GANGCODE FROM $T_EMP WHERE GANGCODE IS NOT NULL"
+        else "SELECT DISTINCT GANGCODE FROM $T_EMP WHERE FCBA = ?"
+        val args = if (userFcba == "99") null else arrayOf(userFcba)
+
+        try {
+            db.rawQuery(query, args).use { c ->
+                while (c.moveToNext()) list.add(c.getString(0))
+            }
+        } catch (e: Exception) { }
+        return list
+    }
+
+    // Fungsi untuk mengambil menu yang diizinkan untuk ID Karyawan tertentu
+    // --- FUNGSI HAK AKSES MENU (FIX EXPIRED) ---
+    fun getAllowedMenusForUser(empCode: String): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+
+        // Melakukan JOIN antara tabel akses (angka) dan tabel menu (teks rute)
+        val query = """
+        SELECT m.ROUTE 
+        FROM $T_MENU m
+        JOIN $T_MENU_ACCESS a ON m.CODE = a.MENU_CODE
+        WHERE a.EMP_ID = ? AND a.IS_GRANTED = 1
+    """.trimIndent()
+
+        try {
+            db.rawQuery(query, arrayOf(empCode)).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val route = cursor.getString(0)
+                    list.add(route)
+                }
+            }
+            Log.d("DB_CHECK", "User $empCode memiliki akses ke: $list")
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil menu: ${e.message}")
+        }
+        return list
+    }
+
 } // Penutup kelas AttendanceDatabaseHelper

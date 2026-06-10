@@ -40,10 +40,12 @@ fun RKHFormScreen(
     var output by remember { mutableStateOf("") }
 
     // State untuk Dropdown (Ambil dari DB)
-    val afdelingList = remember { dbHelper.getDropdownData("afdeling") }
-    val gangList = remember { dbHelper.getDropdownData("gangcode") }
-    val jobList = remember { dbHelper.getDropdownData("job_code") }
-    val locationList = remember { dbHelper.getDropdownData("location_code") }
+    // State untuk Dropdown (Gunakan fungsi spesifik yang sudah kita perbaiki)
+    val afdelingList = remember(fcba) { dbHelper.getAfdelingList(fcba) }
+    val gangList = remember(fcba) { dbHelper.getGangList(fcba) }
+    val jobList = remember(fcba) { dbHelper.getJobList(fcba) }
+    val locationList = remember(fcba) { dbHelper.getBlockList(fcba) }
+
 
     Scaffold(
         topBar = {

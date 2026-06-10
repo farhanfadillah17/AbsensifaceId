@@ -64,8 +64,8 @@ fun LoginScreen(
 
                 withContext(Dispatchers.IO) {
                     // Panggil fungsi import yang sudah kita buat di DatabaseHelper
-                    dbHelper.importSqlFromAssets { count ->
-                        importStatus = "Mengimpor $count data..."
+                    dbHelper.importSqlFromAssets("FILENAME.sql") { count ->
+                    importStatus = "Mengimpor $count data..."
                     }
                 }
 

@@ -35,6 +35,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Grass
+import androidx.compose.runtime.produceState
+import android.content.Context
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import android.util.Log
+
 
 // 1. Data Class untuk Menu
 data class MenuConfig(
@@ -63,6 +70,34 @@ class MainActivity : ComponentActivity() {
         db = AttendanceDatabaseHelper(this)
         faceHelper = FaceDataHelper(db)
         sessionManager = SessionManager(this)
+
+        // --- TAMBAHKAN KODE IMPORT DI SINI ---
+        val sharedPref = getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
+        val isFirstRun = sharedPref.getBoolean("isFirstRun", true)
+
+        if (isFirstRun) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                val files = listOf(
+                    "BUSINESSUNIT_202606011217.sql",
+                    "FIELD_202606011224.sql",
+                    "JOB_202606011226.sql",
+                    "TPH_202606011225.sql",
+                    "EMPLOYEE_202605200755.sql"
+                )
+
+                // Tambahkan perulangan forEach di sini:
+                files.forEach { fileName ->
+                    db.importSqlFromAssets(fileName) { count ->
+                        Log.d("SETUP", "Sedang mengimpor $fileName: $count data...")
+                    }
+                }
+
+                // Tandai sudah pernah di-import agar tidak berjalan lagi
+                sharedPref.edit().putBoolean("isFirstRun", false).apply()
+                Log.d("SETUP", "Semua master data berhasil dimuat.")
+            }
+        }
+        // -------------------------------------
 
         setContent {
             AttendanceAppTheme {
@@ -290,8 +325,11 @@ fun DashboardScreen(
     onNavigate: (Screen) -> Unit,
     onLogout: () -> Unit
 ) {
-    val allowedMenuRoutes by produceState<List<String>>(initialValue = emptyList(), empId) {
-        value = dbHelper.getAllowedMenusForUser(empId) ?: emptyList()
+    // Di dalam DashboardScreen
+    // Perbaiki baris ini
+    val allowedMenuRoutes by produceState<List<String>>(initialValue = emptyList(), key1 = empId) { // Ganti empcode ke empId
+        // Dan baris ini juga
+        value = dbHelper.getAllowedMenusForUser(empId) // Ganti empcode ke empId
     }
 
     val allMenus = listOf(
