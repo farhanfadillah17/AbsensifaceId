@@ -279,16 +279,12 @@ fun AppNavigation(
             onBack = { navigateBack() },
             onSuccess = { navigateDashboard() })
 
-        Screen.SPB_MENU -> SPBMenuScreen(
-            onBack = { navigateBack() },
-            onCategorySelected = { cat -> selectedSpbCategory = cat; navigateTo(Screen.SPB_FORM) })
-
-        Screen.SPB_FORM -> SPBFormScreen(
-            category = selectedSpbCategory,
+        Screen.SPB_MENU, Screen.SPB_FORM -> SPBFormScreen(
             dbHelper = db,
             empId = sessionManager.getFccode() ?: "",
             onBack = { navigateBack() },
-            onSuccess = { navigateDashboard() })
+            onSuccess = { navigateDashboard() }
+        )
 
         Screen.AKP_FORM -> AKPScreen(
             dbHelper = db,

@@ -41,8 +41,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     companion object {
         // Ganti nama ke v11 untuk reset total terakhir kali
-        const val DATABASE_NAME = "attendance_reset_final_v278.db"
-        const val DATABASE_VERSION = 278
+        const val DATABASE_NAME = "attendance_reset_final_v282.db"
+        const val DATABASE_VERSION = 282
 
         const val T_EMP = "EMPLOYEE"
         const val E_FCCODE = "FCCODE"
@@ -320,6 +320,111 @@ class AttendanceDatabaseHelper(private val context: Context) :
         FCENTRY TEXT, FCEDIT TEXT, FCIP TEXT -- Tambahkan ini
     )
 """.trimIndent())
+
+            db.execSQL("""
+            CREATE TABLE IF NOT EXISTS BUSINESSUNIT (
+                FCCODE TEXT PRIMARY KEY,
+                FCNAME TEXT,
+                FCCOMPANYCODE TEXT,
+                FCCOMPANYNAME TEXT,
+                FCAREA TEXT,
+                FCOWNERSHIP TEXT,
+                FCMANAGER TEXT,
+                FCTELEPHONE TEXT,
+                FCFAX TEXT,
+                FCEMAIL TEXT,
+                FCKTU TEXT,
+                FCTYPE TEXT,
+                FCCROP TEXT,
+                LASTUPDATE TEXT,
+                LASTTIME TEXT,
+                ORDERDATA INTEGER,
+                GROUPPLANTATION TEXT,
+                PLANTATION TEXT,
+                GROUPREGION TEXT,
+                REGION TEXT,
+                ISACTIVE TEXT,
+                MILLCAPACITY TEXT,
+                NPWPCOMPANY TEXT,
+                NPWPOWNERCOMPANY TEXT,
+                NPWPDIRECTOR TEXT,
+                NPWPOWNERDIRECTOR TEXT,
+                SAPLOCATION TEXT,
+                ADDRESS TEXT
+            )
+        """.trimIndent())
+
+            db.execSQL("""
+    CREATE TABLE IF NOT EXISTS FIELD (
+        FCCODE TEXT PRIMARY KEY,
+        FCNAME TEXT,
+        DIVISION TEXT,
+        HECTARAGEPLANTED REAL,
+        TERRAINTYPE TEXT,
+        SOILTYPE TEXT,
+        OWNERSHIP TEXT,
+        ACTIVATION TEXT,
+        CROPTYPE TEXT,
+        PLANTINGDATE TEXT,
+        PLANTINGMATERIAL TEXT,
+        TOTALSTAND INTEGER,
+        STATUS TEXT,
+        PREVSEMESTER_ABW REAL,
+        PRESSEMESTER_ABW REAL,
+        HARVESTINGBASED_ABW REAL,
+        MAIN_ROAD TEXT,
+        COLLECTIONROAD TEXT,
+        MAINDRAIN INTEGER,
+        COLLECTIONDRAIN INTEGER,
+        SUBSIDIARYDRAIN INTEGER,
+        COLLECTIONPOINT INTEGER,
+        HARVESTINGBRIDGE INTEGER,
+        PERMANENTBRIDGE INTEGER,
+        WOODBRIDGE INTEGER,
+        BUIST INTEGER,
+        OWLNEST INTEGER,
+        FCENTRY TEXT,
+        FCEDIT TEXT,
+        FCIP TEXT,
+        FCBA TEXT,
+        LASTUPDATE TEXT,
+        LASTTIME TEXT,
+        HARVESTINGSECTION TEXT,
+        FIELD_INFO_01 TEXT,
+        FIELD_INFO_02 TEXT,
+        FIELD_INFO_03 TEXT,
+        FIELD_INFO_04 TEXT,
+        FIELD_INFO_05 TEXT,
+        ISACTIVE_HARVESTED TEXT,
+        VALID_FROM TEXT,
+        AREAL_LC REAL,
+        CADANGAN REAL,
+        OKUPASI REAL,
+        BIBITAN REAL,
+        PABRIK REAL,
+        EMPLASMEN REAL,
+        PARIT REAL,
+        JALAN REAL,
+        PRASARANA_LAINNYA REAL,
+        QUARRY REAL,
+        TANGGUL REAL,
+        ENCLAVE REAL,
+        TAMBANG REAL,
+        KONSERVASI REAL,
+        BUKIT_SUNGAI REAL,
+        NO_IMAGERY TEXT,
+        LUAS_GROSS REAL,
+        HECTARAGEHARVESTED REAL,
+        PRODUCTIVESTAND REAL,
+        HARVESTINGSECTIONNUMBER TEXT,
+        PLANTINGPOINT REAL,
+        FULLSTAND TEXT,
+        STATUS_TANAMAN TEXT,
+        KOPERASI TEXT
+    )
+""".trimIndent())
+
+
 
             // === LANGKAH 2: ISI DATA AWAL ===
 
@@ -1138,22 +1243,24 @@ fun checkFaceDataStatus(fccode: String): String {
     }
 
 
-    fun getTPHByLocation(locationCode: String): List<String> {
+    fun getTPHByLocation(fieldCode: String): List<String> {
         val list = mutableListOf<String>()
+        val db = readableDatabase
+        // Mencari FCCODE (Nama TPH) berdasarkan FIELDCODE yang dipilih
+        val query = "SELECT FCCODE FROM TPH WHERE FIELDCODE = ?"
+
         try {
-            val db = readableDatabase
-            // Pakai FIELDCODE sesuai isi file TPH_202606011225.sql
-            val query = "SELECT FCCODE FROM TPH WHERE FIELDCODE = ?"
-            db.rawQuery(query, arrayOf(locationCode)).use { cursor ->
+            db.rawQuery(query, arrayOf(fieldCode)).use { cursor ->
                 while (cursor.moveToNext()) {
                     list.add(cursor.getString(0))
                 }
             }
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal ambil TPH: ${e.message}")
+            android.util.Log.e("DB_ERROR", "Gagal ambil TPH: ${e.message}")
         }
         return list
     }
+
 
     fun saveMaintenance(
         fcba: String, rkh: String, gang: String,
@@ -1179,17 +1286,23 @@ fun checkFaceDataStatus(fccode: String): String {
     fun getRKHList(): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        // Ambil semua kolom yang diperlukan
-        val cursor = db.rawQuery("SELECT id, fcba, gangcode, job_code, location_code, jumlah_hk FROM $T_RKH", null)
+        // Query JOIN dengan tabel FIELD untuk mendapatkan Nama Blok (FCNAME)
+        val query = """
+        SELECT r.id, r.fcba, r.gangcode, r.job_code, r.location_code, r.jumlah_hk, f.FCNAME 
+        FROM $T_RKH r
+        INNER JOIN FIELD f ON r.location_code = f.FCCODE
+    """.trimIndent()
 
+        val cursor = db.rawQuery(query, null)
         while (cursor.moveToNext()) {
             val map = mutableMapOf<String, String>()
-            map["no_rkh"] = cursor.getString(0) // id rkh
+            map["no_rkh"] = cursor.getString(0)
+            map["fcba"] = cursor.getString(1)
             map["gang_code"] = cursor.getString(2)
             map["job_code"] = cursor.getString(3)
-            // PERBAIKAN DI SINI: Samakan kunci dengan yang dipanggil UI
-            map["location"] = cursor.getString(4)
+            map["location"] = cursor.getString(4) // LD1SR
             map["jumlah_hk"] = cursor.getString(5)
+            map["location_name"] = cursor.getString(6) // Nama asli dari file FIELD (Contoh: "GUNUNG RAJA BLOK A")
             list.add(map)
         }
         cursor.close()
@@ -1432,6 +1545,138 @@ fun checkFaceDataStatus(fccode: String): String {
             }
         } catch (e: Exception) { }
         return list
+    }
+
+    fun getDrivers(): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        // Query ini mencari karyawan dengan posisi/jabatan yang mengandung kata SUPIR atau DRIVER
+        val query = "SELECT FCNAME FROM EMPLOYEE WHERE \"POSITION\" LIKE '%SUPIR%' OR \"POSITION\" LIKE '%DRIVER%'"
+
+        try {
+            db.rawQuery(query, null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    list.add(cursor.getString(0))
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DB_ERROR", "Gagal mengambil daftar supir: ${e.message}")
+        }
+        return list
+    }
+
+    fun getBusinessUnits(): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        // Ambil FCNAME dari tabel BUSINESSUNIT
+        val query = "SELECT FCNAME FROM BUSINESSUNIT ORDER BY FCNAME ASC"
+
+        try {
+            db.rawQuery(query, null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val name = cursor.getString(0)
+                    if (!name.isNullOrEmpty()) {
+                        list.add(name)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DB_ERROR", "Gagal ambil BusinessUnit: ${e.message}")
+        }
+        return list
+    }
+
+    fun getAllLocations(): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        val query = "SELECT FCCODE FROM FIELD WHERE FCBA = 'SRE' ORDER BY FCCODE ASC"
+        // Filter FCBA sesuai session user (Contoh: 'SRE' sesuai data SQL Anda)
+
+        db.rawQuery(query, null).use { cursor ->
+            while (cursor.moveToNext()) {
+                list.add(cursor.getString(0))
+            }
+        }
+        return list
+    }
+
+    fun importBusinessUnitMaster(db: SQLiteDatabase, context: Context) {
+        try {
+            // Ganti nama file sesuai dengan nama file .sql Anda di folder assets
+            val inputStream = context.assets.open("BUSINESSUNIT_2025.sql")
+            val reader = inputStream.bufferedReader()
+
+            db.beginTransaction()
+            try {
+                reader.forEachLine { line ->
+                    if (line.isNotBlank() && line.startsWith("INSERT", ignoreCase = true)) {
+                        // PENTING: Hapus kata TIMESTAMP agar tidak error di SQLite
+                        val cleanLine = line.replace("TIMESTAMP", "")
+                        db.execSQL(cleanLine)
+                    }
+                }
+                db.setTransactionSuccessful()
+                Log.d("DB_IMPORT", "Import BUSINESSUNIT Berhasil")
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal import BUSINESSUNIT: ${e.message}")
+        }
+    }
+
+    fun getAllFieldCodes(): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        // Mengambil FCCODE dari tabel FIELD (hasil import FIELD_202606011224.sql)
+        val query = "SELECT FCCODE FROM FIELD ORDER BY FCCODE ASC"
+        db.rawQuery(query, null).use { cursor ->
+            while (cursor.moveToNext()) {
+                list.add(cursor.getString(0))
+            }
+        }
+        return list
+    }
+
+    fun getLocationsFromTPH(): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        // Mengambil FIELDCODE unik dari tabel TPH
+        val query = "SELECT DISTINCT FIELDCODE FROM TPH WHERE FIELDCODE IS NOT NULL ORDER BY FIELDCODE ASC"
+
+        try {
+            db.rawQuery(query, null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    list.add(cursor.getString(0))
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DB_ERROR", "Gagal ambil lokasi dari TPH: ${e.message}")
+        }
+        return list
+    }
+
+    fun importFieldMaster(db: SQLiteDatabase, context: Context) {
+        try {
+            val inputStream = context.assets.open("FIELD_202606011224.sql")
+            val reader = inputStream.bufferedReader()
+
+            db.beginTransaction()
+            try {
+                reader.forEachLine { line ->
+                    if (line.isNotBlank() && line.startsWith("INSERT", ignoreCase = true)) {
+                        // PENTING: Hapus TIMESTAMP agar SQLite tidak error
+                        val cleanLine = line.replace("TIMESTAMP", "")
+                        db.execSQL(cleanLine)
+                    }
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal import FIELD: ${e.message}")
+        }
     }
 
     // Fungsi untuk mengambil menu yang diizinkan untuk ID Karyawan tertentu
