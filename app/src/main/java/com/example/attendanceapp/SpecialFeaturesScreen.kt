@@ -34,14 +34,20 @@ fun ProgressFormScreen(
 ) {
     val context = LocalContext.current
     val sharedPref = context.getSharedPreferences("UserSession", Context.MODE_PRIVATE)
-    val fcbaUser = sharedPref.getString("fcba", "41") ?: "41"
+    // Gunakan .uppercase() untuk memastikan sinkron dengan database
+    val fcbaUser = (sharedPref.getString("fcba", "SRE") ?: "SRE").uppercase()
 
     // --- DATA SOURCES ---
     val rkhList = remember { dbHelper.getRKHList() }
     val supervisorOptions = remember { dbHelper.getSupervisors() }
     val jobMasterList = remember { dbHelper.getDropdownData("JOB", fcbaUser) }
-    val availableStaff = remember {
-        try { dbHelper.getEmployeesAlreadyCheckedIn(fcbaUser) } catch (e: Exception) { emptyList() }
+    // List akan otomatis memuat ulang jika fcbaUser berubah
+    val availableStaff = remember(fcbaUser) {
+        try {
+            dbHelper.getEmployeesAlreadyCheckedIn(fcbaUser)
+        } catch (e: Exception) {
+            emptyList<Map<String, String>>()
+        }
     }
 
     // --- FORM STATES ---
