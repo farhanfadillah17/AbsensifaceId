@@ -23,8 +23,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun RKHFormScreen(
     dbHelper: AttendanceDatabaseHelper,
-    empId: String, // Menggunakan fccode untuk logging jika perlu
-    fcba: String,  // Diambil otomatis dari session
+    empId: String,
+    fcba: String,
     onBack: () -> Unit,
     onSuccess: () -> Unit
 ) {
@@ -39,13 +39,62 @@ fun RKHFormScreen(
     var unit by remember { mutableStateOf("") }
     var output by remember { mutableStateOf("") }
 
-    // State untuk Dropdown (Ambil dari DB)
-    // State untuk Dropdown (Gunakan fungsi spesifik yang sudah kita perbaiki)
+    // State untuk Dialog Pencarian
+    var activeDialog by remember { mutableStateOf<String?>(null) }
+
+    // Master Data Load
     val afdelingList = remember(fcba) { dbHelper.getAfdelingList(fcba) }
-    val gangList = remember(fcba) { dbHelper.getGangList(fcba) }
+
+    val gangList = remember(fcba, selectedAfd) {
+        if (selectedAfd.isNotEmpty()) {
+            dbHelper.getGangsByAfdeling(selectedAfd, fcba)
+        } else {
+            emptyList<String>()
+        }
+    }
+
     val jobList = remember(fcba) { dbHelper.getJobList(fcba) }
     val locationList = remember(fcba) { dbHelper.getBlockList(fcba) }
 
+    // --- LOGIKA DIALOG PENCARIAN ---
+    if (activeDialog != null) {
+        val dialogTitle = when (activeDialog) {
+            "AFD" -> "Cari Afdeling"
+            "GANG" -> "Cari Gang Code"
+            "JOB" -> "Cari Job Code"
+            "LOC" -> "Cari Location Code"
+            else -> ""
+        }
+
+        val currentOptions: List<String> = when (activeDialog) {
+            "AFD" -> afdelingList
+            "GANG" -> gangList
+            "JOB" -> jobList
+            "LOC" -> locationList
+            else -> emptyList<String>()
+        }
+
+        // PERBAIKAN: Gunakan Trailing Lambda (onSelect di luar kurung)
+        // dan tentukan tipe data secara eksplisit (: String)
+        SearchableListDialog(
+            title = dialogTitle,
+            options = currentOptions,
+            onDismiss = { activeDialog = null }
+        ) { selectedValue: String ->
+            when (activeDialog) {
+                "AFD" -> {
+                    selectedAfd = selectedValue
+                    selectedGang = ""
+                }
+                "GANG" -> selectedGang = selectedValue
+                "JOB" -> selectedJob = selectedValue
+                "LOC" -> selectedLoc = selectedValue
+            }
+            activeDialog = null
+        }
+
+
+    }
 
     Scaffold(
         topBar = {
@@ -63,11 +112,11 @@ fun RKHFormScreen(
                 )
             )
         }
-    ) { padding ->
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(innerPadding)
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -79,16 +128,32 @@ fun RKHFormScreen(
                 label = { Text("FCBA") },
                 modifier = Modifier.fillMaxWidth(),
                 readOnly = true,
-                enabled = false
+                enabled = false,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledTextColor = Color.Black,
+                    disabledContainerColor = Color(0xFFF0F0F0)
+                )
             )
 
-            // Dropdowns
-            RKHDropdown("AFDELING", selectedAfd, afdelingList) { selectedAfd = it }
-            RKHDropdown("GANG CODE", selectedGang, gangList) { selectedGang = it }
-            RKHDropdown("JOB CODE", selectedJob, jobList) { selectedJob = it }
-            RKHDropdown("LOCATION CODE", selectedLoc, locationList) { selectedLoc = it }
+            // 2. Searchable Fields (Menggunakan fungsi dari SharedComponents.kt)
+            ClickableSearchField(label = "AFDELING", value = selectedAfd) { activeDialog = "AFD" }
 
-            // Numeric Inputs
+            ClickableSearchField(
+                label = "GANG CODE",
+                value = selectedGang,
+                enabled = selectedAfd.isNotEmpty()
+            ) {
+                if (selectedAfd.isEmpty()) {
+                    Toast.makeText(context, "Pilih Afdeling terlebih dahulu!", Toast.LENGTH_SHORT).show()
+                } else {
+                    activeDialog = "GANG"
+                }
+            }
+
+            ClickableSearchField(label = "JOB CODE", value = selectedJob) { activeDialog = "JOB" }
+            ClickableSearchField(label = "LOCATION CODE", value = selectedLoc) { activeDialog = "LOC" }
+
+            // 3. Numeric Inputs
             OutlinedTextField(
                 value = hk,
                 onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) hk = it },
@@ -97,21 +162,23 @@ fun RKHFormScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
             )
 
-            OutlinedTextField(
-                value = unit,
-                onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) unit = it },
-                label = { Text("UNIT") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = unit,
+                    onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) unit = it },
+                    label = { Text("UNIT") },
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
 
-            OutlinedTextField(
-                value = output,
-                onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) output = it },
-                label = { Text("OUTPUT") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-            )
+                OutlinedTextField(
+                    value = output,
+                    onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) output = it },
+                    label = { Text("OUTPUT") },
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -145,46 +212,3 @@ fun RKHFormScreen(
         }
     }
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun RKHDropdown(label: String, selectedValue: String, options: List<String>, onSelected: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
-    ) {
-        OutlinedTextField(
-            value = selectedValue,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor()
-        )
-
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            if (options.isEmpty()) {
-                DropdownMenuItem(
-                    text = { Text("Data Kosong") },
-                    onClick = { expanded = false }
-                )
-            } else {
-                options.forEach { selectionOption ->
-                    DropdownMenuItem(
-                        text = { Text(selectionOption) },
-                        onClick = {
-                            onSelected(selectionOption)
-                            expanded = false
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
-

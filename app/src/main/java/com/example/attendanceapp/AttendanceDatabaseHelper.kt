@@ -41,8 +41,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     companion object {
         // Ganti nama ke v11 untuk reset total terakhir kali
-        const val DATABASE_NAME = "attendance_reset_final_v282.db"
-        const val DATABASE_VERSION = 282
+        const val DATABASE_NAME = "attendance_reset_final_v285.db"
+        const val DATABASE_VERSION = 285
 
         const val T_EMP = "EMPLOYEE"
         const val E_FCCODE = "FCCODE"
@@ -463,12 +463,12 @@ class AttendanceDatabaseHelper(private val context: Context) :
     private fun insertDefaultUsers(db: SQLiteDatabase) {
         val users = listOf(
             // Format: Username, Password, EmpCode, Role, FCBA (BA Code)
-            arrayOf("admin", "1234", "ADM00", "ADMIN", "99"),
-            arrayOf("mandor1", "1234", "MND01", "MANDOR", "41"),
-            arrayOf("mandor2", "qwerty", "MND02", "MANDOR", "41"),
-            arrayOf("kerani1", "1234", "KRN01", "KERANI", "41"),
-            arrayOf("kerani2", "pass123", "KRN02", "KERANI", "41"),
-            arrayOf("tester_expired", "1234", "EXP01", "KERANI", "41")
+            arrayOf("admin", "1234", "ADM00", "ADMIN", "SRE"),
+            arrayOf("mandor1", "1234", "MND01", "MANDOR", "SRE"),
+            arrayOf("mandor2", "qwerty", "MND02", "MANDOR", "SRE"),
+            arrayOf("kerani1", "1234", "KRN01", "KERANI", "SRE"),
+            arrayOf("kerani2", "pass123", "KRN02", "KERANI", "SRE"),
+            arrayOf("tester_expired", "1234", "EXP01", "KERANI", "SRE")
         ) // TIDAK ADA KURUNG TUTUP FUNGSI DI SINI
 
         users.forEach { user ->
@@ -491,7 +491,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
             // Logika Hak Akses Menu
             when (role) {
                 "ADMIN", "MANDOR" -> {
-                    for (menuCode in 1..8) {
+                    // Admin & Mandor dapat menu 1 sampai 9
+                    for (menuCode in 1..9) {
                         insertAccess(db, empCode, menuCode, isGranted = 1, daysValid = 365)
                     }
                 }
@@ -499,7 +500,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
                     if (username == "tester_expired") {
                         insertAccess(db, empCode, 1, isGranted = 1, daysValid = -1)
                     } else {
-                        listOf(1, 4).forEach { menuCode ->
+                        // Kerani sekarang dapat menu 1 (Absen), 4 (SPB), dan 9 (Kirim Data/QR)
+                        listOf(1, 4, 9).forEach { menuCode ->
                             insertAccess(db, empCode, menuCode, isGranted = 1, daysValid = 30)
                         }
                     }
@@ -576,70 +578,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     // --- FUNGSI SAVE (TANPA DB.CLOSE()) ---
 
-    fun saveWorkProgress(empId: String, category: String, block: String, result: String, notes: String, status: String): Boolean {
-        return try {
-            val cv = ContentValues().apply {
-                put(P_EMP_ID, empId); put(P_CATEGORY, category); put(P_BLOCK, block)
-                put(P_RESULT, result); put(P_NOTES, notes); put(P_STATUS, status)
-                put(P_TIMESTAMP, SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
-            }
-            writableDatabase.insert(T_MAINTENANCE, null, cv) != -1L
-        } catch (e: Exception) { false }
-    }
 
-    fun saveFruitCountingDetailed(
-        fcba: String, tanggal: String, rkh: String, gang: String,
-        s1: String, s2: String, s3: String, s4: String,
-        workers: String, loc: String, unit: Double, output: Double,
-        tph: String, beras: Int, lembur: Double
-    ): Long {
-        return try {
-            val db = writableDatabase
-            val cv = ContentValues().apply {
-                put("fcba", fcba)
-                put("tanggal", tanggal)
-                put("no_rkh", rkh)
-                put("gang_code", gang)
-                put("supervisi1", s1)
-                put("supervisi2", s2)
-                put("supervisi3", s3)
-                put("supervisi4", s4)
-                put("karyawan_ids", workers)
-                put("location_code", loc)
-                put("unit", unit)
-                put("output", output)
-                put("tph_code", tph)
-                put("is_beras", beras)
-                put("lembur", lembur)
-            }
-            db.insert(T_FRUIT_COUNTING, null, cv)
-        } catch (e: Exception) {
-            Log.e("DB_ERROR", "Save Fruit Error: ${e.message}")
-            -1L
-        }
-    }
-
-    fun saveAKP(empId: String, block: String, ripeBunches: Int, density: Double): Boolean {
-        return try {
-            val cv = ContentValues().apply {
-                put(P_EMP_ID, empId); put(P_BLOCK, block)
-                put(P_RESULT, "Janjang: $ripeBunches, AKP: ${String.format("%.2f", density)}")
-                put(P_CATEGORY, "AKP"); put(P_STATUS, "COMPLETED")
-            }
-            writableDatabase.insert(T_MAINTENANCE, null, cv) != -1L
-        } catch (e: Exception) { false }
-    }
-
-    fun saveAncakPanen(empId: String, block: String, quality: String, notes: String): Boolean {
-        return try {
-            val cv = ContentValues().apply {
-                put("emp_id", empId); put("block", block)
-                put("quality", quality); put("notes", notes)
-                put("date", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
-            }
-            writableDatabase.insert("table_ancak_panen", null, cv) != -1L
-        } catch (e: Exception) { false }
-    }
 
     fun getEmployeeByOnlyCode(code: String): Employee? {
         return try {
@@ -662,27 +601,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
         }
     }
 
-    // --- FUNGSI GETTER ---
 
-    fun getWorkProgressHistory(empId: String): List<Map<String, String>> {
-        val list = mutableListOf<Map<String, String>>()
-        try {
-            readableDatabase.rawQuery("SELECT * FROM $T_MAINTENANCE WHERE $P_EMP_ID = ? ORDER BY $P_TIMESTAMP DESC", arrayOf(empId)).use { c ->
-                while (c.moveToNext()) {
-                    list.add(mapOf(
-                        "category" to c.getString(c.getColumnIndexOrThrow(P_CATEGORY)),
-                        "block" to c.getString(c.getColumnIndexOrThrow(P_BLOCK)),
-                        "result" to c.getString(c.getColumnIndexOrThrow(P_RESULT)),
-                        "status" to c.getString(c.getColumnIndexOrThrow(P_STATUS)),
-                        "date" to c.getString(c.getColumnIndexOrThrow(P_TIMESTAMP))
-                    ))
-                }
-            }
-        } catch (e: Exception) { }
-        return list
-    }
 
-    // In AttendanceDatabaseHelper.kt
 
 
     fun insertFaceMapping(fccode: String, fcba: String, features: FloatArray): Boolean {
@@ -778,20 +698,6 @@ class AttendanceDatabaseHelper(private val context: Context) :
     }
 
 
-fun checkFaceDataStatus(fccode: String): String {
-    return try {
-        val db = readableDatabase
-        db.rawQuery("SELECT FACEEMBEDDING FROM $T_EMP WHERE $E_FCCODE = ?", arrayOf(fccode)).use { c ->
-            if (c.moveToFirst()) {
-                val data = c.getString(0)
-                if (data.isNullOrBlank()) "KOSONG (NULL/BLANK)"
-                else "ADA (Panjang Karakter: ${data.length})"
-            } else "KARYAWAN TIDAK DITEMUKAN"
-        }
-    } catch (e: Exception) {
-        "ERROR: ${e.message}"
-    }
-}
 
     fun getFaceMappingCount(fccode: String, fcba: String): Int {
         val db = this.readableDatabase
@@ -808,13 +714,6 @@ fun checkFaceDataStatus(fccode: String): String {
     }
 
 
-    // Helper to convert ByteArray back to FloatArray
-    private fun byteArrayToFloatArray(byteArray: ByteArray): FloatArray {
-        val buffer = java.nio.ByteBuffer.wrap(byteArray)
-        val floatArray = FloatArray(byteArray.size / 4)
-        buffer.asFloatBuffer().get(floatArray)
-        return floatArray
-    }
 
     // In AttendanceDatabaseHelper.kt
 
@@ -870,32 +769,45 @@ fun checkFaceDataStatus(fccode: String): String {
             val inputStream = context.assets.open(fileName)
             val content = inputStream.bufferedReader().use { it.readText() }
 
-            // 1. Bersihkan sintaks Oracle: TIMESTAMP'...' menjadi '...'
-            var cleanSql = content.replace("TIMESTAMP'", "'", ignoreCase = true)
+            // 1. Bersihkan sintaks Oracle secara menyeluruh
+            // Hapus "TIMESTAMP'" dan kata "TIMESTAMP" saja agar SQLite tidak bingung
+            val cleanSql = content.replace("TIMESTAMP'", "'", ignoreCase = true)
+                .replace("TIMESTAMP", "", ignoreCase = true)
 
             // 2. Pecah per perintah SQL berdasarkan titik koma
             val statements = cleanSql.split(";")
+            val totalStatements = statements.size
+            var processedCount = 0
 
             db.beginTransaction()
             try {
                 statements.forEach { statement ->
                     val sql = statement.trim()
                     if (sql.isNotEmpty()) {
-                        // Gunakan REPLACE agar tidak error jika data duplikat
+                        // Gunakan REPLACE agar data SRE yang sudah ada tertimpa yang baru (tidak duplikat/error)
                         val finalSql = if (sql.uppercase().startsWith("INSERT INTO")) {
                             sql.replaceFirst("INSERT INTO", "INSERT OR REPLACE INTO", ignoreCase = true)
                         } else {
                             sql
                         }
+
                         try {
                             db.execSQL(finalSql)
+                            processedCount++
+
+                            // Kirim progress ke UI dalam persentase (0-100)
+                            if (totalStatements > 0) {
+                                val progress = (processedCount * 100) / totalStatements
+                                onProgress(progress)
+                            }
                         } catch (e: Exception) {
-                            Log.e("IMPORT_ERROR", "Gagal di $fileName: ${e.message}")
+                            // Log error baris tertentu tapi lanjut ke baris berikutnya
+                            Log.e("IMPORT_ERROR", "Gagal di $fileName (baris $processedCount): ${e.message}")
                         }
                     }
                 }
                 db.setTransactionSuccessful()
-                Log.d("DB_CHECK", "IMPORT BERHASIL: $fileName")
+                Log.d("DB_CHECK", "IMPORT BERHASIL: $fileName ($processedCount data SRE dimasukkan)")
             } finally {
                 db.endTransaction()
             }
@@ -1007,6 +919,7 @@ fun checkFaceDataStatus(fccode: String): String {
 
             // 3. Query dengan Filter FCBA (Penting agar data SRE tidak muncul di BA lain)
             // Jika Admin (99), tampilkan semua. Jika mandor, filter sesuai BA-nya.
+            // Di dalam getDropdownData
             val query: String
             val args: Array<String>?
 
@@ -1014,8 +927,9 @@ fun checkFaceDataStatus(fccode: String): String {
                 query = "SELECT DISTINCT $column FROM $tableName WHERE $column IS NOT NULL ORDER BY $column ASC"
                 args = null
             } else {
-                query = "SELECT DISTINCT $column FROM $tableName WHERE FCBA = ? AND $column IS NOT NULL ORDER BY $column ASC"
-                args = arrayOf(userFcba)
+                // Paksa menggunakan SRE jika bukan admin
+                query = "SELECT DISTINCT $column FROM $tableName WHERE FCBA = 'SRE' AND $column IS NOT NULL ORDER BY $column ASC"
+                args = null
             }
 
             db.rawQuery(query, args).use { cursor ->
@@ -1033,15 +947,6 @@ fun checkFaceDataStatus(fccode: String): String {
         return list
     }
 
-    fun getAllJobs(): List<Pair<String, String>> {
-        val list = mutableListOf<Pair<String, String>>()
-        val cursor = readableDatabase.rawQuery("SELECT FCCODE, FCNAME FROM $T_JOB", null)
-        while (cursor.moveToNext()) {
-            list.add(cursor.getString(0) to cursor.getString(1))
-        }
-        cursor.close()
-        return list
-    }
 
 
     fun insertRKH(fcba: String, afd: String, gang: String, job: String, loc: String, hk: Double, unit: Double, out: Double): Long {
@@ -1059,93 +964,13 @@ fun checkFaceDataStatus(fccode: String): String {
         return db.insert(T_RKH, null, cv)
     }
 
-    fun saveRKH(fcba: String, afd: String, gang: String, job: String, loc: String, hk: Double, unit: Double, out: Double): Long {
-        return try {
-            val db = writableDatabase
-            val cv = ContentValues().apply {
-                put("fcba", fcba)
-                put("afdeling", afd)
-                put("gangcode", gang)
-                put("job_code", job)
-                put("location_code", loc)
-                put("jumlah_hk", hk)
-                put("unit", unit)
-                put("output", out)
-            }
-            db.insert(T_RKH, null, cv)
-        } catch (e: Exception) { -1L }
-    }
 
-    fun getRKHData(): List<Map<String, String>> {
-        val list = mutableListOf<Map<String, String>>()
-        val db = readableDatabase
-        try {
-            db.rawQuery("SELECT * FROM $T_RKH", null).use { cursor ->
-                while (cursor.moveToNext()) {
-                    list.add(mapOf(
-                        "id" to cursor.getString(cursor.getColumnIndexOrThrow("id")),
-                        "afd" to cursor.getString(cursor.getColumnIndexOrThrow("afdeling")),
-                        "gang" to cursor.getString(cursor.getColumnIndexOrThrow("gangcode")),
-                        "loc" to cursor.getString(cursor.getColumnIndexOrThrow("location_code")),
-                        "hk" to cursor.getString(cursor.getColumnIndexOrThrow("jumlah_hk"))
-                    ))
-                }
-            }
-        } catch (e: Exception) { Log.e("DB_ERROR", "getRKHData: ${e.message}") }
-        return list
-    }
-
-    fun getRKHDetailForValidation(noRkh: String): Map<String, String>? {
-        val db = readableDatabase
-        // Pastikan tabel T_RKH Anda punya kolom jumlah_hk
-        val query = "SELECT gangcode, location_code, jumlah_hk FROM $T_RKH WHERE no_rkh = ?"
-        db.rawQuery(query, arrayOf(noRkh)).use { c ->
-            if (c.moveToFirst()) {
-                return mapOf(
-                    "gang" to (c.getString(0) ?: ""),
-                    "location" to (c.getString(1) ?: ""),
-                    "max_hk" to (c.getString(2) ?: "0")
-                )
-            }
-        }
-        return null
-    }
-
-    fun saveMaintenanceDetailed(
-        fcba: String, rkh: String, gang: String,
-        s1: String, s2: String, s3: String, s4: String,
-        workers: String, loc: String, unit: Double,
-        output: Double, rate: Double, beras: Int, lembur: Double
-    ): Long {
-        return try {
-            val db = writableDatabase
-            val cv = ContentValues().apply {
-                put(M_FCBA, fcba)
-                put(M_RKH, rkh)
-                put(M_GANG, gang)
-                put(M_S1, s1)
-                put(M_S2, s2)
-                put(M_S3, s3)
-                put(M_S4, s4)
-                put(M_WORKERS, workers)
-                put(M_LOCATION, loc)
-                put(M_UNIT, unit)
-                put(M_OUTPUT, output)
-                put(M_RATE, rate)
-                put(M_BERAS, beras)
-                put(M_LEMBUR, lembur)
-            }
-            db.insert(T_MAINTENANCE, null, cv)
-        } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal Simpan Maintenance: ${e.message}")
-            -1L
-        }
-    }
 
     fun savePlantationProgress(
         rkh: String,
         category: String,
         employees: List<String>,
+        supervisors: List<String>,
         unit: Double,
         output: Double,
         rate: Double,
@@ -1172,75 +997,6 @@ fun checkFaceDataStatus(fccode: String): String {
             -1L
         }
     }
-    fun getEmployeesForMaintenance(fcba: String): List<Map<String, String>> {
-        val list = mutableListOf<Map<String, String>>()
-        val db = readableDatabase
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-
-        val query = """
-        SELECT DISTINCT e.$E_FCCODE, e.$E_NAME 
-        FROM $T_EMP e
-        INNER JOIN $T_ATT a ON e.$E_FCCODE = a.$A_EMP_ID
-        WHERE a.$A_FCBA = ? 
-        AND a.$A_TIMESTAMP LIKE '$today%' 
-        AND a.$A_ACTION = 'CHECK_IN'
-    """.trimIndent()
-
-        db.rawQuery(query, arrayOf(fcba)).use { c ->
-            while (c.moveToNext()) {
-                list.add(mapOf("id" to c.getString(0), "name" to c.getString(1)))
-            }
-        }
-        return list
-    }
-
-
-
-    fun getEmployeesByRole(roleName: String): List<Map<String, String>> {
-        val list = mutableListOf<Map<String, String>>()
-        val db = this.readableDatabase
-        // Mengambil dari tabel users sesuai kolom role
-        val cursor = db.rawQuery("SELECT $U_EMPCODE, $U_USERNAME FROM $T_USERS WHERE $U_ROLE = ?", arrayOf(roleName))
-        if (cursor.moveToFirst()) {
-            do {
-                list.add(mapOf(
-                    "id" to (cursor.getString(0) ?: ""),
-                    "name" to (cursor.getString(1) ?: "")
-                ))
-            } while (cursor.moveToNext())
-        }
-        cursor.close()
-        return list
-    }
-
-    fun getPresentWorkers(fcba: String): List<Pair<String, String>> {
-        val list = mutableListOf<Pair<String, String>>()
-        val db = readableDatabase
-        // Ambil dari tabel absensi hari ini
-        val query = "SELECT $A_EMP_ID, $A_EMP_NAME FROM $T_ATT WHERE $A_FCBA = ? AND date($A_TIMESTAMP) = date('now')"
-        db.rawQuery(query, arrayOf(fcba)).use { cursor ->
-            while (cursor.moveToNext()) {
-                list.add(cursor.getString(0) to cursor.getString(1))
-            }
-        }
-        return list
-    }
-
-    fun getRKHNumbers(): List<String> {
-        val list = mutableListOf<String>()
-        try {
-            val db = readableDatabase
-            // T_RKH_MENU adalah tabel hasil import SQL RKH
-            db.rawQuery("SELECT DISTINCT fcnorkh FROM T_RKH_MENU", null).use { c ->
-                while (c.moveToNext()) {
-                    list.add(c.getString(0))
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal ambil No RKH: ${e.message}")
-        }
-        return list
-    }
 
 
     fun getTPHByLocation(fieldCode: String): List<String> {
@@ -1261,37 +1017,42 @@ fun checkFaceDataStatus(fccode: String): String {
         return list
     }
 
+    fun getGangsByAfdeling(afdeling: String, fcba: String = "SRE"): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
 
-    fun saveMaintenance(
-        fcba: String, rkh: String, gang: String,
-        s1: String, s2: String, s3: String, s4: String,
-        workers: String, loc: String, unit: Double,
-        output: Double, rate: Double, beras: Int, lembur: Double
-    ): Long {
-        return try {
-            val db = writableDatabase
-            val cv = ContentValues().apply {
-                put("fcba", fcba); put("no_rkh", rkh); put("gang_code", gang)
-                put("supervisi1", s1); put("supervisi2", s2); put("supervisi3", s3); put("supervisi4", s4)
-                put("karyawan_ids", workers); put("location_code", loc)
-                put("unit", unit); put("output", output); put("rate", rate)
-                put("is_beras", beras); put("lembur", lembur)
+        // Kita mencari Gang yang bekerja di Afdeling tersebut (berdasarkan data Karyawan)
+        // Atau jika Anda punya kolom AFDELING di tabel GANG, sesuaikan querynya
+        val query = """
+        SELECT DISTINCT GANGCODE 
+        FROM $T_EMP 
+        WHERE SECTIONNAME = ? AND FCBA = ? 
+        ORDER BY GANGCODE ASC
+    """.trimIndent()
+
+        db.rawQuery(query, arrayOf(afdeling, fcba)).use { cursor ->
+            while (cursor.moveToNext()) {
+                val code = cursor.getString(0)
+                if (!code.isNullOrEmpty()) {
+                    list.add(code)
+                }
             }
-            db.insert(T_MAINTENANCE, null, cv)
-        } catch (e: Exception) { -1L }
+        }
+        return list
     }
+
 
     // Di dalam AttendanceDatabaseHelper.kt
 
     fun getRKHList(): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        // Query JOIN dengan tabel FIELD untuk mendapatkan Nama Blok (FCNAME)
         val query = """
         SELECT r.id, r.fcba, r.gangcode, r.job_code, r.location_code, r.jumlah_hk, f.FCNAME 
         FROM $T_RKH r
         INNER JOIN FIELD f ON r.location_code = f.FCCODE
-    """.trimIndent()
+        WHERE r.fcba = 'SRE'
+    """.trimIndent() // Tambahkan filter SRE di sini
 
         val cursor = db.rawQuery(query, null)
         while (cursor.moveToNext()) {
@@ -1300,9 +1061,9 @@ fun checkFaceDataStatus(fccode: String): String {
             map["fcba"] = cursor.getString(1)
             map["gang_code"] = cursor.getString(2)
             map["job_code"] = cursor.getString(3)
-            map["location"] = cursor.getString(4) // LD1SR
+            map["location"] = cursor.getString(4)
             map["jumlah_hk"] = cursor.getString(5)
-            map["location_name"] = cursor.getString(6) // Nama asli dari file FIELD (Contoh: "GUNUNG RAJA BLOK A")
+            map["location_name"] = cursor.getString(6)
             list.add(map)
         }
         cursor.close()
@@ -1356,25 +1117,7 @@ fun checkFaceDataStatus(fccode: String): String {
         return list
     }
 
-    // Ambil Master Pekerjaan (Job)
-    fun getMasterJobs(): List<String> {
-        val list = mutableListOf<String>()
-        val db = readableDatabase
-        db.rawQuery("SELECT name FROM $T_JOB", null).use { cursor ->
-            while (cursor.moveToNext()) list.add(cursor.getString(0))
-        }
-        return list
-    }
 
-    fun getAllBlocks(): List<String> {
-        val list = mutableListOf<String>()
-        val cursor = readableDatabase.rawQuery("SELECT FCCODE FROM TPH", null)
-        while (cursor.moveToNext()) {
-            list.add(cursor.getString(0))
-        }
-        cursor.close()
-        return list
-    }
 
     // 1. Ambil JOB (Pekerjaan)
     fun getJobList(userFcba: String): List<String> {
@@ -1405,30 +1148,14 @@ fun checkFaceDataStatus(fccode: String): String {
     }
 
 
-    fun getTPHByBlock(blockCode: String): List<String> {
-        val list = mutableListOf<String>()
-        try {
-            val db = readableDatabase
-            // FIELDCODE adalah blok (F04SR), FCCODE adalah nomor TPH (TPH-A)
-            val query = "SELECT FCCODE FROM $T_TPH WHERE FIELDCODE = ? ORDER BY FCCODE ASC"
 
-            db.rawQuery(query, arrayOf(blockCode)).use { cursor ->
-                while (cursor.moveToNext()) {
-                    list.add(cursor.getString(0))
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal ambil TPH: ${e.message}")
-        }
-        return list
-    }
 
     fun saveFruitCalculation(
         fcba: String,
         rkh: String,
         gang: String,
-        supervisors: List<String>, // List berisi supervisi 1 sampai 4
-        employees: List<String>,   // List ID karyawan yang dipilih
+        supervisors: List<String>,
+        employees: List<String>,
         location: String,
         tph: String,
         unit: Double,
@@ -1444,28 +1171,25 @@ fun checkFaceDataStatus(fccode: String): String {
                 put("fcba", fcba)
                 put("no_rkh", rkh)
                 put("gang_code", gang)
-                // Simpan supervisi 1-4
                 put("supervisi1", supervisors.getOrNull(0) ?: "")
                 put("supervisi2", supervisors.getOrNull(1) ?: "")
                 put("supervisi3", supervisors.getOrNull(2) ?: "")
                 put("supervisi4", supervisors.getOrNull(3) ?: "")
-                // Karyawan dipisahkan koma
                 put("karyawan_ids", employees.joinToString(","))
                 put("location_code", location)
                 put("tph_code", tph)
                 put("unit", unit)
                 put("output", output)
-                put("rate", rate)
+                // put("rate", rate) // Kolom 'rate' tidak ada di onCreate Anda, hati-hati
                 put("is_beras", beras)
                 put("lembur", lembur)
-                put("category", category)
-                put("status", "NFC_READY") // Status siap diangkut Kerani Kirim via NFC
-                put("timestamp", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
+                // Gunakan kolom 'tanggal' sesuai onCreate
+                put("tanggal", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
             }
-            // Pastikan tabel T_MAINTENANCE atau tabel progres baru memiliki kolom-kolom di atas
-            db.insert("T_MAINTENANCE", null, values)
+            // GUNAKAN NAMA TABEL: "fruit_counting" (sesuai T_FRUIT_COUNTING)
+            db.insert("fruit_counting", null, values)
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal simpan perhitungan buah: ${e.message}")
+            Log.e("DB_ERROR", "Gagal simpan: ${e.message}")
             -1L
         }
     }
@@ -1475,46 +1199,51 @@ fun checkFaceDataStatus(fccode: String): String {
     fun getBlocksByLocation(locationCode: String): List<String> {
         val list = mutableListOf<String>()
         val db = readableDatabase
-        // Query ini mengasumsikan tabel master data memiliki hubungan antara blok dan lokasi
-        // Jika data blok ada di tabel T_LOCATION, sesuaikan nama kolomnya
-        val query = "SELECT DISTINCT name FROM $T_LOCATION WHERE name LIKE '$locationCode%'"
+
+        // ANALISA:
+        // 1. Di getRKHList, Anda melakukan JOIN ke tabel 'FIELD' menggunakan kolom 'FCCODE'.
+        // 2. Jadi, tabel master untuk blok/lokasi adalah 'FIELD'.
+        // 3. Kita gunakan kolom 'FCCODE' untuk kode blok dan 'FCNAME' (opsional) untuk nama.
+
+        // Jika locationCode dari RKH adalah kode afdeling (misal: 'SRE'),
+        // maka kita cari semua FCCODE di tabel FIELD yang berawalan 'SRE'.
+        val query = "SELECT DISTINCT FCCODE FROM FIELD WHERE FCCODE LIKE ? ORDER BY FCCODE ASC"
+        val selectionArgs = arrayOf("$locationCode%")
 
         try {
-            db.rawQuery(query, null).use { cursor ->
+            db.rawQuery(query, selectionArgs).use { cursor ->
                 while (cursor.moveToNext()) {
-                    list.add(cursor.getString(0))
+                    val blockCode = cursor.getString(0)
+                    if (!blockCode.isNullOrEmpty()) {
+                        list.add(blockCode)
+                    }
                 }
             }
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "getBlocksByLocation: ${e.message}")
+            Log.e("DB_ERROR", "Gagal getBlocksByLocation: ${e.message}")
         }
+
+        // Jika masih kosong, kita coba ambil data dari tabel TPH (seperti fungsi getBlockList Anda)
+        if (list.isEmpty()) {
+            val queryTph = "SELECT DISTINCT FIELDCODE FROM TPH WHERE FIELDCODE LIKE ? ORDER BY FIELDCODE ASC"
+            try {
+                db.rawQuery(queryTph, selectionArgs).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        cursor.getString(0)?.let { list.add(it) }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("DB_ERROR", "Gagal getBlocks dari TPH: ${e.message}")
+            }
+        }
+
         return list
     }
 
-    fun getRkhDetail(rkhId: String): Map<String, String>? {
-        val db = readableDatabase
-        val cursor = db.rawQuery("SELECT gangcode, location_code FROM $T_RKH WHERE id = ?", arrayOf(rkhId))
-        var result: Map<String, String>? = null
-        if (cursor.moveToFirst()) {
-            result = mapOf(
-                "gang" to cursor.getString(0),
-                "location" to cursor.getString(1)
-            )
-        }
-        cursor.close()
-        return result
-    }
 
-    // Di dalam AttendanceDatabaseHelper.kt
-    fun importJobMaster(db: SQLiteDatabase, context: Context) {
-        val inputStream = context.assets.open("JOB_202606011226.sql")
-        val reader = inputStream.bufferedReader()
-        reader.forEachLine { line ->
-            if (line.isNotBlank() && line.startsWith("INSERT")) {
-                db.execSQL(line)
-            }
-        }
-    }
+
+
+
 
     fun getAfdelingList(userFcba: String): List<String> {
         val list = mutableListOf<String>()
@@ -1568,62 +1297,24 @@ fun checkFaceDataStatus(fccode: String): String {
     fun getBusinessUnits(): List<String> {
         val list = mutableListOf<String>()
         val db = readableDatabase
-        // Ambil FCNAME dari tabel BUSINESSUNIT
-        val query = "SELECT FCNAME FROM BUSINESSUNIT ORDER BY FCNAME ASC"
+        // Ambil yang namanya mengandung SRE atau SUNGAI ROTAN
+        val query = "SELECT FCNAME FROM BUSINESSUNIT WHERE FCNAME LIKE '%SRE%' OR FCNAME LIKE '%SUNGAI ROTAN%' ORDER BY FCNAME ASC"
 
         try {
             db.rawQuery(query, null).use { cursor ->
                 while (cursor.moveToNext()) {
-                    val name = cursor.getString(0)
-                    if (!name.isNullOrEmpty()) {
-                        list.add(name)
-                    }
+                    cursor.getString(0)?.let { list.add(it) }
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("DB_ERROR", "Gagal ambil BusinessUnit: ${e.message}")
+            Log.e("DB_ERROR", "Gagal ambil BusinessUnit SRE: ${e.message}")
         }
         return list
     }
 
-    fun getAllLocations(): List<String> {
-        val list = mutableListOf<String>()
-        val db = readableDatabase
-        val query = "SELECT FCCODE FROM FIELD WHERE FCBA = 'SRE' ORDER BY FCCODE ASC"
-        // Filter FCBA sesuai session user (Contoh: 'SRE' sesuai data SQL Anda)
 
-        db.rawQuery(query, null).use { cursor ->
-            while (cursor.moveToNext()) {
-                list.add(cursor.getString(0))
-            }
-        }
-        return list
-    }
 
-    fun importBusinessUnitMaster(db: SQLiteDatabase, context: Context) {
-        try {
-            // Ganti nama file sesuai dengan nama file .sql Anda di folder assets
-            val inputStream = context.assets.open("BUSINESSUNIT_2025.sql")
-            val reader = inputStream.bufferedReader()
 
-            db.beginTransaction()
-            try {
-                reader.forEachLine { line ->
-                    if (line.isNotBlank() && line.startsWith("INSERT", ignoreCase = true)) {
-                        // PENTING: Hapus kata TIMESTAMP agar tidak error di SQLite
-                        val cleanLine = line.replace("TIMESTAMP", "")
-                        db.execSQL(cleanLine)
-                    }
-                }
-                db.setTransactionSuccessful()
-                Log.d("DB_IMPORT", "Import BUSINESSUNIT Berhasil")
-            } finally {
-                db.endTransaction()
-            }
-        } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal import BUSINESSUNIT: ${e.message}")
-        }
-    }
 
     fun getAllFieldCodes(): List<String> {
         val list = mutableListOf<String>()
@@ -1638,46 +1329,29 @@ fun checkFaceDataStatus(fccode: String): String {
         return list
     }
 
-    fun getLocationsFromTPH(): List<String> {
-        val list = mutableListOf<String>()
+    // Tambahkan di dalam class AttendanceDatabaseHelper
+    fun getAllFruitCounting(): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        // Mengambil FIELDCODE unik dari tabel TPH
-        val query = "SELECT DISTINCT FIELDCODE FROM TPH WHERE FIELDCODE IS NOT NULL ORDER BY FIELDCODE ASC"
-
+        // Gunakan 'fruit_counting' dan urutkan berdasarkan 'id' atau 'created_at'
+        val query = "SELECT * FROM fruit_counting ORDER BY id DESC"
         try {
             db.rawQuery(query, null).use { cursor ->
                 while (cursor.moveToNext()) {
-                    list.add(cursor.getString(0))
+                    val map = mutableMapOf<String, String>()
+                    cursor.columnNames.forEach { col ->
+                        map[col] = cursor.getString(cursor.getColumnIndexOrThrow(col)) ?: ""
+                    }
+                    list.add(map)
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("DB_ERROR", "Gagal ambil lokasi dari TPH: ${e.message}")
+            Log.e("DB_ERROR", "Error getAllFruitCounting: ${e.message}")
         }
         return list
     }
 
-    fun importFieldMaster(db: SQLiteDatabase, context: Context) {
-        try {
-            val inputStream = context.assets.open("FIELD_202606011224.sql")
-            val reader = inputStream.bufferedReader()
 
-            db.beginTransaction()
-            try {
-                reader.forEachLine { line ->
-                    if (line.isNotBlank() && line.startsWith("INSERT", ignoreCase = true)) {
-                        // PENTING: Hapus TIMESTAMP agar SQLite tidak error
-                        val cleanLine = line.replace("TIMESTAMP", "")
-                        db.execSQL(cleanLine)
-                    }
-                }
-                db.setTransactionSuccessful()
-            } finally {
-                db.endTransaction()
-            }
-        } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal import FIELD: ${e.message}")
-        }
-    }
 
     // Fungsi untuk mengambil menu yang diizinkan untuk ID Karyawan tertentu
     // --- FUNGSI HAK AKSES MENU (FIX EXPIRED) ---

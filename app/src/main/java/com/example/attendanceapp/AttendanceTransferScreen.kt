@@ -13,7 +13,10 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -44,123 +47,109 @@ import java.util.concurrent.Executors
 fun AttendanceTransferScreen(
     dbHelper: AttendanceDatabaseHelper,
     userRole: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
 ) {
-    var showScanner by remember { mutableStateOf(false) }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isLoading by remember { mutableStateOf(false) }
-    var isDataEmpty by remember { mutableStateOf(false) } // Tambahkan state data kosong
     val context = LocalContext.current
 
+    // Otomatis buat QR saat layar dibuka (Semua Role)
     LaunchedEffect(Unit) {
-        if (userRole == "MANDOR") {
-            isLoading = true
-            isDataEmpty = false
-            try {
-                val data = dbHelper.getAttendanceForQRCode()
-                if (data.isNotEmpty()) {
-                    qrBitmap = generateQRCode(data)
-                } else {
-                    isDataEmpty = true // Tandai jika data kosong
-                }
-            } catch (e: Exception) {
-                Log.e("QR_ERROR", "Gagal: ${e.message}")
-            } finally {
-                isLoading = false
+        isLoading = true
+        try {
+            val data = dbHelper.getAttendanceForQRCode()
+            if (data.isNotEmpty()) {
+                qrBitmap = generateQRCode(data)
             }
+        } catch (e: Exception) {
+            Log.e("QR_ERROR", "Gagal: ${e.message}")
+        } finally {
+            isLoading = false
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Transfer Data Lapangan") },
+                title = { Text("QR Data Absensi") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF1A3A8F),
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                )
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).background(Color(0xFFF5F7FA))) {
-            when {
-                // 1. SAAT LOADING
-                isLoading -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(color = Color(0xFF2E7D32))
-                        Spacer(Modifier.height(16.dp))
-                        Text("Menyiapkan data QR...", fontWeight = FontWeight.Medium)
-                    }
-                }
-
-                // 2. SAAT QR BERHASIL DIBUAT
-                qrBitmap != null -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text("SCAN OLEH KERANI", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color(0xFF2E7D32))
-                        Spacer(Modifier.height(24.dp))
-                        Surface(
-                            shadowElevation = 8.dp,
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.White
-                        ) {
-                            Image(
-                                bitmap = qrBitmap!!.asImageBitmap(),
-                                contentDescription = "QR Code",
-                                modifier = Modifier.size(320.dp).padding(16.dp)
-                            )
-                        }
-                        Spacer(Modifier.height(24.dp))
-                        Text("Mandor: Tunjukkan layar ini ke Kerani", color = Color.Gray)
-                    }
-                }
-
-                // 3. SAAT SCANNER AKTIF (Untuk Kerani)
-                showScanner -> {
-                    QRScannerView(onCodeScanned = { result ->
-                        dbHelper.receiveTransferredData(result)
-                        showScanner = false
-                        Toast.makeText(context, "Data Berhasil Diterima!", Toast.LENGTH_SHORT).show()
-                    })
-                }
-
-                // 4. JIKA DATA KOSONG (Khusus Mandor)
-                isDataEmpty && userRole == "MANDOR" -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text("Tidak ada data absen untuk dikirim hari ini", color = Color.Red)
-                        Spacer(Modifier.height(16.dp))
-                        Button(onClick = onBack) { Text("Kembali") }
-                    }
-                }
-
-                // 5. DEFAULT MENU (Hanya untuk Kerani/Admin - Tombol Kirim Dihapus)
-                else -> {
-                    TransferMenu(
-                        userRole = userRole,
-                        onReceiveClick = { showScanner = true }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(Color(0xFFF5F7FA))
+        ) {
+            // --- TAMPILAN QR (KIRIM DATA) ---
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color(0xFF1A3A8F))
+                    Spacer(Modifier.height(16.dp))
+                    Text("Mengambil data...")
+                } else if (qrBitmap != null) {
+                    Text(
+                        "SCAN QR INI",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = Color(0xFF1A3A8F)
                     )
+                    Spacer(Modifier.height(24.dp))
+                    Surface(
+                        shadowElevation = 10.dp,
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color.White
+                    ) {
+                        Image(
+                            bitmap = qrBitmap!!.asImageBitmap(),
+                            contentDescription = "QR Code",
+                            modifier = Modifier
+                                .size(320.dp)
+                                .padding(20.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "Tunjukkan ke HP penerima untuk transfer data",
+                        color = Color.Gray,
+                        fontSize = 14.sp
+                    )
+                } else {
+                    // Jika data kosong
+                    Icon(Icons.Default.Send, null, modifier = Modifier.size(64.dp), tint = Color.LightGray)
+                    Spacer(Modifier.height(16.dp))
+                    Text("Tidak ada data untuk dikirim hari ini", color = Color.Red)
                 }
+
+
             }
         }
     }
 }
 
+
 @Composable
 fun TransferMenu(userRole: String, onReceiveClick: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -170,7 +159,9 @@ fun TransferMenu(userRole: String, onReceiveClick: () -> Unit) {
             Text("Mode Penerima Data", fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
             Button(
                 onClick = onReceiveClick,
-                modifier = Modifier.fillMaxWidth().height(80.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(80.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
             ) {

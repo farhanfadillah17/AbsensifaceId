@@ -35,7 +35,7 @@ fun SPBFormScreen(
 ) {
     val context = LocalContext.current
     val sharedPref = context.getSharedPreferences("UserSession", Context.MODE_PRIVATE)
-    val fcbaUser = sharedPref.getString("fcba", "41") ?: "41"
+    val fcbaUser = sharedPref.getString("fcba", "SRE") ?: "SRE"
 
     // --- DATA SOURCES ---
     val rkhList = remember { dbHelper.getRKHList() }

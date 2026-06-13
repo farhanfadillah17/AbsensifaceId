@@ -2,7 +2,10 @@ package com.example.attendanceapp
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -31,11 +34,143 @@ fun FruitCountingScreen(
     onBack: () -> Unit,
     onSuccess: () -> Unit
 ) {
-    val context = LocalContext.current
-    val sharedPref = context.getSharedPreferences("UserSession", Context.MODE_PRIVATE)
+    // State Navigasi Internal
+    var isFormVisible by remember { mutableStateOf(false) }
+    var selectedDataForNfc by remember { mutableStateOf<Map<String, String>?>(null) }
 
-    // 1. Ambil FCBA dari Shared Preferences
-    val fcbaUser = sharedPref.getString("fcba", "41") ?: "41"
+    // Refresh list data
+    var fruitDataList by remember { mutableStateOf(dbHelper.getAllFruitCounting()) }
+
+    // Dialog NFC
+    if (selectedDataForNfc != null) {
+        NfcTransferDialog(
+            data = selectedDataForNfc!!,
+            onDismiss = { selectedDataForNfc = null }
+        )
+    }
+
+    if (isFormVisible) {
+        // TAMPILAN FORM INPUT
+        FruitCountingFormContent(
+            dbHelper = dbHelper,
+            fcba = fcba,
+            onBack = { isFormVisible = false },
+            onSaveSuccess = {
+                fruitDataList = dbHelper.getAllFruitCounting() // Refresh data list
+                isFormVisible = false
+                // Jika ingin langsung ke dashboard setelah simpan, panggil: onSuccess()
+            }
+        )
+    } else {
+        // TAMPILAN UTAMA: LIST DATA
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("List Perhitungan Buah", color = Color.White) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Default.ArrowBack, null, tint = Color.White)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1A3A8F))
+                )
+            },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = { isFormVisible = true },
+                    containerColor = Color(0xFF1A3A8F),
+                    contentColor = Color.White
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Tambah Data")
+                }
+            }
+        ) { padding ->
+            if (fruitDataList.isEmpty()) {
+                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                    Text("Belum ada data. Klik + untuk menambah.")
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(fruitDataList) { data ->
+                        FruitCountingItemCard(data = data) {
+                            selectedDataForNfc = data
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FruitCountingItemCard(data: Map<String, String>, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        elevation = CardDefaults.cardElevation(4.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(data["tanggal"] ?: data["created_at"] ?: "-", fontWeight = FontWeight.Bold, color = Color.DarkGray)
+                Text("TPH: ${data["tph_code"] ?: "-"}", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+            }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp), thickness = 0.5.dp)
+            Row(Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text("Lokasi", fontSize = 12.sp, color = Color.Gray)
+                    Text(data["location_code"] ?: "-", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("Output", fontSize = 12.sp, color = Color.Gray)
+                    Text(data["output"] ?: "0", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("Unit", fontSize = 12.sp, color = Color.Gray)
+                    Text(data["unit"] ?: "0", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Text(
+                "Klik untuk Transfer NFC",
+                fontSize = 10.sp,
+                color = Color(0xFF2E7D32),
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun NfcTransferDialog(data: Map<String, String>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Transfer NFC") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.Nfc, null, modifier = Modifier.size(64.dp), tint = Color(0xFF1A3A8F))
+                Spacer(Modifier.height(16.dp))
+                Text("Tempelkan HP ke Reader/HP lain untuk mengirim data TPH: ${data["tph_code"] ?: "-"}")
+                Text("Data JSON: ${Gson().toJson(data)}", fontSize = 10.sp, color = Color.LightGray)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Tutup") }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FruitCountingFormContent(
+    dbHelper: AttendanceDatabaseHelper,
+    fcba: String,
+    onBack: () -> Unit,
+    onSaveSuccess: () -> Unit
+) {
+    val context = LocalContext.current
 
     // Form States
     var selectedRKH by remember { mutableStateOf<Map<String, String>?>(null) }
@@ -46,154 +181,161 @@ fun FruitCountingScreen(
     var selectedWorkers by remember { mutableStateOf(setOf<String>()) }
     var unit by remember { mutableStateOf("") }
     var output by remember { mutableStateOf("") }
-    var rate by remember { mutableStateOf("") } // Tambahkan Rate
+    var rate by remember { mutableStateOf("") }
     var selectedTPH by remember { mutableStateOf("") }
     var isBeras by remember { mutableStateOf(false) }
     var lembur by remember { mutableStateOf("0") }
+    var activeDialog by remember { mutableStateOf<String?>(null) }
 
-    // Master Data Load
+    // Master Data
     val rkhList = remember { dbHelper.getRKHList() }
     val supervisorOptions = remember { dbHelper.getSupervisors() }
-    val presentWorkers = remember { dbHelper.getEmployeesAlreadyCheckedIn(fcbaUser) }
-
-    // TPH dinamis berdasarkan Location RKH
+    val presentWorkers = remember { dbHelper.getEmployeesAlreadyCheckedIn(fcba) }
     val locationCodeFromRKH = selectedRKH?.get("location") ?: ""
-    // Perbaiki baris yang error menjadi seperti ini:
     val tphList = remember(locationCodeFromRKH) {
-        if (locationCodeFromRKH.isNotEmpty()) {
-            dbHelper.getTPHByLocation(locationCodeFromRKH)
-        } else {
-            emptyList<String>() // Tambahkan <String> di sini
-        }
+        if (locationCodeFromRKH.isNotEmpty()) dbHelper.getTPHByLocation(locationCodeFromRKH) else emptyList()
     }
 
-
-    // Warna untuk Field Read Only
-    val readOnlyColors = TextFieldDefaults.colors(
-        focusedContainerColor = Color(0xFFF0F0F0),
-        unfocusedContainerColor = Color(0xFFF0F0F0),
-        disabledContainerColor = Color(0xFFF0F0F0)
-    )
+    // Dialog Pencarian Logic
+    if (activeDialog != null) {
+        when (activeDialog) {
+            "RKH" -> SearchableMapDialog(
+                title = "Cari No RKH", options = rkhList,
+                displayProvider = { "RKH:${it["no_rkh"]} - ${it["location"]}" },
+                onDismiss = { activeDialog = null },
+                onSelect = { selectedRKH = it; selectedTPH = ""; activeDialog = null }
+            )
+            "TPH" -> SearchableListDialog(
+                title = "Cari TPH", options = tphList,
+                onDismiss = { activeDialog = null },
+                onSelect = { selectedTPH = it; activeDialog = null }
+            )
+            "SUP1", "SUP2", "SUP3", "SUP4" -> SearchableListDialog(
+                title = "Cari Personil", options = supervisorOptions,
+                onDismiss = { activeDialog = null },
+                onSelect = {
+                    when(activeDialog) {
+                        "SUP1" -> supervisi1 = it
+                        "SUP2" -> supervisi2 = it
+                        "SUP3" -> supervisi3 = it
+                        "SUP4" -> supervisi4 = it
+                    }
+                    activeDialog = null
+                }
+            )
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Perhitungan Buah", color = Color.White) },
+                title = { Text("Form Perhitungan Buah", color = Color.White) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1A3A8F))
             )
         }
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // FCBA (Read Only)
-            OutlinedTextField(value = fcbaUser, onValueChange = {}, label = { Text("FCBA") }, readOnly = true, modifier = Modifier.fillMaxWidth(), colors = readOnlyColors)
+            // 1. Pilih No RKH
+            ClickableSearchField(
+                label = "Pilih No RKH",
+                value = if (selectedRKH != null) "RKH:${selectedRKH?.get("no_rkh")} - ${selectedRKH?.get("location")}" else "",
+                onClick = { activeDialog = "RKH" }
+            )
 
-            // 1. Dropdown RKH (Format RKH:1 - AFD-01)
-            RKHDropdownMap(
-                label = "No RKH",
-                selected = if (selectedRKH != null) "RKH:${selectedRKH?.get("no_rkh")} - ${selectedRKH?.get("location")}" else "",
-                options = rkhList
-            ) {
-                selectedRKH = it
-                selectedTPH = "" // Reset TPH jika RKH berubah
-            }
+            // 2. Gang Code (Otomatis & Read Only)
+            OutlinedTextField(
+                value = selectedRKH?.get("gang_code") ?: "",
+                onValueChange = {},
+                label = { Text("Gang Code") },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                enabled = false,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledTextColor = Color.Black,
+                    disabledBorderColor = Color.Gray,
+                    disabledLabelColor = Color.DarkGray,
+                    disabledContainerColor = Color(0xFFF5F5F5)
+                )
+            )
 
-            // 2. Gang Code & Location (Read Only dari RKH)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = selectedRKH?.get("gang_code") ?: "", onValueChange = {}, label = { Text("Gang Code") }, modifier = Modifier.weight(1f), readOnly = true, colors = readOnlyColors)
-                OutlinedTextField(value = selectedRKH?.get("location") ?: "", onValueChange = {}, label = { Text("Location") }, modifier = Modifier.weight(1f), readOnly = true, colors = readOnlyColors)
-            }
+            Text("Personil Supervisi", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
 
-            // 3. Supervisi 1 - 4
-            Text("Personil Supervisi (Master Karyawan)", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
-            RKHDropdownSimple("Supervisi 1 (Wajib)", supervisi1, supervisorOptions) { supervisi1 = it }
-            RKHDropdownSimple("Supervisi 2 (Hitung Buah)", supervisi2, supervisorOptions) { supervisi2 = it }
-            RKHDropdownSimple("Supervisi 3", supervisi3, supervisorOptions) { supervisi3 = it }
-            RKHDropdownSimple("Supervisi 4", supervisi4, supervisorOptions) { supervisi4 = it }
+            // Supervisi Rows
+            ClickableSearchField("Supervisi 1 (Wajib)", supervisi1) { activeDialog = "SUP1" }
+            ClickableSearchField("Supervisi 2", supervisi2) { activeDialog = "SUP2" }
+            ClickableSearchField("Supervisi 3", supervisi3) { activeDialog = "SUP3" }
+            ClickableSearchField("Supervisi 4", supervisi4) { activeDialog = "SUP4" }
 
-            // 4. Karyawan (Hanya yang sudah absen)
-            Text("Pilih Karyawan (Sudah Absen)", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
-            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))) {
-                Column(Modifier.padding(8.dp)) {
-                    if (presentWorkers.isEmpty()) {
-                        Text("Belum ada karyawan yang absen hari ini", color = Color.Red, fontSize = 12.sp)
-                    }
+            Text("Pilih Karyawan", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+            Card(modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp)) {
+                Column(Modifier.padding(8.dp).verticalScroll(rememberScrollState())) {
                     presentWorkers.forEach { staff ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = selectedWorkers.contains(staff["id"]), onCheckedChange = { isChecked ->
-                                val current = selectedWorkers.toMutableSet()
-                                if (isChecked) current.add(staff["id"]!!) else current.remove(staff["id"])
-                                selectedWorkers = current
-                            })
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable {
+                            val current = selectedWorkers.toMutableSet()
+                            if (current.contains(staff["id"])) current.remove(staff["id"]) else current.add(staff["id"]!!)
+                            selectedWorkers = current
+                        }) {
+                            Checkbox(checked = selectedWorkers.contains(staff["id"]), onCheckedChange = null)
                             Text("${staff["id"]} - ${staff["name"]}", fontSize = 13.sp)
                         }
                     }
                 }
             }
 
-            // Info Validasi HK
-            val maxHk = selectedRKH?.get("jumlah_hk")?.toDoubleOrNull() ?: 0.0
-            Text(
-                text = "Terpilih: ${selectedWorkers.size} Karyawan (Target HK RKH: $maxHk)",
-                fontSize = 11.sp,
-                color = if (selectedWorkers.size > maxHk && maxHk > 0) Color.Red else Color.Gray
-            )
-
-            // 5. Unit, Output, Rate
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("Unit") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                OutlinedTextField(value = output, onValueChange = { output = it }, label = { Text("Output") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                OutlinedTextField(value = rate, onValueChange = { rate = it }, label = { Text("Rate") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("Unit") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(value = output, onValueChange = { output = it }, label = { Text("Output") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             }
 
-            // 6. TPH (Berdasarkan Location RKH)
-            RKHDropdownSimple("Pilih TPH", selectedTPH, tphList) { selectedTPH = it }
+            ClickableSearchField("Pilih TPH", selectedTPH) { activeDialog = "TPH" }
 
-            // 7. Beras & Lembur
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = isBeras, onCheckedChange = { isBeras = it })
-                Text("Beras")
-                Spacer(Modifier.width(16.dp))
-                OutlinedTextField(value = lembur, onValueChange = { lembur = it }, label = { Text("Lembur (Jam)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+            // FIELD BERAS & LEMBUR
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Checkbox(checked = isBeras, onCheckedChange = { isBeras = it })
+                    Text("Beras")
+                }
+                OutlinedTextField(
+                    value = lembur,
+                    onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) lembur = it },
+                    label = { Text("Lembur (Jam)") },
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
 
-            // 8. Tombol Simpan
             Button(
-                modifier = Modifier.fillMaxWidth().height(50.dp),
+                modifier = Modifier.fillMaxWidth().height(55.dp),
                 onClick = {
-                    when {
-                        selectedRKH == null -> Toast.makeText(context, "Pilih No RKH!", Toast.LENGTH_SHORT).show()
-                        supervisi1.isEmpty() -> Toast.makeText(context, "Supervisi 1 Wajib!", Toast.LENGTH_SHORT).show()
-                        selectedWorkers.isEmpty() -> Toast.makeText(context, "Pilih minimal 1 karyawan!", Toast.LENGTH_SHORT).show()
-                        selectedWorkers.size > maxHk && maxHk > 0 -> Toast.makeText(context, "Jumlah karyawan melebihi HK RKH!", Toast.LENGTH_SHORT).show()
-                        selectedTPH.isEmpty() -> Toast.makeText(context, "Pilih TPH!", Toast.LENGTH_SHORT).show()
-                        else -> {
-                            dbHelper.saveFruitCalculation(
-                                fcba = fcbaUser,
-                                rkh = selectedRKH!!["no_rkh"] ?: "",
-                                gang = selectedRKH!!["gang_code"] ?: "",
-                                supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
-                                employees = selectedWorkers.toList(),
-                                location = locationCodeFromRKH,
-                                tph = selectedTPH,
-                                unit = unit.toDoubleOrNull() ?: 0.0,
-                                output = output.toDoubleOrNull() ?: 0.0,
-                                rate = rate.toDoubleOrNull() ?: 0.0,
-                                beras = if (isBeras) 1 else 0,
-                                lembur = lembur.toDoubleOrNull() ?: 0.0
-                            )
-                            Toast.makeText(context, "Data Berhasil Disimpan", Toast.LENGTH_SHORT).show()
-                            onSuccess()
-                        }
+                    if (selectedRKH == null || supervisi1.isEmpty() || selectedWorkers.isEmpty() || selectedTPH.isEmpty()) {
+                        Toast.makeText(context, "Lengkapi data wajib!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        dbHelper.saveFruitCalculation(
+                            fcba = fcba,
+                            rkh = selectedRKH!!["no_rkh"] ?: "",
+                            gang = selectedRKH!!["gang_code"] ?: "",
+                            supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
+                            employees = selectedWorkers.toList(),
+                            location = locationCodeFromRKH,
+                            tph = selectedTPH,
+                            unit = unit.toDoubleOrNull() ?: 0.0,
+                            output = output.toDoubleOrNull() ?: 0.0,
+                            rate = rate.toDoubleOrNull() ?: 0.0,
+                            beras = if (isBeras) 1 else 0,
+                            lembur = lembur.toDoubleOrNull() ?: 0.0
+                        )
+                        Toast.makeText(context, "Data Berhasil Disimpan", Toast.LENGTH_SHORT).show()
+                        onSaveSuccess()
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
@@ -202,96 +344,6 @@ fun FruitCountingScreen(
                 Spacer(Modifier.width(8.dp))
                 Text("SIMPAN DATA")
             }
-
-            // 9. Tombol NFC
-            Button(
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                onClick= {
-                    if (selectedRKH == null || selectedTPH.isEmpty()) {
-                        Toast.makeText(context, "Lengkapi data sebelum transfer NFC", Toast.LENGTH_SHORT).show()
-                    } else {
-                        val jsonData = prepareNfcJson(
-                            selectedRKH, supervisi1, supervisi2, supervisi3, supervisi4,
-                            selectedWorkers.toList(), unit, output, selectedTPH, isBeras, lembur
-                        )
-                        android.util.Log.d("NFC_PAYLOAD", jsonData)
-                        Toast.makeText(context, "NFC Ready: Tempelkan Tag Kerani Kirim", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
-            ) {
-                Icon(Icons.Default.Nfc, null)
-                Spacer(Modifier.width(8.dp))
-                Text("TRANSFER KE NFC")
-            }
         }
     }
-}
-
-// Fungsi Bantu Dropdown Map (RKH)
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun RKHDropdownMap(label: String, selected: String, options: List<Map<String, String>>, onSelect: (Map<String, String>) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-        OutlinedTextField(
-            value = selected,
-            onValueChange = {},
-            label = { Text(label) },
-            readOnly = true,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor()
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { item ->
-                DropdownMenuItem(
-                    text = { Text("RKH:${item["no_rkh"]} - ${item["location"]}") },
-                    onClick = { onSelect(item); expanded = false }
-                )
-            }
-        }
-    }
-}
-
-// Fungsi Bantu Dropdown List String (TPH / Supervisi)
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun RKHDropdownSimple(label: String, selected: String, options: List<String>, onSelect: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-        OutlinedTextField(
-            value = selected,
-            onValueChange = {},
-            label = { Text(label) },
-            readOnly = true,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor()
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { item ->
-                DropdownMenuItem(text = { Text(item) }, onClick = { onSelect(item); expanded = false })
-            }
-        }
-    }
-}
-
-fun prepareNfcJson(
-    rkh: Map<String, String>?,
-    s1: String, s2: String, s3: String, s4: String,
-    workers: List<String>,
-    unit: String, output: String, tph: String, beras: Boolean, lembur: String
-): String {
-    val data = mutableMapOf<String, Any>()
-    data["id"] = System.currentTimeMillis()
-    data["noRkh"] = rkh?.get("no_rkh") ?: ""
-    data["gangCode"] = rkh?.get("gang_code") ?: ""
-    data["location"] = rkh?.get("location") ?: ""
-    data["tph"] = tph
-    data["unit"] = unit
-    data["output"] = output
-    data["beras"] = if (beras) 1 else 0
-    data["lembur"] = lembur
-    data["supervisors"] = listOf(s1, s2, s3, s4)
-    data["workers"] = workers
-    return Gson().toJson(data)
 }

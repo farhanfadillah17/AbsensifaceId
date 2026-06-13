@@ -87,8 +87,9 @@ class MainActivity : ComponentActivity() {
 
                 // Tambahkan perulangan forEach di sini:
                 files.forEach { fileName ->
+                    // Pastikan importSqlFromAssets menangani pembersihan kata TIMESTAMP
                     db.importSqlFromAssets(fileName) { count ->
-                        Log.d("SETUP", "Sedang mengimpor $fileName: $count data...")
+                        Log.d("SETUP", "Berhasil mengimpor $fileName: $count data SRE.")
                     }
                 }
 
