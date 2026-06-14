@@ -41,8 +41,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     companion object {
         // Ganti nama ke v11 untuk reset total terakhir kali
-        const val DATABASE_NAME = "attendance_reset_final_v285.db"
-        const val DATABASE_VERSION = 285
+        const val DATABASE_NAME = "attendance_reset_final_v286.db"
+        const val DATABASE_VERSION = 286
 
         const val T_EMP = "EMPLOYEE"
         const val E_FCCODE = "FCCODE"
@@ -318,6 +318,23 @@ class AttendanceDatabaseHelper(private val context: Context) :
         "SECTION" TEXT, FCBA TEXT, LATITUDE REAL, LONGITUDE REAL,
         TDATE TEXT, LT REAL, LG REAL,
         FCENTRY TEXT, FCEDIT TEXT, FCIP TEXT -- Tambahkan ini
+    )
+""".trimIndent())
+
+            // Tambahkan ini di dalam onCreate
+            db.execSQL("""
+    CREATE TABLE IF NOT EXISTS T_SPB (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        spb_no TEXT,
+        fcba TEXT,
+        no_rkh TEXT,
+        location_code TEXT,
+        mill_name TEXT,
+        driver_name TEXT,
+        vehicle_no TEXT,
+        tph_code TEXT,
+        total_janjang INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
 """.trimIndent())
 
@@ -1241,7 +1258,31 @@ class AttendanceDatabaseHelper(private val context: Context) :
     }
 
 
+    fun saveSPB(
+        spbNo: String,
+        fcba: String,
+        rkh: String,
+        location: String,
+        mill: String,
 
+        vehicle: String,
+        tph: String,
+        janjang: Int
+    ): Long {
+        val db = this.writableDatabase
+        val values = ContentValues().apply {
+            put("spb_no", spbNo)
+            put("fcba", fcba)
+            put("no_rkh", rkh)
+            put("location_code", location)
+            put("mill_name", mill)
+
+            put("vehicle_no", vehicle)
+            put("tph_code", tph)
+            put("total_janjang", janjang)
+        }
+        return db.insert("T_SPB", null, values)
+    }
 
 
 
