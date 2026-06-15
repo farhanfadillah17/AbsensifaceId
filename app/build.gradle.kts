@@ -82,6 +82,8 @@ dependencies {
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
+    implementation("androidx.concurrent:concurrent-futures:1.2.0")
+    implementation(libs.guava)
 
     // Accompanist
     implementation("com.google.accompanist:accompanist-permissions:0.36.0")
@@ -95,4 +97,9 @@ dependencies {
 
 //    json
     implementation("com.google.code.gson:gson:2.10.1")
+
+    //API
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

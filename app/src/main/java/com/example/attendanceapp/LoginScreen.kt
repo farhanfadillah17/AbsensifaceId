@@ -33,6 +33,7 @@ import kotlinx.coroutines.withContext
 fun LoginScreen(
     dbHelper: AttendanceDatabaseHelper,
     sessionManager: SessionManager,
+    apiClient: ApiClient,
     onLoginSuccess: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -52,26 +53,53 @@ fun LoginScreen(
 
     // Logic untuk impor data otomatis saat aplikasi dibuka
     LaunchedEffect(Unit) {
-        scope.launch {
-            // Cek apakah data employee sudah ada
-            val existingData = withContext(Dispatchers.IO) {
-                dbHelper.getAllMasterEmployees().size
+
+        isImporting = true
+
+        try {
+
+            var existingData = withContext(Dispatchers.IO) {
+                dbHelper.getAllUser().size
             }
 
             if (existingData == 0) {
-                isImporting = true
-                importStatus = "Menyiapkan data karyawan..."
+
+                importStatus = "Menyiapkan data user..."
 
                 withContext(Dispatchers.IO) {
-                    // Panggil fungsi import yang sudah kita buat di DatabaseHelper
-                    dbHelper.importSqlFromAssets("FILENAME.sql") { count ->
-                    importStatus = "Mengimpor $count data..."
+
+                    val response = apiClient.getUser()
+
+                    dbHelper.insertUsers(response) { count ->
+
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor User $count%"
+                        }
+
                     }
+
                 }
 
-                isImporting = false
-                importStatus = "Data karyawan siap!"
+                importStatus = "Data user siap!"
             }
+
+            importStatus = "Sinkronisasi selesai"
+
+        } catch (e: Exception) {
+
+            Log.e(
+                "IMPORT_DATA",
+                "Error: ${e.message}",
+                e
+            )
+
+            importStatus =
+                "Gagal mengunduh data: ${e.localizedMessage}"
+
+        } finally {
+
+            isImporting = false
+
         }
     }
 
@@ -88,7 +116,9 @@ fun LoginScreen(
         if (isImporting || importStatus.contains("siap")) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),

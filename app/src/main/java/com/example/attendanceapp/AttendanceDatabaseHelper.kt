@@ -456,7 +456,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
             db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (8, 'RENCANA KERJA', 'RKH_VIEW')")
 
             // Isi User Default & Hak Akses
-            insertDefaultUsers(db)
+//            insertDefaultUsers(db)
 
             Log.d("DB_CHECK", "--- Database Berhasil Dibuat Lengkap ---")
 
@@ -470,63 +470,64 @@ class AttendanceDatabaseHelper(private val context: Context) :
         // Cara Ampuh: Paksa input user setiap kali DB dibuka
         // agar tidak bergantung pada suksesnya onCreate
         try {
-            insertDefaultUsers(db)
+//            insertDefaultUsers(db)
             Log.d("DB_CHECK", "onOpen: Memastikan user default tersedia.")
         } catch (e: Exception) {
             Log.e("DB_ERROR", "Gagal di onOpen: ${e.message}")
         }
     }
 
-    private fun insertDefaultUsers(db: SQLiteDatabase) {
-        val users = listOf(
-            // Format: Username, Password, EmpCode, Role, FCBA (BA Code)
-            arrayOf("admin", "1234", "ADM00", "ADMIN", "SRE"),
-            arrayOf("mandor1", "1234", "MND01", "MANDOR", "SRE"),
-            arrayOf("mandor2", "qwerty", "MND02", "MANDOR", "SRE"),
-            arrayOf("kerani1", "1234", "KRN01", "KERANI", "SRE"),
-            arrayOf("kerani2", "pass123", "KRN02", "KERANI", "SRE"),
-            arrayOf("tester_expired", "1234", "EXP01", "KERANI", "SRE")
-        ) // TIDAK ADA KURUNG TUTUP FUNGSI DI SINI
-
-        users.forEach { user ->
-            val username = user[0]
-            val password = user[1]
-            val empCode = user[2]
-            val role = user[3]
-            val fcba = user[4]
-
-            val cvUser = ContentValues().apply {
-                put(U_USERNAME, username)
-                put(U_PASSWORD, password)
-                put(U_EMPCODE, empCode)
-                put(U_ROLE, role)
-                put(U_FCBA, fcba)
-            }
-            // Menggunakan insertWithOnConflict agar data masuk/terupdate
-            db.insertWithOnConflict(T_USERS, null, cvUser, SQLiteDatabase.CONFLICT_REPLACE)
-
-            // Logika Hak Akses Menu
-            when (role) {
-                "ADMIN", "MANDOR" -> {
-                    // Admin & Mandor dapat menu 1 sampai 9
-                    for (menuCode in 1..9) {
-                        insertAccess(db, empCode, menuCode, isGranted = 1, daysValid = 365)
-                    }
-                }
-                "KERANI" -> {
-                    if (username == "tester_expired") {
-                        insertAccess(db, empCode, 1, isGranted = 1, daysValid = -1)
-                    } else {
-                        // Kerani sekarang dapat menu 1 (Absen), 4 (SPB), dan 9 (Kirim Data/QR)
-                        listOf(1, 4, 9).forEach { menuCode ->
-                            insertAccess(db, empCode, menuCode, isGranted = 1, daysValid = 30)
-                        }
-                    }
-                }
-            }
-        }
-        Log.d("DB_CHECK", "Data Tester dan Hak Akses berhasil dimasukkan.")
-    } // KURUNG TUTUP FUNGSI SEHARUSNYA DI SINI
+//    fun insertDefaultUsers(users: List<ApiClient.Users>) {
+//        val db = writableDatabase
+////        val users = listOf(
+////            // Format: Username, Password, EmpCode, Role, FCBA (BA Code)
+////            arrayOf("admin", "1234", "ADM00", "ADMIN", "SRE"),
+////            arrayOf("mandor1", "1234", "MND01", "MANDOR", "SRE"),
+////            arrayOf("mandor2", "qwerty", "MND02", "MANDOR", "SRE"),
+////            arrayOf("kerani1", "1234", "KRN01", "KERANI", "SRE"),
+////            arrayOf("kerani2", "pass123", "KRN02", "KERANI", "SRE"),
+////            arrayOf("tester_expired", "1234", "EXP01", "KERANI", "SRE")
+////        ) // TIDAK ADA KURUNG TUTUP FUNGSI DI SINI
+//
+//        users.forEach { user ->
+//            val username = user.username
+//            val password = user.password
+//            val empCode = user.empcode
+//            val role = user.role
+//            val fcba = user.fcba
+//
+//            val cvUser = ContentValues().apply {
+//                put(U_USERNAME, username)
+//                put(U_PASSWORD, password)
+//                put(U_EMPCODE, empCode)
+//                put(U_ROLE, role)
+//                put(U_FCBA, fcba)
+//            }
+//            // Menggunakan insertWithOnConflict agar data masuk/terupdate
+//            db.insertWithOnConflict(T_USERS, null, cvUser, SQLiteDatabase.CONFLICT_REPLACE)
+//
+//            // Logika Hak Akses Menu
+//            when (role) {
+//                "ADMIN", "MANDOR" -> {
+//                    // Admin & Mandor dapat menu 1 sampai 9
+//                    for (menuCode in 1..9) {
+//                        insertAccess(db, empCode, menuCode, isGranted = 1, daysValid = 365)
+//                    }
+//                }
+//                "KERANI" -> {
+//                    if (username == "tester_expired") {
+//                        insertAccess(db, empCode, 1, isGranted = 1, daysValid = -1)
+//                    } else {
+//                        // Kerani sekarang dapat menu 1 (Absen), 4 (SPB), dan 9 (Kirim Data/QR)
+//                        listOf(1, 4, 9).forEach { menuCode ->
+//                            insertAccess(db, empCode, menuCode, isGranted = 1, daysValid = 30)
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//        Log.d("DB_CHECK", "Data Tester dan Hak Akses berhasil dimasukkan.")
+//    } // KURUNG TUTUP FUNGSI SEHARUSNYA DI SINI
 
     // Fungsi pembantu (helper) agar kode lebih rapi
     private fun insertAccess(db: SQLiteDatabase, empId: String, menuCode: Int, isGranted: Int, daysValid: Int) {
@@ -779,6 +780,30 @@ class AttendanceDatabaseHelper(private val context: Context) :
         return list
     }
 
+
+    fun getAllUser(): List<UserProfile> {
+        val list = mutableListOf<UserProfile>()
+        try {
+            val db = readableDatabase
+            db.rawQuery("SELECT * FROM $T_USERS", null).use { c ->
+                while (c.moveToNext()) {
+                    list.add(UserProfile(
+                        username = c.getString(c.getColumnIndexOrThrow(U_USERNAME)),
+                        empcode = c.getString(c.getColumnIndexOrThrow(U_EMPCODE)),
+                        fcba = c.getString(c.getColumnIndexOrThrow(U_FCBA)) ?: "",
+                        divisi = c.getString(c.getColumnIndexOrThrow(U_DIVISI)) ?: "",
+                        gang = c.getString(c.getColumnIndexOrThrow(U_GANG)) ?: "",
+                        role = c.getString(c.getColumnIndexOrThrow(U_ROLE)) ?: ""
+                    ))
+                }
+            }
+            Log.d("DB_CHECK", "Berhasil mengambil ${list.size} data employee.")
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error getAllMasterEmployees: ${e.message}")
+        }
+        return list
+    }
+
     // Tambahkan parameter kedua: onProgress (sebuah fungsi callback)
     fun importSqlFromAssets(fileName: String, onProgress: (Int) -> Unit = {}) {
         val db = writableDatabase
@@ -830,6 +855,104 @@ class AttendanceDatabaseHelper(private val context: Context) :
             }
         } catch (e: Exception) {
             Log.e("DB_ERROR", "Error membaca file $fileName: ${e.message}")
+        }
+    }
+    // Tambahkan parameter kedua: onProgress (sebuah fungsi callback)
+    fun insertEmployee(employees: ApiClient.EmployeeResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            // 2. Pecah per perintah SQL berdasarkan titik koma
+            val totalStatements = employees.header.total
+            var processedCount = 0
+
+            db.beginTransaction()
+            try {
+                employees.detail.forEach { data ->
+                    try {
+                        val values = ContentValues().apply {
+                            put("FCCODE", data.fccode)
+                            put("FCNAME", data.fcname)
+                            put("SECTIONNAME", data.section)
+                            put("GANGCODE", data.gangcode)
+                            put("FCBA", data.fcba)
+                        }
+
+                        db.insertWithOnConflict(
+                            "employee",
+                            null,
+                            values,
+                            SQLiteDatabase.CONFLICT_REPLACE
+                        )
+                        processedCount++
+
+                        if (totalStatements > 0) {
+                            val progress = (processedCount * 100) / totalStatements
+                            onProgress(progress)
+                        }
+                    } catch (e: Exception) {
+                        // Log error baris tertentu tapi lanjut ke baris berikutnya
+                        Log.e("IMPORT_ERROR", "Gagal di import employee (baris $processedCount): ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+                Log.d("DB_CHECK", "IMPORT BERHASIL: import employee ($processedCount data SRE dimasukkan)")
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error membaca file import employee: ${e.message}")
+        }
+    }
+
+    fun insertUsers(datas: ApiClient.UsersResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            // 2. Pecah per perintah SQL berdasarkan titik koma
+            val totalStatements = datas.header.total
+            var processedCount = 0
+
+            db.beginTransaction()
+            try {
+                datas.detail.forEach { data ->
+                    try {
+                        val username = data.username
+                        val password = data.password
+                        val empCode = data.empcode
+                        val role = data.role
+                        val fcba = data.fcba
+
+                        val values = ContentValues().apply {
+                            put(U_USERNAME, username)
+                            put(U_PASSWORD, password)
+                            put(U_EMPCODE, empCode)
+                            put(U_ROLE, role)
+                            put(U_FCBA, fcba)
+                        }
+
+                        db.insertWithOnConflict(
+                            "users",
+                            null,
+                            values,
+                            SQLiteDatabase.CONFLICT_REPLACE
+                        )
+                        processedCount++
+
+                        if (totalStatements > 0) {
+                            val progress = (processedCount * 100) / totalStatements
+                            onProgress(progress)
+                        }
+                    } catch (e: Exception) {
+                        // Log error baris tertentu tapi lanjut ke baris berikutnya
+                        Log.e("IMPORT_ERROR", "Gagal di import user (baris $processedCount): ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+                Log.d("DB_CHECK", "IMPORT BERHASIL: import user ($processedCount data SRE dimasukkan)")
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error membaca file import user: ${e.message}")
         }
     }
 

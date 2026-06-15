@@ -37,10 +37,13 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Grass
 import androidx.compose.runtime.produceState
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.util.Log
+import com.google.mlkit.common.sdkinternal.SharedPrefManager
+import kotlinx.coroutines.withContext
 
 
 // 1. Data Class untuk Menu
@@ -62,6 +65,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var db: AttendanceDatabaseHelper
     private lateinit var faceHelper: FaceDataHelper
     private lateinit var sessionManager: SessionManager
+    private lateinit var apiClient: ApiClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,40 +74,44 @@ class MainActivity : ComponentActivity() {
         db = AttendanceDatabaseHelper(this)
         faceHelper = FaceDataHelper(db)
         sessionManager = SessionManager(this)
+        apiClient = ApiClient()
 
         // --- TAMBAHKAN KODE IMPORT DI SINI ---
         val sharedPref = getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
         val isFirstRun = sharedPref.getBoolean("isFirstRun", true)
 
-        if (isFirstRun) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                val files = listOf(
-                    "BUSINESSUNIT_202606011217.sql",
-                    "FIELD_202606011224.sql",
-                    "JOB_202606011226.sql",
-                    "TPH_202606011225.sql",
-                    "EMPLOYEE_202605200755.sql"
-                )
+        if (true) {
+            Log.d("TES IMPORT", "onCreate: MAIN MENU IMPORT")
+//            lifecycleScope.launch(Dispatchers.IO) {
+//                val files = listOf(
+//                    "BUSINESSUNIT_202606011217.sql",
+//                    "FIELD_202606011224.sql",
+//                    "JOB_202606011226.sql",
+//                    "TPH_202606011225.sql",
+//                    "EMPLOYEE_202605200755.sql"
+//                )
+//
+//                // Tambahkan perulangan forEach di sini:
+//                files.forEach { fileName ->
+//                    // Pastikan importSqlFromAssets menangani pembersihan kata TIMESTAMP
+//                    db.importSqlFromAssets(fileName) { count ->
+//                        Log.d("SETUP", "Berhasil mengimpor $fileName: $count data SRE.")
+//                    }
+//                }
+//
+//                // Tandai sudah pernah di-import agar tidak berjalan lagi
+//                sharedPref.edit().putBoolean("isFirstRun", false).apply()
+//                Log.d("SETUP", "Semua master data berhasil dimuat.")
+//            }
 
-                // Tambahkan perulangan forEach di sini:
-                files.forEach { fileName ->
-                    // Pastikan importSqlFromAssets menangani pembersihan kata TIMESTAMP
-                    db.importSqlFromAssets(fileName) { count ->
-                        Log.d("SETUP", "Berhasil mengimpor $fileName: $count data SRE.")
-                    }
-                }
 
-                // Tandai sudah pernah di-import agar tidak berjalan lagi
-                sharedPref.edit().putBoolean("isFirstRun", false).apply()
-                Log.d("SETUP", "Semua master data berhasil dimuat.")
-            }
         }
         // -------------------------------------
 
         setContent {
             AttendanceAppTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
-                    AppNavigation(db = db, faceHelper = faceHelper, sessionManager = sessionManager)
+                    AppNavigation(db = db, faceHelper = faceHelper, sessionManager = sessionManager, apiClient = apiClient)
                 }
             }
         }
@@ -116,6 +124,7 @@ fun AppNavigation(
     db: AttendanceDatabaseHelper,
     faceHelper: FaceDataHelper,
     sessionManager: SessionManager,
+    apiClient: ApiClient,
 ) {
     val context = LocalContext.current
     val initialScreen = if (sessionManager.isLoggedIn()) Screen.DASHBOARD else Screen.LOGIN
@@ -163,6 +172,7 @@ fun AppNavigation(
         Screen.LOGIN -> LoginScreen(
             dbHelper = db,
             sessionManager = sessionManager,
+            apiClient = apiClient,
             onLoginSuccess = { navigateDashboard() })
 
         Screen.DASHBOARD -> DashboardScreen(
@@ -170,6 +180,7 @@ fun AppNavigation(
             userRole = sessionManager.getUserRole() ?: "MANDOR",
             empId = sessionManager.getFccode() ?: "",
             dbHelper = db,
+            apiClient = ApiClient(),
             onNavigate = { screen -> navigateTo(screen) },
             onLogout = { logout() })
 
@@ -314,9 +325,105 @@ fun DashboardScreen(
     userRole: String,
     empId: String,
     dbHelper: AttendanceDatabaseHelper,
+    apiClient: ApiClient,
     onNavigate: (Screen) -> Unit,
     onLogout: () -> Unit
 ) {
+
+    val scope = rememberCoroutineScope()
+    var isImporting by remember { mutableStateOf(false) }
+    var importStatus by remember { mutableStateOf("") }
+
+
+    val context = LocalContext.current
+    val sharedPref = context.getSharedPreferences("user_session", Context.MODE_PRIVATE)
+    val fcba = sharedPref.getString("fcba", "") ?: ""
+
+    LaunchedEffect(Unit) {
+
+        isImporting = true
+//        importStatus = "Menyiapkan data karyawan..."
+
+        try {
+
+            // =========================
+            // EMPLOYEE
+            // =========================
+
+            var existingData = withContext(Dispatchers.IO) {
+                dbHelper.getAllMasterEmployees().size
+            }
+
+            if (existingData == 0) {
+
+                importStatus = "Menyiapkan data karyawan..."
+
+                withContext(Dispatchers.IO) {
+
+                    val response = apiClient.getEmployee(fcba)
+//                    Log.d("test import", "DashboardScreen: $response")
+
+                    dbHelper.insertEmployee(response) { count ->
+
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor Employee $count%"
+                        }
+
+                    }
+
+                }
+
+                importStatus = "Data karyawan siap!"
+            }
+
+            // =========================
+            // USER
+            // =========================
+
+//            existingData = withContext(Dispatchers.IO) {
+//                dbHelper.getAllUser().size
+//            }
+//
+//            if (existingData == 0) {
+//
+//                importStatus = "Menyiapkan data user..."
+//
+//                withContext(Dispatchers.IO) {
+//
+//                    val response = apiClient.getUser()
+//
+//                    dbHelper.insertUsers(response) { count ->
+//
+//                        scope.launch(Dispatchers.Main) {
+//                            importStatus = "Mengimpor User $count%"
+//                        }
+//
+//                    }
+//
+//                }
+//
+//                importStatus = "Data user siap!"
+//            }
+
+            importStatus = "Sinkronisasi selesai"
+
+        } catch (e: Exception) {
+
+            Log.e(
+                "IMPORT_DATA",
+                "Error: ${e.message}",
+                e
+            )
+
+            importStatus =
+                "Gagal mengunduh data: ${e.localizedMessage}"
+
+        } finally {
+
+            isImporting = false
+
+        }
+    }
     // Di dalam DashboardScreen
     // Perbaiki baris ini
     val allowedMenuRoutes by produceState<List<String>>(initialValue = emptyList(), key1 = empId) { // Ganti empcode ke empId
@@ -336,6 +443,9 @@ fun DashboardScreen(
     )
 
     val filteredMenus = allMenus.filter { menu -> allowedMenuRoutes.contains(menu.route) }
+
+//    if (isImporting || importStatus.contains("siap")) {
+
 
     Scaffold(
         containerColor = Color(0xFFF5F7FA),
@@ -359,7 +469,38 @@ fun DashboardScreen(
             Text(userName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
             Text("Role: $userRole", fontSize = 12.sp, color = Color.Gray)
 
-            Spacer(modifier = Modifier.height(24.dp))
+            val context = LocalContext.current
+            val sharedPref = context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
+            val isFirstRun = sharedPref.getBoolean("isFirstRun", true)
+            if (isFirstRun) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isImporting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.Cyan
+                            )
+                            Spacer(Modifier.width(12.dp))
+                        }
+                        Text(
+                            text = importStatus,
+                            color = if (isImporting) Color.Gray else Color.Green,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }else{
+                Spacer(modifier = Modifier.height(24.dp))
+            }
             Text("MENU OPERASIONAL", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color.DarkGray)
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -393,7 +534,9 @@ fun DashboardScreen(
             }
             Text(
                 text = "Versi 1.0.2",
-                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
                 textAlign = TextAlign.Center,
                 fontSize = 10.sp,
                 color = Color.LightGray
@@ -413,14 +556,20 @@ fun DashboardCard(title: String, icon: androidx.compose.ui.graphics.vector.Image
         colors = CardDefaults.elevatedCardColors(containerColor = Color.White)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Column(modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Icon(icon, null, modifier = Modifier.size(32.dp), tint = color)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(text = title, fontWeight = FontWeight.Bold, fontSize = 12.sp, textAlign = TextAlign.Center)
             }
             if (hasSub) {
-                Surface(modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(8.dp), color = color.copy(alpha = 0.1f), shape = CircleShape) {
-                    Icon(Icons.Default.List, null, modifier = Modifier.size(14.dp).padding(2.dp), tint = color)
+                Surface(modifier = Modifier
+                    .align(androidx.compose.ui.Alignment.TopEnd)
+                    .padding(8.dp), color = color.copy(alpha = 0.1f), shape = CircleShape) {
+                    Icon(Icons.Default.List, null, modifier = Modifier
+                        .size(14.dp)
+                        .padding(2.dp), tint = color)
                 }
             }
         }
