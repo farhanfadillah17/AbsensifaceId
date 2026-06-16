@@ -992,7 +992,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
         output: Double,
         rate: Double,
         lembur: Int,
-        beras: Int
+        beras: Int,
+        locationCode: String
     ): Long {
         val db = this.writableDatabase
         return try {
@@ -1001,6 +1002,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 put(P_CATEGORY, category)
                 // Menggabungkan list ID karyawan menjadi satu string dipisahkan koma
                 put(P_EMP_IDS, employees.joinToString(","))
+                put(P_BLOCK, locationCode)
                 put(P_UNIT, unit)
                 put(P_OUTPUT, output)
                 put(P_RATE, rate)
@@ -1282,6 +1284,48 @@ class AttendanceDatabaseHelper(private val context: Context) :
             put("total_janjang", janjang)
         }
         return db.insert("T_SPB", null, values)
+    }
+
+    fun getAllProgress(): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+
+        // Gunakan variabel konstanta tabel Anda agar sinkron dengan onCreate
+        val query = "SELECT * FROM $T_PROGRESS ORDER BY $P_ID DESC"
+
+        try {
+            db.rawQuery(query, null).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    // Ambil indeks kolom sekali di awal untuk performa dan keamanan
+                    // Ambil indeks kolom sekali di awal untuk performa dan keamanan
+                    val idIdx = cursor.getColumnIndex(P_ID)
+                    val rkhIdx = cursor.getColumnIndex(P_RKH)
+                    val catIdx = cursor.getColumnIndex(P_CATEGORY)
+                    val blockIdx = cursor.getColumnIndex(P_BLOCK)
+                    val timeIdx = cursor.getColumnIndex(P_TIMESTAMP)
+
+                    do {
+                        val map = mutableMapOf<String, String>()
+
+                        // Gunakan pengkondisian agar jika kolom tidak ditemukan (-1), aplikasi tidak crash
+                        map["id"] = if (idIdx != -1) cursor.getString(idIdx) ?: "" else ""
+                        map["no_rkh"] = if (rkhIdx != -1) cursor.getString(rkhIdx) ?: "" else ""
+                        map["category"] = if (catIdx != -1) cursor.getString(catIdx) ?: "" else ""
+
+                        // Perbaikan: Ambil dari P_BLOCK (indeks kolom ke-5 di tabel Anda adalah P_BLOCK)
+                        map["location_code"] = if (blockIdx != -1) cursor.getString(blockIdx) ?: "" else ""
+
+                        // Ambil timestamp
+                        map["created_at"] = if (timeIdx != -1) cursor.getString(timeIdx) ?: "" else ""
+
+                        list.add(map)
+                    } while (cursor.moveToNext())
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "getAllProgress Error: ${e.message}")
+        }
+        return list
     }
 
 

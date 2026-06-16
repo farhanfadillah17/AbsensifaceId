@@ -55,7 +55,7 @@ data class MenuConfig(
 
 // 2. Enum Screen
 enum class Screen {
-    LOGIN, DASHBOARD, HOME, EMPLOYEE_FORM, REGISTER_FACE, QR_SCAN, FACE_VERIFY, HISTORY, PROGRESS_MENU, PROGRESS_FORM, FRUIT_COUNTING, ANCAK_PANEN, SPB_MENU, SPB_FORM, AKP_FORM, RKH_VIEW, TRANSFER_DATA
+    LOGIN, DASHBOARD, HOME, EMPLOYEE_FORM, REGISTER_FACE, QR_SCAN, FACE_VERIFY, HISTORY, PROGRESS_MENU, FRUIT_COUNTING, ANCAK_PANEN, SPB_MENU, SPB_FORM, AKP_FORM, RKH_VIEW, TRANSFER_DATA
 }
 
 class MainActivity : ComponentActivity() {
@@ -252,20 +252,15 @@ fun AppNavigation(
         Screen.HISTORY -> AttendanceHistoryScreen(dbHelper = db, onBack = { navigateBack() })
 
         Screen.PROGRESS_MENU -> ProgressMenuScreen(
-            onBack = { navigateBack() },
-            onCategorySelected = { cat: String -> // Tambahkan : String di sini
-                selectedCategory = cat
-                navigateTo(Screen.PROGRESS_FORM)
-            })
-
-        Screen.PROGRESS_FORM -> ProgressFormScreen(
-            category = selectedCategory,
-            // Ganti 'AttendanceDatabaseHelper(this)' menjadi 'db'
             dbHelper = db,
             empId = sessionManager.getFccode() ?: "",
-            onBack = { navigateBack() },
-            onSuccess = { navigateDashboard() }
+            onBack = { navigateBack() }
         )
+
+
+
+
+
 
         Screen.FRUIT_COUNTING -> FruitCountingScreen(
             dbHelper = db,
