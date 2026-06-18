@@ -804,6 +804,22 @@ class AttendanceDatabaseHelper(private val context: Context) :
         return list
     }
 
+    fun getAllAccess(): List<String> {
+        val list = mutableListOf<String>()
+        try {
+            val db = readableDatabase
+            db.rawQuery("SELECT * FROM $T_MENU_ACCESS", null).use { c ->
+                while (c.moveToNext()) {
+                    list.add(c.getString(0))
+                }
+            }
+            Log.d("DB_CHECK", "Berhasil mengambil ${list.size} data employee.")
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error getAllMasterEmployees: ${e.message}")
+        }
+        return list
+    }
+
     // Tambahkan parameter kedua: onProgress (sebuah fungsi callback)
     fun importSqlFromAssets(fileName: String, onProgress: (Int) -> Unit = {}) {
         val db = writableDatabase
@@ -903,6 +919,101 @@ class AttendanceDatabaseHelper(private val context: Context) :
             Log.e("DB_ERROR", "Error membaca file import employee: ${e.message}")
         }
     }
+    fun insertField(employees: ApiClient.FieldResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            // 2. Pecah per perintah SQL berdasarkan titik koma
+            val totalStatements = employees.header.total
+            var processedCount = 0
+
+            db.beginTransaction()
+            try {
+                employees.detail.forEach { data ->
+                    try {
+                        val values = ContentValues().apply {
+                            put("FCCODE", data.fccode)
+                            put("FCNAME", data.fcname)
+                            put("DIVISION", data.division)
+                            put("HECTARAGEPLANTED", data.hectarageplanted)
+                            put("OWNERSHIP", data.ownership)
+                            put("ACTIVATION", data.activation)
+                            put("PLANTINGDATE", data.plantingdate)
+                            put("STATUS", data.status)
+                            put("FCBA", data.fcba)
+                        }
+
+                        db.insertWithOnConflict(
+                            "field",
+                            null,
+                            values,
+                            SQLiteDatabase.CONFLICT_REPLACE
+                        )
+                        processedCount++
+
+                        if (totalStatements > 0) {
+                            val progress = (processedCount * 100) / totalStatements
+                            onProgress(progress)
+                        }
+                    } catch (e: Exception) {
+                        // Log error baris tertentu tapi lanjut ke baris berikutnya
+                        Log.e("IMPORT_ERROR", "Gagal di import field (baris $processedCount): ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+                Log.d("DB_CHECK", "IMPORT BERHASIL: import field ($processedCount data SRE dimasukkan)")
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error membaca file import employee: ${e.message}")
+        }
+    }
+
+    fun insertTph(employees: ApiClient.TphResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            // 2. Pecah per perintah SQL berdasarkan titik koma
+            val totalStatements = employees.header.total
+            var processedCount = 0
+
+            db.beginTransaction()
+            try {
+                employees.detail.forEach { data ->
+                    try {
+                        val values = ContentValues().apply {
+                            put("FCCODE", data.fccode)
+                            put("FCNAME", data.fcname)
+                            put("FIELDCODE", data.fieldcode)
+                            put("SECTION", data.section)
+                            put("FCBA", data.fcba)
+                        }
+
+                        db.insertWithOnConflict(
+                            "tph",
+                            null,
+                            values,
+                            SQLiteDatabase.CONFLICT_REPLACE
+                        )
+                        processedCount++
+
+                        if (totalStatements > 0) {
+                            val progress = (processedCount * 100) / totalStatements
+                            onProgress(progress)
+                        }
+                    } catch (e: Exception) {
+                        // Log error baris tertentu tapi lanjut ke baris berikutnya
+                        Log.e("IMPORT_ERROR", "Gagal di import tph (baris $processedCount): ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+                Log.d("DB_CHECK", "IMPORT BERHASIL: import tph ($processedCount data SRE dimasukkan)")
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error membaca file tph employee: ${e.message}")
+        }
+    }
 
     fun insertUsers(datas: ApiClient.UsersResponse, onProgress: (Int) -> Unit = {}) {
         val db = writableDatabase
@@ -953,6 +1064,157 @@ class AttendanceDatabaseHelper(private val context: Context) :
             }
         } catch (e: Exception) {
             Log.e("DB_ERROR", "Error membaca file import user: ${e.message}")
+        }
+    }
+
+    fun insertFcba(datas: ApiClient.FcbaResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            // 2. Pecah per perintah SQL berdasarkan titik koma
+            val totalStatements = datas.header.total
+            var processedCount = 0
+
+            db.beginTransaction()
+            try {
+                datas.detail.forEach { data ->
+                    try {
+                        val fccode = data.fccode
+                        val fcname = data.fcname
+                        val fccompanycode = data.fccompanycode
+
+                        val values = ContentValues().apply {
+                            put("FCCODE", fccode)
+                            put("FCNAME", fcname)
+                            put("FCCOMPANYCODE", fccompanycode)
+                        }
+
+                        db.insertWithOnConflict(
+                            "businessunit",
+                            null,
+                            values,
+                            SQLiteDatabase.CONFLICT_REPLACE
+                        )
+                        processedCount++
+
+                        if (totalStatements > 0) {
+                            val progress = (processedCount * 100) / totalStatements
+                            onProgress(progress)
+                        }
+                    } catch (e: Exception) {
+                        // Log error baris tertentu tapi lanjut ke baris berikutnya
+                        Log.e("IMPORT_ERROR", "Gagal di import fcba (baris $processedCount): ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+                Log.d("DB_CHECK", "IMPORT BERHASIL: import fcba ($processedCount data SRE dimasukkan)")
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error membaca file import user: ${e.message}")
+        }
+    }
+
+    fun insertAccess(datas: ApiClient.AccessResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            // 2. Pecah per perintah SQL berdasarkan titik koma
+            val totalStatements = datas.header.total
+            var processedCount = 0
+
+            db.beginTransaction()
+            try {
+                datas.detail.forEach { data ->
+                    try {
+                        val values = ContentValues().apply {
+                            put("EMP_ID", data.emp_id)
+                            put("MENU_CODE", data.menu_code)
+                            put("VALID_UNTIL", data.valid_until)
+                            put("IS_GRANTED", data.is_granted)
+                        }
+
+                        db.insertWithOnConflict(
+                            "t_menu_access",
+                            null,
+                            values,
+                            SQLiteDatabase.CONFLICT_REPLACE
+                        )
+                        processedCount++
+
+                        if (totalStatements > 0) {
+                            val progress = (processedCount * 100) / totalStatements
+                            onProgress(progress)
+                        }
+                    } catch (e: Exception) {
+                        // Log error baris tertentu tapi lanjut ke baris berikutnya
+                        Log.e("IMPORT_ERROR", "Gagal di import access (baris $processedCount): ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+                Log.d("DB_CHECK", "IMPORT BERHASIL: import access ($processedCount data SRE dimasukkan)")
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error membaca file import user: ${e.message}")
+        }
+    }
+
+    fun insertJob(datas: ApiClient.JobResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            // 2. Pecah per perintah SQL berdasarkan titik koma
+            val totalStatements = datas.header.total
+            var processedCount = 0
+
+            db.beginTransaction()
+            try {
+                datas.detail.forEach { data ->
+                    try {
+                        val fccode = data.fccode
+                        val fcname = data.fcname
+                        val job_category = data.job_category
+                        val job_forfieldstatus = data.job_forfieldstatus
+                        val unitofmeasurement = data.unitofmeasurement
+                        val job_own_tb = data.job_own_tb
+                        val uom_unit = data.uom_unit
+                        val fcba = data.fcba
+
+                        val values = ContentValues().apply {
+                            put("FCCODE", fccode)
+                            put("FCNAME", fcname)
+                            put("JOB_CATEGORY", job_category)
+                            put("JOB_FORFIELDSTATUS", job_forfieldstatus)
+                            put("UNITOFMEASUREMENT", unitofmeasurement)
+                            put("JOB_OWN_TB", job_own_tb)
+                            put("UOM_UNIT", uom_unit)
+                            put("FCBA", fcba)
+                        }
+
+                        db.insertWithOnConflict(
+                            "JOB",
+                            null,
+                            values,
+                            SQLiteDatabase.CONFLICT_REPLACE
+                        )
+                        processedCount++
+
+                        if (totalStatements > 0) {
+                            val progress = (processedCount * 100) / totalStatements
+                            onProgress(progress)
+                        }
+                    } catch (e: Exception) {
+                        // Log error baris tertentu tapi lanjut ke baris berikutnya
+                        Log.e("IMPORT_ERROR", "Gagal di import job (baris $processedCount): ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+                Log.d("DB_CHECK", "IMPORT BERHASIL: import job ($processedCount data SRE dimasukkan)")
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error membaca file import job: ${e.message}")
         }
     }
 
@@ -1155,6 +1417,42 @@ class AttendanceDatabaseHelper(private val context: Context) :
             }
         } catch (e: Exception) {
             android.util.Log.e("DB_ERROR", "Gagal ambil TPH: ${e.message}")
+        }
+        return list
+    }
+
+    fun getAllTph(fcba: String): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        // Mencari FCCODE (Nama TPH) berdasarkan FIELDCODE yang dipilih
+        val query = "SELECT FCCODE FROM TPH WHERE FCBA = ?"
+
+        try {
+            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
+                while (cursor.moveToNext()) {
+                    list.add(cursor.getString(0))
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DB_ERROR", "Gagal ambil TPH: ${e.message}")
+        }
+        return list
+    }
+
+    fun getAllFcba(): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        // Mencari FCCODE (Nama TPH) berdasarkan FIELDCODE yang dipilih
+        val query = "SELECT FCCODE FROM BUSINESSUNIT"
+
+        try {
+            db.rawQuery(query, null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    list.add(cursor.getString(0))
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DB_ERROR", "Gagal ambil fcba: ${e.message}")
         }
         return list
     }

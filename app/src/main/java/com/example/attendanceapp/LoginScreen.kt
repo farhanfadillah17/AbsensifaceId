@@ -83,6 +83,31 @@ fun LoginScreen(
                 importStatus = "Data user siap!"
             }
 
+            existingData = withContext(Dispatchers.IO) {
+                dbHelper.getAllAccess().size
+            }
+
+            if (existingData == 0) {
+
+                importStatus = "Menyiapkan data akses..."
+
+                withContext(Dispatchers.IO) {
+
+                    val response = apiClient.getAccess()
+
+                    dbHelper.insertAccess(response) { count ->
+
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor akses $count%"
+                        }
+
+                    }
+
+                }
+
+                importStatus = "Data akses siap!"
+            }
+
             importStatus = "Sinkronisasi selesai"
 
         } catch (e: Exception) {

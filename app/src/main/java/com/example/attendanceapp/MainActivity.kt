@@ -377,33 +377,124 @@ fun DashboardScreen(
             }
 
             // =========================
-            // USER
+            // JOB
             // =========================
 
-//            existingData = withContext(Dispatchers.IO) {
-//                dbHelper.getAllUser().size
-//            }
-//
-//            if (existingData == 0) {
-//
-//                importStatus = "Menyiapkan data user..."
-//
-//                withContext(Dispatchers.IO) {
-//
-//                    val response = apiClient.getUser()
-//
-//                    dbHelper.insertUsers(response) { count ->
-//
-//                        scope.launch(Dispatchers.Main) {
-//                            importStatus = "Mengimpor User $count%"
-//                        }
-//
-//                    }
-//
-//                }
-//
-//                importStatus = "Data user siap!"
-//            }
+            existingData = withContext(Dispatchers.IO) {
+                dbHelper.getJobList(fcba).size
+            }
+
+            if (existingData == 0) {
+
+                importStatus = "Menyiapkan data job..."
+
+                withContext(Dispatchers.IO) {
+
+                    val response = apiClient.getJob(fcba)
+//                    Log.d("test import", "DashboardScreen: $response")
+
+                    dbHelper.insertJob(response) { count ->
+
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor Job $count%"
+                        }
+
+                    }
+
+                }
+
+                importStatus = "Data job siap!"
+            }
+
+            // =========================
+            // FIELD
+            // =========================
+
+            existingData = withContext(Dispatchers.IO) {
+                dbHelper.getBlockList(fcba).size
+            }
+
+            if (existingData == 0) {
+
+                importStatus = "Menyiapkan data field..."
+
+                withContext(Dispatchers.IO) {
+
+                    val response = apiClient.getField(fcba)
+//                    Log.d("test import", "DashboardScreen: $response")
+
+                    dbHelper.insertField(response) { count ->
+
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor field $count%"
+                        }
+
+                    }
+
+                }
+
+                importStatus = "Data field siap!"
+            }
+
+            // =========================
+            // TPH
+            // =========================
+
+            existingData = withContext(Dispatchers.IO) {
+                dbHelper.getAllTph(fcba).size
+            }
+
+            if (existingData == 0) {
+
+                importStatus = "Menyiapkan data tph..."
+
+                withContext(Dispatchers.IO) {
+
+                    val response = apiClient.getTph(fcba)
+//                    Log.d("test import", "DashboardScreen: $response")
+
+                    dbHelper.insertTph(response) { count ->
+
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor tph $count%"
+                        }
+
+                    }
+
+                }
+
+                importStatus = "Data tph siap!"
+            }
+
+            // =========================
+            // FCBA
+            // =========================
+
+            existingData = withContext(Dispatchers.IO) {
+                dbHelper.getAllFcba().size
+            }
+
+            if (existingData == 0) {
+
+                importStatus = "Menyiapkan data fcba..."
+
+                withContext(Dispatchers.IO) {
+
+                    val response = apiClient.getFcba()
+//                    Log.d("test import", "DashboardScreen: $response")
+
+                    dbHelper.insertFcba(response) { count ->
+
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor fcba $count%"
+                        }
+
+                    }
+
+                }
+
+                importStatus = "Data fcba siap!"
+            }
 
             importStatus = "Sinkronisasi selesai"
 
@@ -424,6 +515,9 @@ fun DashboardScreen(
 
         }
     }
+
+
+
     // Di dalam DashboardScreen
     // Perbaiki baris ini
     val allowedMenuRoutes by produceState<List<String>>(initialValue = emptyList(), key1 = empId) { // Ganti empcode ke empId
