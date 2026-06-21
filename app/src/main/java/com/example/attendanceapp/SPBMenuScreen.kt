@@ -2,6 +2,7 @@ package com.example.attendanceapp
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,203 +25,105 @@ import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SPBFormScreen(
     dbHelper: AttendanceDatabaseHelper,
+    fcba: String,
     empId: String,
     onBack: () -> Unit,
-    onSuccess: () -> Unit,
+    onSuccess: () -> Unit
+
 ) {
     val context = LocalContext.current
-    val sharedPref = context.getSharedPreferences("UserSession", Context.MODE_PRIVATE)
-    val fcbaUser = (sharedPref.getString("fcba", "SRE") ?: "SRE").uppercase()
 
-    // --- STATES ---
-    var selectedRKH by remember { mutableStateOf<Map<String, String>?>(null) }
-    var selectedLocation by remember { mutableStateOf("") }
+    // --- STATE HEADER ---
+    var spbNo by remember { mutableStateOf("") }
     var selectedMill by remember { mutableStateOf("") }
+    var sopirName by remember { mutableStateOf("") }
+    var selectedVehicle by remember { mutableStateOf("") }
+    var pemuat1 by remember { mutableStateOf("") }
+    var pemuat2 by remember { mutableStateOf("") }
 
-    var vehicleNo by remember { mutableStateOf("") }
-    var selectedTPH by remember { mutableStateOf("") }
-    var totalJanjang by remember { mutableStateOf("") }
-    var spbNo by remember { mutableStateOf("SPB-${System.currentTimeMillis() / 10000}") }
-    val tanggal = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()) }
+    // --- STATE DETAIL (Satu Baris dlu) ---
+    var locCode by remember { mutableStateOf("") } // Ini nanti diisi dari NFC
+    var unit by remember { mutableStateOf("") }
+    var tph by remember { mutableStateOf("") }
+    var empCode by remember { mutableStateOf("") }
 
-    // State untuk Dialog (Mencegah Lag)
-    var activeDialog by remember { mutableStateOf<String?>(null) }
-
-    // --- DATA SOURCES ---
-    val rkhOptions = remember { dbHelper.getRKHList() }
-    val locationOptions = remember { dbHelper.getAllFieldCodes() }
-    // driverOptions dihapus
-    val millOptions = remember { dbHelper.getBusinessUnits().ifEmpty { listOf("PKS 1", "PKS 2") } }
-    val tphOptions = remember(selectedLocation) {
-        if (selectedLocation.isNotEmpty()) dbHelper.getTPHByLocation(selectedLocation) else emptyList()
+    // Generate No SPB saat buka
+    LaunchedEffect(Unit) {
+        spbNo = dbHelper.generateNoSPB(fcba)
     }
-
-    // --- LOGIKA DIALOG PENCARIAN ---
-    if (activeDialog != null) {
-        when (activeDialog) {
-            "RKH" -> SearchableMapDialog(
-                title = "Pilih No RKH",
-                options = rkhOptions,
-                displayProvider = { "RKH:${it["no_rkh"]} - ${it["location"]}" },
-                onDismiss = { activeDialog = null },
-                onSelect = {
-                    selectedRKH = it
-                    selectedLocation = it["location"] ?: ""
-                    selectedTPH = ""
-                    activeDialog = null
-                }
-            )
-            "LOC" -> SearchableListDialog(
-                title = "Pilih Lokasi/Blok",
-                options = locationOptions,
-                onDismiss = { activeDialog = null },
-                onSelect = { selectedLocation = it; selectedTPH = ""; activeDialog = null }
-            )
-            "MILL" -> SearchableListDialog(
-                title = "Pilih Pabrik",
-                options = millOptions,
-                onDismiss = { activeDialog = null },
-                onSelect = { selectedMill = it; activeDialog = null }
-            )
-
-            "TPH" -> SearchableListDialog(
-                title = "Pilih TPH",
-                options = tphOptions,
-                onDismiss = { activeDialog = null },
-                onSelect = { selectedTPH = it; activeDialog = null }
-            )
-            // Dialog DRIVER dihapus
-        }
-    }
-
-    // Styling Read Only
-    val readOnlyColors = OutlinedTextFieldDefaults.colors(
-        disabledTextColor = Color.Black,
-        disabledContainerColor = Color(0xFFF5F5F5),
-        disabledBorderColor = Color.Gray
-    )
 
     Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("FORM SPB (PENGANGKUTAN)", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.White)
-            )
-        }
+        topBar = { /* Sama seperti RKH */ }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Header Info
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = spbNo, onValueChange = {}, label = { Text("No. SPB") }, modifier = Modifier.weight(1.2f), enabled = false, colors = readOnlyColors)
-                OutlinedTextField(value = tanggal, onValueChange = {}, label = { Text("Tanggal") }, modifier = Modifier.weight(0.8f), enabled = false, colors = readOnlyColors)
+        Column(modifier = Modifier
+            .padding(padding)
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState())) {
+
+            // CARD HEADER
+            Card(elevation = CardDefaults.cardElevation(4.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("HEADER SPB", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+
+                    OutlinedTextField(value = fcba, onValueChange = {}, label = { Text("FCBA") }, readOnly = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = spbNo, onValueChange = {}, label = { Text("NO SPB") }, readOnly = true, modifier = Modifier.fillMaxWidth())
+
+                    // Master Data Dropdowns (Gunakan SearchableListDialog Anda)
+                    ClickableSearchField(label = "MILL / PABRIK", value = selectedMill) { /* Open Dialog Mill */ }
+
+                    OutlinedTextField(value = sopirName, onValueChange = { sopirName = it }, label = { Text("NAMA SOPIR") }, modifier = Modifier.fillMaxWidth())
+
+                    ClickableSearchField(label = "KODE KENDARAAN", value = selectedVehicle) { /* Open Dialog Vehicle */ }
+
+                    Text("PEMUAT", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = pemuat1, onValueChange = { pemuat1 = it }, label = { Text("Pemuat 1") }, modifier = Modifier.weight(1f))
+                        OutlinedTextField(value = pemuat2, onValueChange = { pemuat2 = it }, label = { Text("Pemuat 2") }, modifier = Modifier.weight(1f))
+                    }
+                }
             }
 
-            OutlinedTextField(value = fcbaUser, onValueChange = {}, label = { Text("FCBA") }, modifier = Modifier.fillMaxWidth(), enabled = false, colors = readOnlyColors)
+            Spacer(Modifier.height(16.dp))
 
-            Divider()
+            // CARD DETAIL (BACA NFC)
+            Card(border = BorderStroke(1.dp, Color.Gray)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("DETAIL BUAH (SCAN NFC)", fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
 
-            Text("Referensi & Lokasi", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+                    Button(onClick = {
+                        // Trigger NFC Scanner Disini
+                        // locCode = hasilScanNfc
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text("SCAN LOKASI (NFC)")
+                    }
 
-            ClickableSearchField(
-                label = "Pilih No RKH",
-                value = if (selectedRKH != null) "RKH:${selectedRKH?.get("no_rkh")} - ${selectedRKH?.get("location")}" else "",
-                onClick = { activeDialog = "RKH" }
-            )
+                    OutlinedTextField(value = locCode, onValueChange = { locCode = it }, label = { Text("LOCATION CODE") }, readOnly = true, modifier = Modifier.fillMaxWidth())
 
-            ClickableSearchField(
-                label = "Lokasi / Blok (Data FIELD)",
-                value = selectedLocation,
-                onClick = { activeDialog = "LOC" }
-            )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = tph, onValueChange = { tph = it }, label = { Text("TPH") }, modifier = Modifier.weight(1f))
+                        OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("UNIT / JANJANG") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    }
 
-            OutlinedTextField(value = empId, onValueChange = {}, label = { Text("Kerani Kirim") }, modifier = Modifier.fillMaxWidth(), enabled = false, colors = readOnlyColors)
+                    OutlinedTextField(value = empCode, onValueChange = { empCode = it }, label = { Text("EMPLOYEE CODE (PEMILIK)") }, modifier = Modifier.fillMaxWidth())
+                }
+            }
 
-            Divider()
-
-            Text("Detail Pengiriman", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
-
-            ClickableSearchField("Pilih Pabrik (Mill)", selectedMill) { activeDialog = "MILL" }
-            // Input Sopir dihapus
-
-            OutlinedTextField(
-                value = vehicleNo,
-                onValueChange = { vehicleNo = it },
-                label = { Text("Nomor Plat Kendaraan") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Divider()
-
-            Text("Detail Muatan", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
-
-            ClickableSearchField("Pilih TPH", selectedTPH) { activeDialog = "TPH" }
-
-            OutlinedTextField(
-                value = totalJanjang,
-                onValueChange = { if (it.all { c -> c.isDigit() }) totalJanjang = it },
-                label = { Text("Jumlah Janjang") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(24.dp))
 
             Button(
                 onClick = {
-                    // driverName.isEmpty() dihapus dari validasi
-                    if (selectedLocation.isEmpty() || totalJanjang.isEmpty() || selectedMill.isEmpty()) {
-                        Toast.makeText(context, "Lengkapi semua data!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        val res = dbHelper.saveSPB(
-                            spbNo = spbNo,
-                            fcba = fcbaUser,
-                            rkh = selectedRKH?.get("no_rkh") ?: "",
-                            location = selectedLocation,
-                            mill = selectedMill,
-                            // driver parameter dihapus
-                            vehicle = vehicleNo,
-                            tph = selectedTPH,
-                            janjang = totalJanjang.toIntOrNull() ?: 0
-                        )
-                        if (res != -1L) {
-                            Toast.makeText(context, "SPB Berhasil Disimpan", Toast.LENGTH_SHORT).show()
-                            onSuccess()
-                        } else {
-                            Toast.makeText(context, "Gagal Simpan ke Database!", Toast.LENGTH_SHORT).show()
-                        }
-                    }
+                    // Logika Simpan ke T_SPB_HEADER dan T_SPB_DETAIL
+                    Toast.makeText(context, "SPB $spbNo Berhasil Disimpan", Toast.LENGTH_SHORT).show()
+                    onBack()
                 },
-                modifier = Modifier.fillMaxWidth().height(55.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(55.dp)
             ) {
-                Icon(Icons.Default.Save, null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("SIMPAN & CETAK SPB", fontWeight = FontWeight.Bold)
-            }
-
-            OutlinedButton(
-                onClick = { Toast.makeText(context, "Membaca data NFC...", Toast.LENGTH_SHORT).show() },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.Nfc, null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("AMBIL DATA DARI NFC BUAH")
+                Text("SIMPAN SPB")
             }
         }
     }

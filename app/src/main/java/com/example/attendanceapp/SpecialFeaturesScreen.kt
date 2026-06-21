@@ -32,6 +32,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Visibility
 
 // ... (bagian import tetap sama)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,12 +45,17 @@ import androidx.compose.ui.text.style.TextAlign
 fun ProgressMenuScreen(
     dbHelper: AttendanceDatabaseHelper,
     empId: String,
+    fcba: String,
     onBack: () -> Unit,
+    onSaveSuccess: () -> Unit
 ) {
     // Navigasi internal: "CHOOSER", "LIST", "FORM"
     var currentStep by remember { mutableStateOf("CHOOSER") }
     var selectedCategory by remember { mutableStateOf("") }
+    var itemToEdit by remember { mutableStateOf<Map<String, String>?>(null) }
 
+    var showMenu by remember { mutableStateOf(false) }
+    var selectedItem by remember { mutableStateOf<Any?>(null) } // Sesuaikan tipe datanya
     // State untuk data list
     var progressData by remember { mutableStateOf(emptyList<Map<String, String>>()) }
 
@@ -80,9 +91,22 @@ fun ProgressMenuScreen(
             ProgressListScreen(
                 category = selectedCategory,
                 progressData = progressData,
-                // --- FIX NAVIGASI: Tombol ArrowBack di TopAppBar ---
+                dbHelper = dbHelper, // Kirim dbHelper
                 onBack = { currentStep = "CHOOSER" },
-                onAddClick = { currentStep = "FORM" }
+                onAddClick = {
+                    itemToEdit = null // Reset agar form kosong (Input Baru)
+                    currentStep = "FORM"
+                },
+                onEditClick = { item ->
+                    itemToEdit = item  // Simpan data item yang diklik ke state
+                    currentStep = "FORM" // Pindah ke layar form
+                },
+                onRefresh = {
+                    // Trigger LaunchedEffect untuk ambil data ulang
+                    progressData = dbHelper.getAllProgress().filter {
+                        it["category"]?.uppercase() == selectedCategory.uppercase()
+                    }
+                }
             )
         }
         "FORM" -> {
@@ -90,8 +114,16 @@ fun ProgressMenuScreen(
                 category = selectedCategory,
                 dbHelper = dbHelper,
                 empId = empId,
-                onBack = { currentStep = "LIST" },
-                onSuccess = { currentStep = "LIST" }
+                userFcba = fcba,
+                initialData = itemToEdit, // KIRIM DATA INI KE FORM
+                onBack = {
+                    itemToEdit = null // Reset agar saat tambah baru form kosong
+                    currentStep = "LIST"
+                },
+                onSaveSuccess = {
+                    itemToEdit = null // Reset setelah sukses
+                    currentStep = "LIST"
+                }
             )
         }
     }
@@ -252,14 +284,22 @@ fun ProgressListContent(padding: PaddingValues, data: List<Map<String, String>>)
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ProgressListScreen(
     category: String,
     progressData: List<Map<String, String>>,
+    dbHelper: AttendanceDatabaseHelper, // Tambahkan dbHelper
     onBack: () -> Unit,
     onAddClick: () -> Unit,
+    onRefresh: () -> Unit, // Tambahkan callback untuk refresh data setelah hapus
+    onEditClick: (Map<String, String>) -> Unit
 ) {
+    var showSheet by remember { mutableStateOf(false) }
+    var selectedItem by remember { mutableStateOf<Map<String, String>?>(null) }
+    val sheetState = rememberModalBottomSheetState()
+    val context = LocalContext.current
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -290,21 +330,78 @@ fun ProgressListScreen(
             LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                 items(progressData) { item ->
                     Card(
-                        Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .combinedClickable(
+                                onClick = { /* Klik biasa bisa untuk lihat detail langsung */ },
+                                onLongClick = {
+                                    selectedItem = item
+                                    showSheet = true
+                                }
+                            ),
                         elevation = CardDefaults.cardElevation(2.dp)
                     ) {
                         Column(Modifier.padding(16.dp)) {
                             Text("RKH: ${item["no_rkh"]}", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
-
-                            // --- FIX BUG LOKASI ---
-                            // Gunakan "location_code" sesuai mapping di DatabaseHelper
-                            // Tambahkan fallback "Tidak ada lokasi" jika null
                             val lokasi = item["location_code"] ?: item["block_code"] ?: "Lokasi Kosong"
                             Text("Lokasi: $lokasi", fontSize = 14.sp)
-
                             Text("Waktu: ${item["created_at"]}", fontSize = 10.sp, color = Color.Gray)
                         }
                     }
+                }
+            }
+        }
+
+        // --- BOTTOM SHEET MENU ---
+        if (showSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showSheet = false },
+                sheetState = sheetState
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 32.dp, start = 16.dp, end = 16.dp)
+                ) {
+                    Text(
+                        "Opsi Data: ${selectedItem?.get("no_rkh")}",
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    ListItem(
+                        headlineContent = { Text("Lihat Detail") },
+                        leadingContent = { Icon(Icons.Default.Visibility, contentDescription = null) },
+                        modifier = Modifier.clickable {
+                            showSheet = false
+                            Toast.makeText(context, "Fitur Detail Belum Tersedia", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    ListItem(
+                        headlineContent = { Text("Edit Header") },
+                        leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        modifier = Modifier.clickable {
+                            showSheet = false
+                            // Pastikan parameter onEditClick sudah ada di fungsi SpecialFeaturesScreen
+                            onEditClick(selectedItem!!)
+                        }
+                    )
+                    Divider()
+                    ListItem(
+                        headlineContent = { Text("Hapus Data", color = Color.Red) },
+                        leadingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red) },
+                        modifier = Modifier.clickable {
+                            val id = selectedItem?.get("id")?.toIntOrNull()
+                            if (id != null) {
+                                // Panggil fungsi hapus di dbHelper Anda
+                                 dbHelper.deleteProgress(id)
+                                Toast.makeText(context, "Data Berhasil Dihapus", Toast.LENGTH_SHORT).show()
+                                onRefresh() // Refresh list
+                            }
+                            showSheet = false
+                        }
+                    )
                 }
             }
         }
@@ -316,39 +413,52 @@ fun ProgressListScreen(
 @Composable
 fun ProgressFormScreen(
     category: String,
+    userFcba: String,
     dbHelper: AttendanceDatabaseHelper,
     empId: String,
+    initialData: Map<String, String>? = null,
     onBack: () -> Unit,
-    onSuccess: () -> Unit,
+    onSaveSuccess: () -> Unit
 ) {
     val context = LocalContext.current
     val sharedPref = context.getSharedPreferences("UserSession", Context.MODE_PRIVATE)
-    // Gunakan .uppercase() untuk memastikan sinkron dengan database
-    val fcbaUser = (sharedPref.getString("fcba", "SRE") ?: "SRE").uppercase()
+
+    // 1. Berikan nama unik agar tidak bentrok dengan parameter fungsi (userFcba)
+    // Gunakan parameter userFcba jika ada, jika tidak ada baru ambil dari SharedPref
+    val currentFcba = (sharedPref.getString("fcba", userFcba) ?: userFcba).uppercase()
 
     // --- DATA SOURCES ---
-    val rkhList = remember { dbHelper.getRKHList() }
-    val supervisorOptions = remember { dbHelper.getSupervisors() }
-    val jobMasterList = remember { dbHelper.getDropdownData("JOB", fcbaUser) }
-    // List akan otomatis memuat ulang jika fcbaUser berubah
-    val availableStaff = remember(fcbaUser) {
+    // 2. Gunakan currentFcba secara konsisten di semua pemanggilan dan remember key
+    val rkhList = remember(currentFcba) { dbHelper.getRKHList(currentFcba) }
+    val supervisorOptions = remember(currentFcba) { dbHelper.getSupervisors(currentFcba) }
+    val jobMasterList = remember(currentFcba) { dbHelper.getDropdownData("JOB", currentFcba) }
+    val isEditMode = initialData != null
+    // 3. Pastikan availableStaff memantau perubahan currentFcba
+    val availableStaff = remember(currentFcba) {
         try {
-            dbHelper.getEmployeesAlreadyCheckedIn(fcbaUser)
+            dbHelper.getEmployeesAlreadyCheckedIn(currentFcba)
         } catch (e: Exception) {
+            android.util.Log.e("DB_ERROR", "Gagal load staff: ${e.message}")
             emptyList<Map<String, String>>()
         }
     }
 
     // --- FORM STATES ---
     var selectedRKH by remember { mutableStateOf<Map<String, String>?>(null) }
-    var selectedBlock by remember { mutableStateOf("") }
-    var selectedJobType by remember { mutableStateOf("") }
+    var selectedBlock by remember { mutableStateOf(initialData?.get("location_code") ?: "") }
+    var selectedJobType by remember { mutableStateOf(initialData?.get("job_code") ?: "") }
 
     // PERBAIKAN: Supervisi diubah menjadi 4
-    var supervisi1 by remember { mutableStateOf("") }
-    var supervisi2 by remember { mutableStateOf("") }
-    var supervisi3 by remember { mutableStateOf("") }
-    var supervisi4 by remember { mutableStateOf("") }
+    var supervisi1 by remember { mutableStateOf(initialData?.get("supervisor1") ?: "") }
+    var supervisi2 by remember { mutableStateOf(initialData?.get("supervisor2") ?: "") }
+    var supervisi3 by remember { mutableStateOf(initialData?.get("supervisor3") ?: "") }
+    var supervisi4 by remember { mutableStateOf(initialData?.get("supervisor4") ?: "") }
+
+    LaunchedEffect(rkhList) {
+        if (isEditMode && rkhList.isNotEmpty()) {
+            selectedRKH = rkhList.find { it["no_rkh"] == initialData?.get("no_rkh") }
+        }
+    }
 
     var selectedEmployees by remember { mutableStateOf(setOf<String>()) }
 
@@ -528,38 +638,58 @@ fun ProgressFormScreen(
 
             Button(
                 onClick = {
-                    if (selectedRKH == null) {
-                        Toast.makeText(context, "Pilih RKH!", Toast.LENGTH_SHORT).show()
-                    } else if (supervisi1.isEmpty()) {
-                        Toast.makeText(context, "Supervisi 1 wajib!", Toast.LENGTH_SHORT).show()
-                    } else if (selectedEmployees.isEmpty()) {
-                        Toast.makeText(context, "Pilih karyawan!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        // Mengirim list supervisi (1-4) ke database helper
-                        // Di dalam ProgressFormScreen bagian Button onClick
-                        dbHelper.savePlantationProgress(
-                            rkh = selectedRKH!!["no_rkh"] ?: "",
-                            category = category, // Ini akan berisi "PERAWATAN" atau "PEMBIBITAN"
-                            employees = selectedEmployees.toList(),
-                            supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
-                            unit = unit.toDoubleOrNull() ?: 0.0,
-                            output = output.toDoubleOrNull() ?: 0.0,
-                            rate = rate.toDoubleOrNull() ?: 0.0,
-                            lembur = lembur.toIntOrNull() ?: 0,
-                            beras = if (dapatBeras) 1 else 0,
-                            locationCode = selectedBlock
+                    if (isEditMode) {
+                        // JALANKAN UPDATE (Edit Header)
+                        val success = dbHelper.updateProgressHeader(
+                            id = initialData!!["id"]?.toIntOrNull() ?: 0,
+                            noRkh = selectedRKH?.get("no_rkh") ?: "",
+                            block = selectedBlock,
+                            jobType = selectedJobType,
+                            sup1 = supervisi1,
+                            sup2 = supervisi2,
+                            sup3 = supervisi3,
+                            sup4 = supervisi4
                         )
-                        onSuccess() // Ini akan memicu currentStep = "LIST" di ProgressMenuScreen
+                        if (success) {
+                            Toast.makeText(context, "Header Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
+                            onSaveSuccess()
+                        }
+                    } else {
+                        // JALANKAN SAVE BARU
+                        if (selectedRKH == null) {
+                            Toast.makeText(context, "Pilih RKH!", Toast.LENGTH_SHORT).show()
+                        } else if (supervisi1.isEmpty()) {
+                            Toast.makeText(context, "Supervisi 1 wajib!", Toast.LENGTH_SHORT).show()
+                        } else if (selectedEmployees.isEmpty()) {
+                            Toast.makeText(context, "Pilih karyawan!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            dbHelper.savePlantationProgress(
+                                rkh = selectedRKH!!["no_rkh"] ?: "",
+                                category = category,
+                                employees = selectedEmployees.toList(),
+                                supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
+                                unit = unit.toDoubleOrNull() ?: 0.0,
+                                output = output.toDoubleOrNull() ?: 0.0,
+                                rate = rate.toDoubleOrNull() ?: 0.0,
+                                lembur = lembur.toIntOrNull() ?: 0,
+                                beras = if (dapatBeras) 1 else 0,
+                                locationCode = selectedBlock
+                            )
+                            onSaveSuccess()
+                        }
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(55.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3A8F))
+                // Ganti Color.Orange dengan kode HEX di bawah ini
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isEditMode) Color(0xFFF2994A) else Color(0xFF1A3A8F)
+                )
             ) {
-                Icon(Icons.Default.Save, null)
+                Icon(if (isEditMode) Icons.Default.Edit else Icons.Default.Save, null)
                 Spacer(Modifier.width(8.dp))
-                Text("SIMPAN PROGRESS")
+                Text(if (isEditMode) "PERBARUI HEADER" else "SIMPAN PROGRESS")
             }
         }
     }

@@ -25,19 +25,34 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.gson.Gson
 
-@OptIn(ExperimentalMaterial3Api::class)
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Visibility
+import kotlin.text.toIntOrNull
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FruitCountingScreen(
     dbHelper: AttendanceDatabaseHelper,
     empId: String,
     fcba: String,
     onBack: () -> Unit,
+    initialData: Map<String, String>? = null,
     onSuccess: () -> Unit
 ) {
     // State Navigasi Internal
     var isFormVisible by remember { mutableStateOf(false) }
     var selectedDataForNfc by remember { mutableStateOf<Map<String, String>?>(null) }
+    var selectedItemForEdit by remember { mutableStateOf<Map<String, String>?>(null) }
+    // State untuk Menu Tekan Lama
+    var selectedItemForMenu by remember { mutableStateOf<Map<String, String>?>(null) }
+    val sheetState = rememberModalBottomSheetState()
+    val context = LocalContext.current
 
+    var showMenu by remember { mutableStateOf(false) }
+    var selectedItem by remember { mutableStateOf<Any?>(null) } // Sesuaikan tipe datanya
     // Refresh list data
     var fruitDataList by remember { mutableStateOf(dbHelper.getAllFruitCounting()) }
 
@@ -50,17 +65,21 @@ fun FruitCountingScreen(
     }
 
     if (isFormVisible) {
-        // TAMPILAN FORM INPUT
         FruitCountingFormContent(
             dbHelper = dbHelper,
             fcba = fcba,
-            onBack = { isFormVisible = false },
-            onSaveSuccess = {
-                fruitDataList = dbHelper.getAllFruitCounting() // Refresh data list
+            initialData = selectedItemForEdit, // Pastikan ini dikirim
+            onBack = {
                 isFormVisible = false
-                // Jika ingin langsung ke dashboard setelah simpan, panggil: onSuccess()
+                selectedItemForEdit = null // PENTING: Reset agar form bersih saat buka lagi
+            },
+            onSaveSuccess = {
+                fruitDataList = dbHelper.getAllFruitCounting()
+                isFormVisible = false
+                selectedItemForEdit = null // PENTING: Reset setelah sukses edit
             }
         )
+
     } else {
         // TAMPILAN UTAMA: LIST DATA
         Scaffold(
@@ -96,20 +115,104 @@ fun FruitCountingScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(fruitDataList) { data ->
-                        FruitCountingItemCard(data = data) {
-                            selectedDataForNfc = data
-                        }
+                        FruitCountingItemCard(
+                            data = data,
+                            onClick = { selectedDataForNfc = data },
+                            onLongClick = {
+                                selectedItemForMenu = data
+                                showMenu = true
+                            }
+                        )
                     }
                 }
             }
         }
     }
+
+    // --- MODAL BOTTOM SHEET MENU (LONG PRESS) ---
+    if (showMenu && selectedItemForMenu != null) {
+        ModalBottomSheet(
+            onDismissRequest = { showMenu = false },
+            sheetState = sheetState
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Opsi Data TPH: ${selectedItemForMenu!!["tph_code"] ?: "-"}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+
+                ListItem(
+                    headlineContent = { Text("Lihat Detail") },
+                    leadingContent = { Icon(Icons.Default.Visibility, contentDescription = null) },
+                    modifier = Modifier.clickable {
+                        // Ganti showSheet menjadi showMenu
+                        showMenu = false
+                        Toast.makeText(context, "Fitur Detail Belum Tersedia", Toast.LENGTH_SHORT).show()
+                    }
+                )
+
+                ListItem(
+                    headlineContent = { Text("Edit Header") },
+                    leadingContent = { Icon(Icons.Default.Edit, contentDescription = "Edit Header") },
+                    modifier = Modifier.clickable {
+                        showMenu = false
+                        // 1. Set data yang akan diedit ke parameter navigasi form
+                        // Kita butuh state tambahan di Screen utama jika ingin isFormVisible membawa data
+                        selectedItemForEdit = selectedItemForMenu // Pastikan Anda membuat state 'itemToEdit' di level Screen
+                        isFormVisible = true
+                    }
+                )
+
+
+
+                HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray)
+
+                ListItem(
+                    headlineContent = { Text("Hapus Data", color = Color.Red) },
+                    leadingContent = { Icon(Icons.Default.Delete, contentDescription = "Hapus Data", tint = Color.Red) },
+                    modifier = Modifier.clickable {
+                        showMenu = false
+                        val idStr = selectedItemForMenu!!["id"]
+                        if (idStr != null) {
+                            // Panggil fungsi hapus dari dbHelper
+                            val deletedRows = dbHelper.deleteFruitCounting(idStr.toIntOrNull() ?: -1)
+                            if (deletedRows > 0) {
+                                Toast.makeText(context, "Data Berhasil Dihapus", Toast.LENGTH_SHORT).show()
+                                fruitDataList = dbHelper.getAllFruitCounting() // Refresh list data otomatis
+                            } else {
+                                Toast.makeText(context, "Gagal menghapus data", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(context, "ID data tidak ditemukan", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+            }
+        }
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun FruitCountingItemCard(data: Map<String, String>, onClick: () -> Unit) {
+fun FruitCountingItemCard(
+    data: Map<String, String>,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         elevation = CardDefaults.cardElevation(4.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
@@ -134,7 +237,7 @@ fun FruitCountingItemCard(data: Map<String, String>, onClick: () -> Unit) {
                 }
             }
             Text(
-                "Klik untuk Transfer NFC",
+                "Hold untuk Opsi / Klik untuk Transfer NFC",
                 fontSize = 10.sp,
                 color = Color(0xFF2E7D32),
                 modifier = Modifier.padding(top = 8.dp)
@@ -168,32 +271,60 @@ fun FruitCountingFormContent(
     dbHelper: AttendanceDatabaseHelper,
     fcba: String,
     onBack: () -> Unit,
+    initialData: Map<String, String>? = null,
     onSaveSuccess: () -> Unit
 ) {
     val context = LocalContext.current
 
+    val isEditMode = initialData != null
+
+    // Form States
     // Form States
     var selectedRKH by remember { mutableStateOf<Map<String, String>?>(null) }
-    var supervisi1 by remember { mutableStateOf("") }
-    var supervisi2 by remember { mutableStateOf("") }
-    var supervisi3 by remember { mutableStateOf("") }
-    var supervisi4 by remember { mutableStateOf("") }
-    var selectedWorkers by remember { mutableStateOf(setOf<String>()) }
-    var unit by remember { mutableStateOf("") }
-    var output by remember { mutableStateOf("") }
-    var rate by remember { mutableStateOf("") }
-    var selectedTPH by remember { mutableStateOf("") }
-    var isBeras by remember { mutableStateOf(false) }
-    var lembur by remember { mutableStateOf("0") }
+    var supervisi1 by remember { mutableStateOf(initialData?.get("supervisor1") ?: "") }
+    var supervisi2 by remember { mutableStateOf(initialData?.get("supervisor2") ?: "") }
+    var supervisi3 by remember { mutableStateOf(initialData?.get("supervisor3") ?: "") }
+    var supervisi4 by remember { mutableStateOf(initialData?.get("supervisor4") ?: "") }
+
+    // PERBAIKAN: Ambil data karyawan dari initialData dan pecah string menjadi Set
+    var selectedWorkers by remember {
+        mutableStateOf(
+            initialData?.get("employees")?.split(",")?.filter { it.isNotEmpty() }?.toSet() ?: setOf<String>()
+        )
+    }
+
+    var unit by remember { mutableStateOf(initialData?.get("unit") ?: "") }
+    var output by remember { mutableStateOf(initialData?.get("output") ?: "") }
+
+    // PERBAIKAN: Ambil rate dari initialData
+    var rate by remember { mutableStateOf(initialData?.get("rate") ?: "") }
+
+    var selectedTPH by remember(initialData) { mutableStateOf(initialData?.get("tph_code") ?: "") }
+    var lembur by remember { mutableStateOf(initialData?.get("lembur") ?: "0") }
+    var isBeras by remember { mutableStateOf(initialData?.get("beras") == "1") }
     var activeDialog by remember { mutableStateOf<String?>(null) }
 
     // Master Data
-    val rkhList = remember { dbHelper.getRKHList() }
-    val supervisorOptions = remember { dbHelper.getSupervisors() }
+
+    val rkhList = remember { dbHelper.getRKHList(fcba) }
+
+    LaunchedEffect(rkhList) {
+        if (isEditMode && rkhList.isNotEmpty()) {
+            // Mencari data RKH yang sesuai dengan data yang sedang diedit
+            selectedRKH = rkhList.find { it["no_rkh"] == initialData?.get("no_rkh") }
+        }
+    }
+
+    val supervisorOptions = remember { dbHelper.getSupervisors(fcba) }
     val presentWorkers = remember { dbHelper.getEmployeesAlreadyCheckedIn(fcba) }
     val locationCodeFromRKH = selectedRKH?.get("location") ?: ""
     val tphList = remember(locationCodeFromRKH) {
-        if (locationCodeFromRKH.isNotEmpty()) dbHelper.getTPHByLocation(locationCodeFromRKH) else emptyList()
+        if (locationCodeFromRKH.isNotEmpty()) {
+            // 3. Tambahkan fcba ke getTPHByLocation
+            dbHelper.getTPHByLocation(locationCodeFromRKH, fcba)
+        } else {
+            emptyList()
+        }
     }
 
     // Dialog Pencarian Logic
@@ -317,32 +448,53 @@ fun FruitCountingFormContent(
             Button(
                 modifier = Modifier.fillMaxWidth().height(55.dp),
                 onClick = {
-                    if (selectedRKH == null || supervisi1.isEmpty() || selectedWorkers.isEmpty() || selectedTPH.isEmpty()) {
-                        Toast.makeText(context, "Lengkapi data wajib!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        dbHelper.saveFruitCalculation(
-                            fcba = fcba,
-                            rkh = selectedRKH!!["no_rkh"] ?: "",
-                            gang = selectedRKH!!["gang_code"] ?: "",
-                            supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
-                            employees = selectedWorkers.toList(),
-                            location = locationCodeFromRKH,
-                            tph = selectedTPH,
-                            unit = unit.toDoubleOrNull() ?: 0.0,
-                            output = output.toDoubleOrNull() ?: 0.0,
-                            rate = rate.toDoubleOrNull() ?: 0.0,
-                            beras = if (isBeras) 1 else 0,
-                            lembur = lembur.toDoubleOrNull() ?: 0.0
+                    if (isEditMode) {
+                        // JALANKAN UPDATE HEADER
+                        val success = dbHelper.updateFruitHeader(
+                            id = initialData!!["id"]?.toIntOrNull() ?: 0,
+                            noRkh = selectedRKH?.get("no_rkh") ?: "",
+                            tphCode = selectedTPH,
+                            sup1 = supervisi1,
+                            sup2 = supervisi2,
+                            sup3 = supervisi3,
+                            sup4 = supervisi4
                         )
-                        Toast.makeText(context, "Data Berhasil Disimpan", Toast.LENGTH_SHORT).show()
-                        onSaveSuccess()
+                        if (success) {
+                            Toast.makeText(context, "Header Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
+                            onSaveSuccess()
+                        }
+                    } else {
+                        // LOGIKA SIMPAN BARU (Lama)
+                        if (selectedRKH == null || supervisi1.isEmpty() || selectedWorkers.isEmpty() || selectedTPH.isEmpty()) {
+                            Toast.makeText(context, "Lengkapi data wajib!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            // Isi parameter sesuai dengan variabel yang ada di State Form Anda
+                            dbHelper.saveFruitCalculation(
+                                fcba = fcba,
+                                rkh = selectedRKH!!["no_rkh"] ?: "",
+                                gang = selectedRKH!!["gang_code"] ?: "",
+                                supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
+                                employees = selectedWorkers.toList(),
+                                location = locationCodeFromRKH,
+                                tph = selectedTPH,
+                                unit = unit.toDoubleOrNull() ?: 0.0,
+                                output = output.toDoubleOrNull() ?: 0.0,
+                                rate = rate.toDoubleOrNull() ?: 0.0, // Tambahkan rate jika ada field-nya
+                                beras = if (isBeras) 1 else 0,
+                                lembur = lembur.toDoubleOrNull() ?: 0.0
+                            )
+                            Toast.makeText(context, "Data Berhasil Disimpan", Toast.LENGTH_SHORT).show()
+                            onSaveSuccess()
+                        }
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isEditMode) Color(0xFFF2994A) else Color(0xFF2E7D32)
+                )
             ) {
-                Icon(Icons.Default.Save, null)
+                Icon(if (isEditMode) Icons.Default.Edit else Icons.Default.Save, null)
                 Spacer(Modifier.width(8.dp))
-                Text("SIMPAN DATA")
+                Text(if (isEditMode) "PERBARUI HEADER" else "SIMPAN DATA")
             }
         }
     }

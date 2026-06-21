@@ -79,9 +79,9 @@ class MainActivity : ComponentActivity() {
         // --- TAMBAHKAN KODE IMPORT DI SINI ---
         val sharedPref = getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
         val isFirstRun = sharedPref.getBoolean("isFirstRun", true)
-
-        if (true) {
-            Log.d("TES IMPORT", "onCreate: MAIN MENU IMPORT")
+//
+//        if (true) {
+//            Log.d("TES IMPORT", "onCreate: MAIN MENU IMPORT")
 //            lifecycleScope.launch(Dispatchers.IO) {
 //                val files = listOf(
 //                    "BUSINESSUNIT_202606011217.sql",
@@ -103,9 +103,9 @@ class MainActivity : ComponentActivity() {
 //                sharedPref.edit().putBoolean("isFirstRun", false).apply()
 //                Log.d("SETUP", "Semua master data berhasil dimuat.")
 //            }
-
-
-        }
+//
+//
+//        }
         // -------------------------------------
 
         setContent {
@@ -180,7 +180,7 @@ fun AppNavigation(
             userRole = sessionManager.getUserRole() ?: "MANDOR",
             empId = sessionManager.getFccode() ?: "",
             dbHelper = db,
-            apiClient = ApiClient(),
+            apiClient = apiClient,
             onNavigate = { screen -> navigateTo(screen) },
             onLogout = { logout() })
 
@@ -265,7 +265,9 @@ fun AppNavigation(
         Screen.PROGRESS_MENU -> ProgressMenuScreen(
             dbHelper = db,
             empId = sessionManager.getFccode() ?: "",
-            onBack = { navigateBack() }
+            fcba = sessionManager.getFcba() ?: "",
+            onBack = { navigateBack() },
+            onSaveSuccess = { navigateDashboard() }
         )
 
 
@@ -289,6 +291,7 @@ fun AppNavigation(
         Screen.SPB_MENU, Screen.SPB_FORM -> SPBFormScreen(
             dbHelper = db,
             empId = sessionManager.getFccode() ?: "",
+            fcba = sessionManager.getFcba() ?: "",
             onBack = { navigateBack() },
             onSuccess = { navigateDashboard() }
         )
@@ -466,6 +469,27 @@ fun DashboardScreen(
                 importStatus = "Data tph siap!"
             }
 
+
+            // =========================
+// ACCESS CONTROL (HAK AKSES)
+// =========================
+            existingData = withContext(Dispatchers.IO) {
+                dbHelper.getAllowedMenusForUser(empId).size
+            }
+
+            if (existingData == 0) {
+                importStatus = "Menyiapkan hak akses menu..."
+                withContext(Dispatchers.IO) {
+                    try {
+                        val response = apiClient.getAccess() // Panggil API Access
+                        dbHelper.insertAccess(response)
+                    } catch (e: Exception) {
+                        Log.e("IMPORT_ACCESS", "Gagal download access: ${e.message}")
+                    }
+                }
+                importStatus = "Hak akses siap!"
+            }
+
             // =========================
             // FCBA
             // =========================
@@ -526,14 +550,15 @@ fun DashboardScreen(
     }
 
     val allMenus = listOf(
-        MenuConfig("ABSENSI", Icons.Default.PersonSearch, listOf(), true, route = "HOME"),
-        MenuConfig("PROGRESS KERJA", Icons.Default.TrendingUp, listOf(), true, route = "PROGRESS_MENU"),
-        MenuConfig("PERHITUNGAN BUAH", Icons.Default.Analytics, listOf(), route = "FRUIT_COUNTING"),
-        MenuConfig("PEMBUATAN SPB", Icons.Default.LocalShipping, listOf(), true, route = "SPB_MENU"),
-        MenuConfig("ANCAK PANEN", Icons.Default.Agriculture, listOf(), route = "ANCAK_PANEN"),
-        MenuConfig("AKP", Icons.Default.Assessment, listOf(), route = "AKP_FORM"),
-        MenuConfig("MASTER DATA", Icons.Default.Storage, listOf(), color = Color(0xFFD32F2F), route = "EMPLOYEE_FORM"),
-        MenuConfig("RENCANA KERJA", Icons.Default.EditNote, listOf(), route = "RKH_VIEW")
+        // Sesuaikan angka route dengan urutan menu di database/API Anda
+        MenuConfig("ABSENSI", Icons.Default.PersonSearch, listOf(), true, route = "1"),
+        MenuConfig("PROGRESS KERJA", Icons.Default.TrendingUp, listOf(), true, route = "2"),
+        MenuConfig("PERHITUNGAN BUAH", Icons.Default.Analytics, listOf(), route = "3"),
+        MenuConfig("PEMBUATAN SPB", Icons.Default.LocalShipping, listOf(), true, route = "4"),
+        MenuConfig("ANCAK PANEN", Icons.Default.Agriculture, listOf(), route = "5"),
+        MenuConfig("AKP", Icons.Default.Assessment, listOf(), route = "6"),
+        MenuConfig("MASTER DATA", Icons.Default.Storage, listOf(), color = Color(0xFFD32F2F), route = "7"),
+        MenuConfig("RENCANA KERJA", Icons.Default.EditNote, listOf(), route = "8")
     )
 
     val filteredMenus = allMenus.filter { menu -> allowedMenuRoutes.contains(menu.route) }
@@ -613,14 +638,14 @@ fun DashboardScreen(
                         color = menu.color,
                         onClick = {
                             when (menu.route) {
-                                "HOME" -> onNavigate(Screen.HOME)
-                                "PROGRESS_MENU" -> onNavigate(Screen.PROGRESS_MENU)
-                                "FRUIT_COUNTING" -> onNavigate(Screen.FRUIT_COUNTING)
-                                "ANCAK_PANEN" -> onNavigate(Screen.ANCAK_PANEN)
-                                "SPB_MENU" -> onNavigate(Screen.SPB_MENU)
-                                "AKP_FORM" -> onNavigate(Screen.AKP_FORM)
-                                "EMPLOYEE_FORM" -> onNavigate(Screen.EMPLOYEE_FORM)
-                                "RKH_VIEW" -> onNavigate(Screen.RKH_VIEW)
+                                "1" -> onNavigate(Screen.HOME)
+                                "2" -> onNavigate(Screen.PROGRESS_MENU)
+                                "3" -> onNavigate(Screen.FRUIT_COUNTING)
+                                "4" -> onNavigate(Screen.SPB_MENU)
+                                "5" -> onNavigate(Screen.ANCAK_PANEN)
+                                "6" -> onNavigate(Screen.AKP_FORM)
+                                "7" -> onNavigate(Screen.EMPLOYEE_FORM)
+                                "8" -> onNavigate(Screen.RKH_VIEW)
                             }
                         }
                     )
