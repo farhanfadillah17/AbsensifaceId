@@ -319,10 +319,11 @@ class AttendanceDatabaseHelper(private val context: Context) :
             db.execSQL("DROP TABLE IF EXISTS TPH")
             db.execSQL("""
     CREATE TABLE IF NOT EXISTS TPH (
-        FCCODE TEXT PRIMARY KEY, FCNAME TEXT, FIELDCODE TEXT, 
+        FCCODE TEXT, FCNAME TEXT, FIELDCODE TEXT, 
         "SECTION" TEXT, FCBA TEXT, LATITUDE REAL, LONGITUDE REAL,
         TDATE TEXT, LT REAL, LG REAL,
-        FCENTRY TEXT, FCEDIT TEXT, FCIP TEXT -- Tambahkan ini
+        FCENTRY TEXT, FCEDIT TEXT, FCIP TEXT, -- Tambahkan ini
+        PRIMARY KEY (FCCODE, FIELDCODE,"SECTION", FCBA)
     )
 """.trimIndent())
 
@@ -1086,8 +1087,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
                             values,
                             SQLiteDatabase.CONFLICT_REPLACE
                         )
+                        Log.d("INSERT TPH", "insertTph: $processedCount")
                         processedCount++
-
                         if (totalStatements > 0) {
                             val progress = (processedCount * 100) / totalStatements
                             onProgress(progress)
