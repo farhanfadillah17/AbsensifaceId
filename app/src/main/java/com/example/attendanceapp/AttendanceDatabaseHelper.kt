@@ -1893,7 +1893,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
         vehicle: String,
         tph: String,
-        janjang: Int
+        janjang: Int,
+        empCodeInt: Int
     ): Long {
         val db = this.writableDatabase
         val values = ContentValues().apply {
@@ -1949,6 +1950,28 @@ class AttendanceDatabaseHelper(private val context: Context) :
         } catch (e: Exception) {
             Log.e("DB_ERROR", "getAllProgress Error: ${e.message}")
         }
+        return list
+    }
+
+    // Di dalam class AttendanceDatabaseHelper
+    fun getAllSPB(): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT * FROM T_SPB_HEADER ORDER BY created_at DESC", null)
+        if (cursor.moveToFirst()) {
+            do {
+                val map = mutableMapOf<String, String>()
+                // Ambil semua kolom yang diperlukan
+                map["spb_no"] = cursor.getString(cursor.getColumnIndexOrThrow("spb_no"))
+                map["mill_code"] = cursor.getString(cursor.getColumnIndexOrThrow("mill_code"))
+                map["sopir_name"] = cursor.getString(cursor.getColumnIndexOrThrow("sopir_name"))
+                map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("location_code"))
+                map["unit"] = cursor.getString(cursor.getColumnIndexOrThrow("unit"))
+                map["created_at"] = cursor.getString(cursor.getColumnIndexOrThrow("created_at"))
+                list.add(map)
+            } while (cursor.moveToNext())
+        }
+        cursor.close()
         return list
     }
 

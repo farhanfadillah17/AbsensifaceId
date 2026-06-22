@@ -248,19 +248,54 @@ fun FruitCountingItemCard(
 
 @Composable
 fun NfcTransferDialog(data: Map<String, String>, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val activity = context as? MainActivity
+    val smallData = mapOf(
+        "location_code" to (data["location_code"] ?: ""),
+        "unit" to (data["unit"] ?: "0")
+    )
+    val jsonString = Gson().toJson(smallData)
+
+    // Saat dialog muncul, kirim data ke MainActivity agar siap ditulis saat kartu ditempel
+    LaunchedEffect(jsonString) {
+        activity?.dataToWrite = jsonString
+    }
+
+    // Saat dialog ditutup (dismiss), hapus antrian data agar tidak menulis ke kartu lain secara tidak sengaja
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.dataToWrite = null
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Transfer NFC") },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Nfc, null, tint = Color(0xFF1A3A8F))
+                Spacer(Modifier.width(8.dp))
+                Text("Siap Menulis NFC")
+            }
+        },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Nfc, null, modifier = Modifier.size(64.dp), tint = Color(0xFF1A3A8F))
+                Icon(
+                    Icons.Default.Nfc,
+                    null,
+                    modifier = Modifier.size(64.dp),
+                    tint = Color(0xFF2E7D32) // Warna hijau menandakan siap
+                )
                 Spacer(Modifier.height(16.dp))
-                Text("Tempelkan HP ke Reader/HP lain untuk mengirim data TPH: ${data["tph_code"] ?: "-"}")
-                Text("Data JSON: ${Gson().toJson(data)}", fontSize = 10.sp, color = Color.LightGray)
+                Text(
+                    "Tempelkan KARTU NFC sekarang untuk menyimpan data TPH: ${data["tph_code"] ?: "-"}",
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Jangan lepas kartu sampai muncul pesan sukses.", fontSize = 11.sp, color = Color.Gray)
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Tutup") }
+            TextButton(onClick = onDismiss) { Text("Batal") }
         }
     )
 }

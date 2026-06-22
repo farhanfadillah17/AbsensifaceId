@@ -1,5 +1,6 @@
 package com.example.attendanceapp
 
+import android.app.PendingIntent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -38,12 +39,21 @@ import androidx.compose.material.icons.filled.Grass
 import androidx.compose.runtime.produceState
 import android.content.Context
 import android.content.SharedPreferences
+import android.nfc.NfcAdapter
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.util.Log
 import com.google.mlkit.common.sdkinternal.SharedPrefManager
 import kotlinx.coroutines.withContext
+import android.nfc.NdefMessage
+import android.nfc.NdefRecord
+
+import android.nfc.Tag
+import android.nfc.tech.Ndef
+import android.nfc.tech.NdefFormatable
+import android.content.Intent
+
 
 
 // 1. Data Class untuk Menu
@@ -66,6 +76,13 @@ class MainActivity : ComponentActivity() {
     private lateinit var faceHelper: FaceDataHelper
     private lateinit var sessionManager: SessionManager
     private lateinit var apiClient: ApiClient
+
+    private var nfcAdapter: NfcAdapter? = null
+    private var pendingIntent: PendingIntent? = null
+
+    // Simpan data yang ingin ditulis di sini
+    var dataToWrite: String? = null
+    var onNfcRead: ((String) -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -108,15 +125,140 @@ class MainActivity : ComponentActivity() {
 //        }
         // -------------------------------------
 
+        nfcAdapter = NfcAdapter.getDefaultAdapter(this)
+        pendingIntent = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_MUTABLE
+        )
+
         setContent {
             AttendanceAppTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
-                    AppNavigation(db = db, faceHelper = faceHelper, sessionManager = sessionManager, apiClient = apiClient)
+                    AppNavigation(
+                        db = db,
+                        faceHelper = faceHelper,
+                        sessionManager = sessionManager,
+                        apiClient = apiClient
+                    )
                 }
             }
         }
     }
+
+
+    // 1. Aktifkan deteksi NFC saat aplikasi dibuka
+    override fun onResume() {
+        super.onResume()
+        nfcAdapter?.enableForegroundDispatch(this, pendingIntent, null, null)
+    }
+
+    // 2. Matikan deteksi NFC saat aplikasi di background
+    override fun onPause() {
+        super.onPause()
+        nfcAdapter?.disableForegroundDispatch(this)
+    }
+
+    // 3. Tangkap kartu NFC saat ditempelkan
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+
+        // Pastikan Intent yang datang adalah Intent NFC
+        val action = intent.action
+        if (NfcAdapter.ACTION_TAG_DISCOVERED == action ||
+            NfcAdapter.ACTION_TECH_DISCOVERED == action ||
+            NfcAdapter.ACTION_NDEF_DISCOVERED == action
+        ) {
+
+            val tag: Tag? = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
+            tag?.let {
+                if (dataToWrite != null) {
+                    // --- MODE MENULIS (Untuk Fruit Counting) ---
+                    val success = writeNdefMessage(it, dataToWrite!!)
+                    if (success) {
+                        Toast.makeText(this, "Data Berhasil Disimpan ke Kartu!", Toast.LENGTH_LONG)
+                            .show()
+                        dataToWrite = null // Reset agar tidak menulis ulang secara tidak sengaja
+                    } else {
+                        Toast.makeText(
+                            this,
+                            "Gagal Menulis! Pastikan kartu tidak terkunci.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                } else if (onNfcRead != null) {
+                    // --- MODE MEMBACA (Untuk SPB Form) ---
+                    val data = readNdefMessage(it)
+                    if (data != null) {
+                        onNfcRead?.invoke(data) // Kirim data ke SPBFormScreen
+                    } else {
+                        Toast.makeText(this, "Kartu Kosong atau Format Salah", Toast.LENGTH_SHORT)
+                            .show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun readNdefMessage(tag: Tag): String? {
+        val ndef = Ndef.get(tag) ?: return null
+        return try {
+            ndef.connect()
+            val msg = ndef.ndefMessage ?: return null
+            if (msg.records.isEmpty()) return null
+
+            val record = msg.records[0]
+            val payload = record.payload
+
+            // Standar NDEF Text Record: byte pertama berisi panjang kode bahasa
+            val languageCodeLength = payload[0].toInt() and 63
+
+            // Ambil string setelah prefix bahasa
+            String(
+                payload,
+                languageCodeLength + 1,
+                payload.size - languageCodeLength - 1,
+                Charsets.UTF_8
+            )
+        } catch (e: Exception) {
+            Log.e("NFC_READ", "Error: ${e.message}")
+            null
+        } finally {
+            try {
+                ndef.close()
+            } catch (e: Exception) {
+            }
+        }
+    }
+
+
+    private fun writeNdefMessage(tag: Tag, data: String): Boolean {
+        val record = NdefRecord.createTextRecord("en", data)
+        val message = NdefMessage(arrayOf(record))
+
+        return try {
+            val ndef = Ndef.get(tag)
+            if (ndef != null) {
+                ndef.connect()
+                ndef.writeNdefMessage(message)
+                ndef.close()
+                true
+            } else {
+                val format = NdefFormatable.get(tag)
+                if (format != null) {
+                    format.connect()
+                    format.format(message)
+                    format.close()
+                    true
+                } else false
+            }
+        } catch (e: Exception) {
+            Log.e("NFC_WRITE", "Error: ${e.message}")
+            false
+        }
+    }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class) // Tambahkan ini
 @Composable
@@ -136,6 +278,8 @@ fun AppNavigation(
     var verifiedEmployee by remember { mutableStateOf<Employee?>(null) }
     var selectedCategory by remember { mutableStateOf("") }
     var selectedSpbCategory by remember { mutableStateOf("") }
+
+
 
     fun navigateTo(screen: Screen) {
         backStack.add(screen)
@@ -288,12 +432,23 @@ fun AppNavigation(
             onBack = { navigateBack() },
             onSuccess = { navigateDashboard() })
 
-        Screen.SPB_MENU, Screen.SPB_FORM -> SPBFormScreen(
+        // Menangani navigasi Menu SPB (Daftar) dan Form SPB (Input) secara terpisah
+        Screen.SPB_MENU -> SPBMainScreen(
+            dbHelper = db,
+            empId = sessionManager.getFccode() ?: "",
+            fcba = sessionManager.getFcba() ?: "",
+            onBackMenu = { navigateBack() }
+        )
+
+        Screen.SPB_FORM -> SPBFormScreen(
             dbHelper = db,
             empId = sessionManager.getFccode() ?: "",
             fcba = sessionManager.getFcba() ?: "",
             onBack = { navigateBack() },
-            onSuccess = { navigateDashboard() }
+            onSuccess = {
+                // Setelah sukses simpan, kembali ke list data
+                navigateBack()
+            }
         )
 
         Screen.AKP_FORM -> AKPScreen(
