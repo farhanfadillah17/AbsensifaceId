@@ -71,10 +71,23 @@ fun RegisterFaceScreen(
         FaceDetection.getClient(options)
     }
 
+    // Perbaikan pada DisposableEffect
     DisposableEffect(Unit) {
         onDispose {
+            // 1. Matikan Executor
             cameraExecutor.shutdown()
+
+            // 2. Tutup Face Detector
             faceDetector.close()
+
+            // 3. PENTING: Matikan kamera secara paksa saat meninggalkan layar
+            try {
+                val cameraProvider = ProcessCameraProvider.getInstance(context).get()
+                cameraProvider.unbindAll()
+                Log.d("RegisterFace", "Kamera berhasil dimatikan (Unbound)")
+            } catch (e: Exception) {
+                Log.e("RegisterFace", "Gagal mematikan kamera: ${e.message}")
+            }
         }
     }
 

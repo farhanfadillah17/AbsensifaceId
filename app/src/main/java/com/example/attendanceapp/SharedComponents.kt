@@ -119,3 +119,59 @@ fun SearchableMapDialog(
         }
     )
 }
+
+@Composable
+fun MultiSearchableListDialog(
+    title: String,
+    options: List<Map<String, String>>, // Berisi ID dan Nama Karyawan
+    selectedItems: Set<String>,
+    onDismiss: () -> Unit,
+    onToggle: (String) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredOptions = options.filter {
+        it["name"]?.contains(searchQuery, ignoreCase = true) == true ||
+                it["id"]?.contains(searchQuery, ignoreCase = true) == true
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Cari Nama/NIK...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                    items(filteredOptions) { item ->
+                        val id = item["id"] ?: ""
+                        val name = item["name"] ?: ""
+
+                        ListItem(
+                            headlineContent = { Text("$id - $name") },
+                            leadingContent = {
+                                Checkbox(
+                                    checked = selectedItems.contains(id),
+                                    onCheckedChange = null // Click handled by ListItem
+                                )
+                            },
+                            modifier = Modifier.clickable { onToggle(id) }
+                        )
+                        HorizontalDivider()
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) { Text("Selesai") }
+        }
+    )
+}
+
+
+

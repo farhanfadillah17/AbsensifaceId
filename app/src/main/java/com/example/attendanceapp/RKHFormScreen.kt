@@ -2,77 +2,366 @@ package com.example.attendanceapp
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.isEmpty
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun RKHItemCard(
+    data: Map<String, String>,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        elevation = CardDefaults.cardElevation(4.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            // Baris 1: Nomor RKH
+            Text(
+                text = data["no_rkh"] ?: "-",
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFF1A3A8F),
+                fontSize = 16.sp
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp), thickness = 0.5.dp)
+
+            // Baris 2: AFD (Afdeling)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // PERBAIKAN: Gunakan modifier untuk mengatur size
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = Color.Gray
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Afdeling: ${data["afdeling"] ?: "-"}",
+                    fontSize = 14.sp,
+                    color = Color.DarkGray
+                )
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            // Baris 3: GANG
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // PERBAIKAN: Gunakan modifier untuk mengatur size
+                Icon(
+                    imageVector = Icons.Default.Groups,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = Color.Gray
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Gang: ${data["gangcode"] ?: data["gang_code"] ?: "-"}",
+                    fontSize = 14.sp,
+                    color = Color.DarkGray
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RKHMainScreen(
+    dbHelper: AttendanceDatabaseHelper,
+    empId: String,
+    fcba: String,
+    onBack: () -> Unit,
+    onAddClick: () -> Unit,
+    onEditClick: (String) -> Unit // Untuk Edit Header
+) {
+    // 1. STATE MANAGEMENT
+    var rkhDataList by remember { mutableStateOf(dbHelper.getAllRKH(fcba)) }
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState()
+
+    // State untuk mengontrol visibilitas menu/dialog
+    var showMenu by remember { mutableStateOf(false) }
+    var selectedItemForMenu by remember { mutableStateOf<Map<String, String>?>(null) }
+    var selectedDetailItem by remember { mutableStateOf<Map<String, String>?>(null) }
+    var itemToDelete by remember { mutableStateOf<Map<String, String>?>(null) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Daftar RKH", color = Color.White, fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1A3A8F))
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = onAddClick, containerColor = Color(0xFF1A3A8F)) {
+                Icon(Icons.Default.Add, contentDescription = "Tambah", tint = Color.White)
+            }
+        }
+    ) { padding ->
+        // --- TAMPILAN LIST DATA ---
+        if (rkhDataList.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text("Belum ada data RKH tersimpan", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(rkhDataList) { rkh ->
+                    RKHItemCard(
+                        data = rkh,
+                        onClick = {
+                            // Klik biasa diarahkan langsung ke Detail (Opsional)
+                            selectedDetailItem = rkh
+                        },
+                        onLongClick = {
+                            // HOLD (Long Press) untuk memunculkan Bottom Sheet
+                            selectedItemForMenu = rkh
+                            showMenu = true
+                        }
+                    )
+                }
+            }
+        }
+
+        // --- 1. MODAL BOTTOM SHEET (LONG PRESS MENU) KONSISTEN ---
+        if (showMenu && selectedItemForMenu != null) {
+            ModalBottomSheet(
+                onDismissRequest = { showMenu = false },
+                sheetState = sheetState,
+                containerColor = Color.White
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 40.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Opsi RKH: ${selectedItemForMenu!!["no_rkh"] ?: "-"}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Color(0xFF1A3A8F),
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+
+                    // OPSI: LIHAT DATA
+                    ListItem(
+                        headlineContent = { Text("Lihat Data") },
+                        leadingContent = { Icon(Icons.Default.Visibility, contentDescription = null, tint = Color.Blue) },
+                        modifier = Modifier.clickable {
+                            showMenu = false
+                            selectedDetailItem = selectedItemForMenu
+                        }
+                    )
+
+                    // OPSI: EDIT HEADER
+                    ListItem(
+                        headlineContent = { Text("Edit Header") },
+                        leadingContent = { Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFFF57C00)) },
+                        modifier = Modifier.clickable {
+                            showMenu = false
+                            onEditClick(selectedItemForMenu!!["id"] ?: "")
+                        }
+                    )
+
+                    HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray)
+
+                    // OPSI: HAPUS DATA
+                    ListItem(
+                        headlineContent = { Text("Hapus Data", color = Color.Red) },
+                        leadingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red) },
+                        modifier = Modifier.clickable {
+                            showMenu = false
+                            itemToDelete = selectedItemForMenu
+                        }
+                    )
+                }
+            }
+        }
+
+        // --- 2. DIALOG DETAIL (LIHAT DATA) ---
+        if (selectedDetailItem != null) {
+            AlertDialog(
+                onDismissRequest = { selectedDetailItem = null },
+                title = { Text("Detail RKH", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DetailRow("No RKH", selectedDetailItem!!["no_rkh"])
+                        DetailRow("Pekerjaan", selectedDetailItem!!["job_name"])
+                        DetailRow("Lokasi", selectedDetailItem!!["location"])
+                        DetailRow("HK / Unit", "${selectedDetailItem!!["hk"]} / ${selectedDetailItem!!["unit"]}")
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { selectedDetailItem = null }) { Text("Tutup") }
+                }
+            )
+        }
+
+        // --- 3. DIALOG KONFIRMASI HAPUS ---
+        if (itemToDelete != null) {
+            AlertDialog(
+                onDismissRequest = { itemToDelete = null },
+                title = { Text("Hapus Data") },
+                text = { Text("Apakah Anda yakin ingin menghapus RKH ${itemToDelete!!["no_rkh"]}?") },
+                confirmButton = {
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                        // Di dalam Dialog Konfirmasi Hapus RKHFormScreen.kt
+                        onClick = {
+                            val id = itemToDelete?.get("id")
+                            if (id != null) {
+                                if (dbHelper.deleteRKH(id)) {
+                                    Toast.makeText(context, "Berhasil dihapus", Toast.LENGTH_SHORT).show()
+
+                                    // PAKSA REFRESH menggunakan fungsi yang mengandung ID
+                                    rkhDataList = dbHelper.getAllRKHListMap(fcba)
+                                }
+                            }
+                            itemToDelete = null
+                        }
+                    ) { Text("Hapus", color = Color.White) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { itemToDelete = null }) { Text("Batal") }
+                }
+            )
+        }
+    }
+}
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RKHFormScreen(
     dbHelper: AttendanceDatabaseHelper,
     empId: String,
-    fcba: String, // Pastikan ini "SRE"
+    fcba: String,
     onBack: () -> Unit,
     onSuccess: () -> Unit,
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
-    // --- STATE HEADER ---
+    // --- 1. STATE NAVIGATION ---
+    var currentStep by remember { mutableStateOf(1) }
+
+    // --- 2. STATE DATA ---
+    val rkhTypes = remember {
+        listOf(
+            "RKH Panen (Perhitungan buah)",
+            "RKH Perawatan (perawatan)",
+            "RKH Bibitan (bibitan)",
+            "RKH Traksi (umum)",
+            "RKH Umum (umum)"
+        )
+    }
+    var selectedType by remember { mutableStateOf("") }
+    var showTypeDialog by remember { mutableStateOf(false) }
+
     var noRkh by remember { mutableStateOf("Generating...") }
     var rkhDate by remember {
         mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
     }
+
+    var sup1 by remember { mutableStateOf("") }
+    var sup2 by remember { mutableStateOf("") }
+    var sup3 by remember { mutableStateOf("") }
+    var sup4 by remember { mutableStateOf("") }
+
     var selectedAfd by remember { mutableStateOf("") }
     var selectedGang by remember { mutableStateOf("") }
-
-    // --- STATE DETAIL ---
     var selectedJob by remember { mutableStateOf("") }
     var selectedLoc by remember { mutableStateOf("") }
-    var hk by remember { mutableStateOf("") }
+
+    var hk by remember { mutableStateOf("") } // Jumlah HK sekarang di Step 1
     var unit by remember { mutableStateOf("") }
     var output by remember { mutableStateOf("") }
 
-    // State untuk Dialog Pencarian
     var activeDialog by remember { mutableStateOf<String?>(null) }
 
-    // --- LOGIC OTOMATIS NOMOR RKH (SEPERTI SPB) ---
     LaunchedEffect(fcba) {
-        // Memanggil fungsi generator nomor dari DatabaseHelper
         noRkh = dbHelper.generateNoRKH(fcba)
     }
 
-    // Load Data Master
+    // Data Lists
     val afdelingList = remember(fcba) { dbHelper.getAfdelingList(fcba) }
-
-    // List Gang akan berubah otomatis jika Afdeling dipilih
     val gangList = remember(fcba, selectedAfd) {
-        if (selectedAfd.isNotEmpty()) {
-            dbHelper.getGangsByAfdeling(selectedAfd, fcba)
-        } else emptyList()
+        if (selectedAfd.isNotEmpty()) dbHelper.getGangsByAfdeling(selectedAfd, fcba) else emptyList()
     }
-
     val jobList = remember(fcba) { dbHelper.getJobList(fcba) }
-    val locationList = remember(fcba) { dbHelper.getBlockList(fcba) }
+    val locationList = remember(fcba, selectedAfd) {
+        if (selectedAfd.isNotEmpty()) {
+            // Ambil blok yang kodenya sesuai dengan Afdeling (Misal Afd: OA, cari blok OA01, OA02)
+            val filtered = dbHelper.getBlocksByLocation(selectedAfd)
 
-    // Dialog Pencarian
+            // Jika filter afdeling tidak menghasilkan data, tampilkan semua blok (fallback)
+            if (filtered.isEmpty()) {
+                dbHelper.getBlockList(fcba)
+            } else {
+                filtered
+            }
+        } else {
+            // Jika belum pilih afdeling, tampilkan semua blok yang ada
+            dbHelper.getBlockList(fcba)
+        }
+    }
+    val supervisorOptions = remember(fcba) { dbHelper.getSupervisors(fcba) }
+
+    // Dialog Logic
     if (activeDialog != null) {
         SearchableListDialog(
             title = "Cari $activeDialog",
@@ -81,29 +370,46 @@ fun RKHFormScreen(
                 "GANG" -> gangList
                 "JOB" -> jobList
                 "LOC" -> locationList
+                "SUP1", "SUP2", "SUP3", "SUP4" -> supervisorOptions // Tambahkan opsi untuk supervisor
                 else -> emptyList()
             },
             onDismiss = { activeDialog = null }
         ) { selectedValue ->
             when (activeDialog) {
-                "AFD" -> {
-                    selectedAfd = selectedValue
-                    selectedGang = "" // Reset gang jika afdeling berubah
-                }
+                "AFD" -> { selectedAfd = selectedValue; selectedGang = "" }
                 "GANG" -> selectedGang = selectedValue
                 "JOB" -> selectedJob = selectedValue
                 "LOC" -> selectedLoc = selectedValue
+                "SUP1" -> sup1 = selectedValue
+                "SUP2" -> sup2 = selectedValue
+                "SUP3" -> sup3 = selectedValue
+                "SUP4" -> sup4 = selectedValue
             }
             activeDialog = null
         }
     }
 
+
+    if (showTypeDialog) {
+        MasterSearchDialog(
+            title = "Pilih Tipe RKH",
+            items = rkhTypes,
+            onDismiss = { showTypeDialog = false },
+            onSelect = { selectedType = it; showTypeDialog = false }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Input RKH ", fontWeight = FontWeight.Bold) },
+                title = { Text(if (currentStep == 1) "Input RKH - Step 1" else "Input RKH - Step 2", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") }
+                    IconButton(onClick = {
+                        // PERBAIKAN NAVIGASI BACK
+                        if (currentStep == 2) currentStep = 1 else onBack()
+                    }) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFF1A3A8F),
@@ -121,150 +427,136 @@ fun RKHFormScreen(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // --- SECTION 1: HEADER (NOMOR & TANGGAL) ---
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
-                elevation = CardDefaults.cardElevation(2.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("PENGESAHAN RKH", fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A3A8F))
+            if (currentStep == 1) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
+                    elevation = CardDefaults.cardElevation(2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("PENGESAHAN RKH", fontWeight = FontWeight.ExtraBold, color = Color(0xFF1A3A8F))
 
-                    OutlinedTextField(
-                        value = fcba, // Diambil dari parameter fungsi RKHFormScreen
-                        onValueChange = { },
-                        label = { Text("BUSINESS UNIT (FCBA)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        readOnly = true, // Tidak bisa diubah manual
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color(0xFFE9ECEF),
-                            unfocusedContainerColor = Color(0xFFE9ECEF),
-                            focusedTextColor = Color.DarkGray,
-                            unfocusedTextColor = Color.DarkGray
-                        )
-                    )
+                        OutlinedTextField(value = fcba, onValueChange = {}, label = { Text("FCBA") }, modifier = Modifier.fillMaxWidth(), readOnly = true)
+                        ClickableSearchField(label = "TYPE RKH", value = selectedType) { showTypeDialog = true }
+                        ClickableSearchField(label = "AFDELING", value = selectedAfd) { activeDialog = "AFD" }
+                        ClickableSearchField(label = "GANG CODE", value = selectedGang, enabled = selectedAfd.isNotEmpty()) { activeDialog = "GANG" }
 
+                        // PERBAIKAN: SUPERVISI SEKARANG BISA DIPILIH (Bukan Ketik Manual)
+                        Text("PERSONIL SUPERVISI", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                        ClickableSearchField(label = "SUPERVISI 1", value = sup1) { activeDialog = "SUP1" }
+                        ClickableSearchField(label = "SUPERVISI 2", value = sup2) { activeDialog = "SUP2" }
+                        ClickableSearchField(label = "SUPERVISI 3", value = sup3) { activeDialog = "SUP3" }
+                        ClickableSearchField(label = "SUPERVISI 4", value = sup4) { activeDialog = "SUP4" }
 
+                        Text("DETAIL PEKERJAAN", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                        ClickableSearchField(label = "JOB CODE", value = selectedJob) { activeDialog = "JOB" }
 
-                    OutlinedTextField(
-                        value = noRkh,
-                        onValueChange = { }, // Disable edit manual
-                        label = { Text("NO RKH (OTOMATIS)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        readOnly = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color(0xFFE9ECEF),
-                            unfocusedContainerColor = Color(0xFFE9ECEF)
-                        )
-                    )
-
-                    OutlinedTextField(
-                        value = rkhDate,
-                        onValueChange = { rkhDate = it },
-                        label = { Text("TANGGAL RKH") },
-                        modifier = Modifier.fillMaxWidth(),
-                        readOnly = true
-                    )
-
-                    ClickableSearchField(label = "AFDELING", value = selectedAfd) {
-                        activeDialog = "AFD"
-                    }
-
-                    ClickableSearchField(
-                        label = "GANG CODE",
-                        value = selectedGang,
-                        enabled = selectedAfd.isNotEmpty()
-                    ) {
-                        if (selectedAfd.isEmpty()) {
-                            Toast.makeText(context, "Pilih Afdeling terlebih dahulu!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            activeDialog = "GANG"
-                        }
-                    }
-                }
-            }
-
-            // --- SECTION 2: DETAIL PEKERJAAN ---
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, Color.LightGray)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("DETAIL PEKERJAAN", fontWeight = FontWeight.ExtraBold, color = Color(0xFF2E7D32))
-
-                    ClickableSearchField(label = "JOB CODE / KEGIATAN", value = selectedJob) {
-                        activeDialog = "JOB"
-                    }
-
-                    ClickableSearchField(label = "LOCATION / BLOK", value = selectedLoc) {
-                        activeDialog = "LOC"
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = hk,
-                            onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) hk = it },
-                            label = { Text("HK") },
-                            modifier = Modifier.weight(1f),
+                            onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) hk = it },
+                            label = { Text("JUMLAH HK") },
+                            modifier = Modifier.fillMaxWidth(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                         )
-                        OutlinedTextField(
-                            value = unit,
-                            onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) unit = it },
-                            label = { Text("UNIT") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                        )
-                        OutlinedTextField(
-                            value = output,
-                            onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) output = it },
-                            label = { Text("OUTPUT") },
-                            modifier = Modifier.weight(1.2f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                        )
-                    }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // --- TOMBOL SIMPAN ---
-            Button(
-                onClick = {
-                    if (selectedGang.isEmpty() || selectedJob.isEmpty() || hk.isEmpty()) {
-                        Toast.makeText(context, "Semua data wajib diisi!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        // Memastikan nomor terbaru digenerate ulang saat simpan untuk cegah duplikat
-                        val finalNoRkh = dbHelper.generateNoRKH(fcba)
-
-                        val result = dbHelper.insertRKHFull(
-                            noRkh = finalNoRkh,
-                            tanggal = rkhDate,
-                            fcba = fcba,
-                            afd = selectedAfd,
-                            gang = selectedGang,
-                            job = selectedJob,
-                            loc = selectedLoc,
-                            hk = hk.toDoubleOrNull() ?: 0.0,
-                            unit = unit.toDoubleOrNull() ?: 0.0,
-                            out = output.toDoubleOrNull() ?: 0.0
-                        )
-
-                        if (result != -1L) {
-                            Toast.makeText(context, "RKH $finalNoRkh Berhasil Tersimpan", Toast.LENGTH_LONG).show()
-                            onSuccess()
-                        } else {
-                            Toast.makeText(context, "Gagal Simpan ke Database", Toast.LENGTH_SHORT).show()
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("UNIT") }, modifier = Modifier.weight(1f))
+                            OutlinedTextField(value = output, onValueChange = { output = it }, label = { Text("OUTPUT") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                         }
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(55.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3A8F)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("SIMPAN RKH", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = {
+                        if (selectedAfd.isNotEmpty() && selectedGang.isNotEmpty() && selectedJob.isNotEmpty() && hk.isNotEmpty()) {
+                            currentStep = 2
+                        } else {
+                            Toast.makeText(context, "Lengkapi data (Afd, Gang, Job, HK)", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(55.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("NEXT (PILIH LOKASI)") }
+
+            } else {
+                // --- STEP 2: LOKASI & SAVE ---
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color.LightGray)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text("LOKASI KERJA", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                        Text("No. RKH: $noRkh", fontSize = 12.sp, color = Color.Gray)
+
+                        ClickableSearchField(label = "LOCATION / BLOK", value = selectedLoc) { activeDialog = "LOC" }
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        if (selectedLoc.isEmpty()) {
+                            Toast.makeText(context, "Pilih Lokasi terlebih dahulu!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            val finalNoRkh = dbHelper.generateNoRKH(fcba)
+                            val result = dbHelper.insertRKHFull(
+                                noRkh = finalNoRkh,
+                                tanggal = rkhDate,
+                                type = selectedType,
+                                fcba = fcba,
+                                afd = selectedAfd,
+                                gang = selectedGang,
+                                s1 = sup1, s2 = sup2, s3 = sup3, s4 = sup4,
+                                job = selectedJob,
+                                loc = selectedLoc,
+                                hk = hk.toDoubleOrNull() ?: 0.0,
+                                unit = unit,
+                                out = output.toDoubleOrNull() ?: 0.0
+                            )
+
+                            if (result != -1L) {
+                                Toast.makeText(context, "RKH Berhasil Disimpan", Toast.LENGTH_LONG).show()
+                                onSuccess()
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(55.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("SIMPAN RKH", fontWeight = FontWeight.Bold) }
+
+                // Tombol Kembali Manual
+                OutlinedButton(
+                    onClick = { currentStep = 1 },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("KEMBALI KE STEP 1") }
             }
         }
+    }
+}
+
+@Composable
+fun DetailRow(label: String, value: String?) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = "$label:",
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp,
+            color = Color.Gray
+        )
+        Text(
+            text = value ?: "-",
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            color = Color(0xFF1A3A8F) // Menggunakan warna biru gelap agar senada
+        )
     }
 }

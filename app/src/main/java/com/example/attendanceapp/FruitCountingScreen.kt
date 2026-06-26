@@ -300,6 +300,8 @@ fun NfcTransferDialog(data: Map<String, String>, onDismiss: () -> Unit) {
     )
 }
 
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FruitCountingFormContent(
@@ -341,7 +343,7 @@ fun FruitCountingFormContent(
 
     // Master Data
 
-    val rkhList = remember { dbHelper.getRKHList(fcba) }
+    val rkhList = remember(fcba) { dbHelper.getRKHPanenList(fcba) }
 
     LaunchedEffect(rkhList) {
         if (isEditMode && rkhList.isNotEmpty()) {
@@ -350,9 +352,29 @@ fun FruitCountingFormContent(
         }
     }
 
+    LaunchedEffect(selectedRKH) {
+        selectedRKH?.let { rkh ->
+            if (!isEditMode || activeDialog == "RKH") {
+                // Sesuaikan "supervisi1" dengan nama kolom asli di table_rkh Anda
+                supervisi1 = rkh["supervisi1"] ?: supervisi1
+                supervisi2 = rkh["supervisi2"] ?: supervisi2
+                supervisi3 = rkh["supervisi3"] ?: supervisi3
+                supervisi4 = rkh["supervisi4"] ?: supervisi4
+
+                // Sesuaikan "unit" dan "output" dengan kolom di table_rkh
+                unit = rkh["unit"] ?: unit
+                output = rkh["output"] ?: output
+
+                if (activeDialog == "RKH") {
+                    Toast.makeText(context, "Data RKH Panen Dimuat", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     val supervisorOptions = remember { dbHelper.getSupervisors(fcba) }
     val presentWorkers = remember { dbHelper.getEmployeesAlreadyCheckedIn(fcba) }
-    val locationCodeFromRKH = selectedRKH?.get("location") ?: ""
+    val locationCodeFromRKH = selectedRKH?.get("location_code") ?: ""
     val tphList = remember(locationCodeFromRKH) {
         if (locationCodeFromRKH.isNotEmpty()) {
             // 3. Tambahkan fcba ke getTPHByLocation
@@ -366,8 +388,9 @@ fun FruitCountingFormContent(
     if (activeDialog != null) {
         when (activeDialog) {
             "RKH" -> SearchableMapDialog(
-                title = "Cari No RKH", options = rkhList,
-                displayProvider = { "RKH:${it["no_rkh"]} - ${it["location"]}" },
+                title = "Cari No RKH",
+                options = rkhList,
+                displayProvider = { "RKH:${it["no_rkh"]} - ${it["location_code"] ?: it["location"] ?: "-"}" },
                 onDismiss = { activeDialog = null },
                 onSelect = { selectedRKH = it; selectedTPH = ""; activeDialog = null }
             )
@@ -389,6 +412,17 @@ fun FruitCountingFormContent(
                     activeDialog = null
                 }
             )
+            "WORKERS" -> MultiSearchableListDialog(
+                title = "Pilih Karyawan",
+                options = presentWorkers,
+                selectedItems = selectedWorkers,
+                onDismiss = { activeDialog = null },
+                onToggle = { id ->
+                    val current = selectedWorkers.toMutableSet()
+                    if (current.contains(id)) current.remove(id) else current.add(id)
+                    selectedWorkers = current
+                }
+            )
         }
     }
 
@@ -408,13 +442,15 @@ fun FruitCountingFormContent(
             // 1. Pilih No RKH
             ClickableSearchField(
                 label = "Pilih No RKH",
-                value = if (selectedRKH != null) "RKH:${selectedRKH?.get("no_rkh")} - ${selectedRKH?.get("location")}" else "",
+                value = if (selectedRKH != null) {
+                    "RKH:${selectedRKH?.get("no_rkh")} - ${selectedRKH?.get("location_code") ?: selectedRKH?.get("location")}"
+                } else "",
                 onClick = { activeDialog = "RKH" }
             )
 
             // 2. Gang Code (Otomatis & Read Only)
             OutlinedTextField(
-                value = selectedRKH?.get("gang_code") ?: "",
+                value = selectedRKH?.get("gangcode") ?: selectedRKH?.get("gang_code") ?: "",
                 onValueChange = {},
                 label = { Text("Gang Code") },
                 modifier = Modifier.fillMaxWidth(),
@@ -436,21 +472,35 @@ fun FruitCountingFormContent(
             ClickableSearchField("Supervisi 3", supervisi3) { activeDialog = "SUP3" }
             ClickableSearchField("Supervisi 4", supervisi4) { activeDialog = "SUP4" }
 
+
+
+            // Ganti Card Checklist lama dengan ini:
             Text("Pilih Karyawan", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
-            Card(modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp)) {
-                Column(Modifier.padding(8.dp).verticalScroll(rememberScrollState())) {
-                    presentWorkers.forEach { staff ->
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable {
-                            val current = selectedWorkers.toMutableSet()
-                            if (current.contains(staff["id"])) current.remove(staff["id"]) else current.add(staff["id"]!!)
-                            selectedWorkers = current
-                        }) {
-                            Checkbox(checked = selectedWorkers.contains(staff["id"]), onCheckedChange = null)
-                            Text("${staff["id"]} - ${staff["name"]}", fontSize = 13.sp)
-                        }
-                    }
-                }
-            }
+
+            ClickableSearchField(
+                label = "Klik untuk Pilih Karyawan",
+                value = if (selectedWorkers.isEmpty()) {
+                    "Belum ada karyawan dipilih"
+                } else {
+                    "${selectedWorkers.size} Karyawan dipilih"
+                },
+                onClick = { activeDialog = "WORKERS" } // Ini akan memicu dialog muncul
+            )
+
+            OutlinedTextField(
+                value = selectedRKH?.get("location_code") ?: selectedRKH?.get("location") ?: "",
+                onValueChange = {},
+                label = { Text("Location Code") },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                enabled = false,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledTextColor = Color.Black,
+                    disabledBorderColor = Color.Gray,
+                    disabledLabelColor = Color.DarkGray,
+                    disabledContainerColor = Color(0xFFF5F5F5) // Background abu-abu sebagai penanda otomatis
+                )
+            )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("Unit") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
@@ -510,7 +560,7 @@ fun FruitCountingFormContent(
                                 gang = selectedRKH!!["gang_code"] ?: "",
                                 supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
                                 employees = selectedWorkers.toList(),
-                                location = locationCodeFromRKH,
+                                location = selectedRKH!!["location_code"] ?: "",
                                 tph = selectedTPH,
                                 unit = unit.toDoubleOrNull() ?: 0.0,
                                 output = output.toDoubleOrNull() ?: 0.0,

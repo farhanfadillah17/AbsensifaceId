@@ -68,7 +68,7 @@ data class MenuConfig(
 
 // 2. Enum Screen
 enum class Screen {
-    LOGIN, DASHBOARD, HOME, EMPLOYEE_FORM, REGISTER_FACE, QR_SCAN, FACE_VERIFY, HISTORY, PROGRESS_MENU, FRUIT_COUNTING, ANCAK_PANEN, SPB_MENU, SPB_FORM, AKP_FORM, RKH_VIEW, TRANSFER_DATA
+    LOGIN, DASHBOARD, HOME, EMPLOYEE_FORM, REGISTER_FACE, QR_SCAN, FACE_VERIFY, HISTORY, PROGRESS_MENU, FRUIT_COUNTING, ANCAK_PANEN, SPB_MENU, SPB_FORM, AKP_FORM, RKH_VIEW,RKH_FORM, TRANSFER_DATA
 }
 
 class MainActivity : ComponentActivity() {
@@ -134,6 +134,24 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AttendanceAppTheme {
+
+                val scope = rememberCoroutineScope()
+
+                // 2. Jalankan pengecekan dan import data master
+                LaunchedEffect(Unit) {
+                    scope.launch(Dispatchers.IO) {
+                        // Cek Tabel Mill (CUSTOMER)
+                        if (db.isTableEmpty("CUSTOMER")) {
+                            db.importSqlFromAssets("mill.sql")
+                        }
+                        // Cek Tabel Vehicle (VEHICLE)
+                        if (db.isTableEmpty("VEHICLE")) {
+                            db.importSqlFromAssets("vehicle.sql")
+                        }
+                    }
+                }
+
+
                 Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
                     AppNavigation(
                         db = db,
@@ -457,12 +475,31 @@ fun AppNavigation(
             onBack = { navigateBack() },
             onNavigateToRKH = { navigateTo(Screen.RKH_VIEW) })
 
-        Screen.RKH_VIEW -> RKHFormScreen(
+        Screen.RKH_VIEW -> RKHMainScreen(
             dbHelper = db,
             empId = sessionManager.getFccode() ?: "",
             fcba = sessionManager.getFcba() ?: "",
             onBack = { navigateBack() },
-            onSuccess = { navigateDashboard() })
+            onAddClick = {
+                // Navigasi ke Form untuk tambah data baru
+                navigateTo(Screen.RKH_FORM)
+            },
+            onEditClick = { rkhId ->
+                // Navigasi ke Form untuk edit data (opsional)
+                // Sementara bisa dikosongkan atau arahkan ke rute edit jika sudah ada
+            }
+        )
+
+        Screen.RKH_FORM -> RKHFormScreen(
+            dbHelper = db,
+            empId = sessionManager.getFccode() ?: "",
+            fcba = sessionManager.getFcba() ?: "",
+            onBack = { navigateBack() },
+            onSuccess = {
+                // Setelah sukses simpan RKH, kembali ke list data RKH (bukan ke dashboard)
+                navigateBack()
+            }
+        )
     }
 }
 

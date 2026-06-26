@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Visibility
@@ -163,12 +164,11 @@ fun ProgressCategoryChooser(onBack: () -> Unit, onSelect: (String) -> Unit) {
                     .padding(bottom = 20.dp)
             )
 
-            // Baris Tombol Berdampingan (Simpel seperti Absen)
+            // Baris 1: PERAWATAN dan PEMBIBITAN
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Tombol Perawatan (Hijau - Seperti Absen Masuk)
                 SimpleCategoryButton(
                     title = "PERAWATAN",
                     icon = Icons.Default.Build,
@@ -177,7 +177,6 @@ fun ProgressCategoryChooser(onBack: () -> Unit, onSelect: (String) -> Unit) {
                     onClick = { onSelect("PERAWATAN") }
                 )
 
-                // Tombol Pembibitan (Orange/Kuning - Seperti Absen Keluar)
                 SimpleCategoryButton(
                     title = "PEMBIBITAN",
                     icon = Icons.Default.Spa,
@@ -185,6 +184,26 @@ fun ProgressCategoryChooser(onBack: () -> Unit, onSelect: (String) -> Unit) {
                     modifier = Modifier.weight(1f),
                     onClick = { onSelect("PEMBIBITAN") }
                 )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Baris 2: UMUM (Ukurannya akan sama karena menggunakan weight(1f) dan Spacer)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                SimpleCategoryButton(
+                    title = "UMUM",
+                    icon = Icons.Default.Assignment, // Ikon daftar tugas
+                    color = Color(0xFF1A3A8F),      // Warna biru identitas app
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSelect("UMUM") }
+                )
+
+                // Spacer ini penting agar tombol UMUM tidak melebar memenuhi layar
+                // dan tetap berukuran sama dengan tombol di atasnya.
+                Spacer(modifier = Modifier.weight(1f))
             }
         }
     }
@@ -429,7 +448,26 @@ fun ProgressFormScreen(
 
     // --- DATA SOURCES ---
     // 2. Gunakan currentFcba secara konsisten di semua pemanggilan dan remember key
-    val rkhList = remember(currentFcba) { dbHelper.getRKHList(currentFcba) }
+    val rkhList = remember(currentFcba, category) {
+        when (category) {
+            "UMUM" -> {
+                // Jika kategori UMUM, ambil semua No RKH tanpa filter type
+                dbHelper.getAllRKHListMap(currentFcba)
+            }
+            "PERAWATAN" -> {
+                // Ambil hanya yang tipenya Perawatan
+                dbHelper.getRKHListByTypeMap(currentFcba, "RKH Perawatan (perawatan)")
+            }
+            "PEMBIBITAN" -> {
+                // Ambil hanya yang tipenya Bibitan
+                dbHelper.getRKHListByTypeMap(currentFcba, "RKH Bibitan (bibitan)")
+            }
+            else -> {
+                // Fallback default
+                dbHelper.getRKHList(currentFcba)
+            }
+        }
+    }
     val supervisorOptions = remember(currentFcba) { dbHelper.getSupervisors(currentFcba) }
     val jobMasterList = remember(currentFcba) { dbHelper.getDropdownData("JOB", currentFcba) }
     val isEditMode = initialData != null
@@ -445,25 +483,43 @@ fun ProgressFormScreen(
 
     // --- FORM STATES ---
     var selectedRKH by remember { mutableStateOf<Map<String, String>?>(null) }
-    var selectedBlock by remember { mutableStateOf(initialData?.get("location_code") ?: "") }
-    var selectedJobType by remember { mutableStateOf(initialData?.get("job_code") ?: "") }
+    var selectedBlock by remember { mutableStateOf("") }
+    var selectedJobType by remember { mutableStateOf("") }
+    var supervisi1 by remember { mutableStateOf("") }
+    var supervisi2 by remember { mutableStateOf("") }
+    var supervisi3 by remember { mutableStateOf("") }
+    var supervisi4 by remember { mutableStateOf("") }
+    var locationCodeAuto by remember { mutableStateOf("") }
+    var unit by remember { mutableStateOf("") }
+    var output by remember { mutableStateOf("") }
 
-    // PERBAIKAN: Supervisi diubah menjadi 4
-    var supervisi1 by remember { mutableStateOf(initialData?.get("supervisor1") ?: "") }
-    var supervisi2 by remember { mutableStateOf(initialData?.get("supervisor2") ?: "") }
-    var supervisi3 by remember { mutableStateOf(initialData?.get("supervisor3") ?: "") }
-    var supervisi4 by remember { mutableStateOf(initialData?.get("supervisor4") ?: "") }
+// --- LOGIKA AUTO-FILL ---
+// Setiap kali selectedRKH berubah (saat user memilih dari dialog)
+    LaunchedEffect(selectedRKH) {
+        selectedRKH?.get("no_rkh")?.let { noRkh ->
+            // Ambil detail lengkap dari DB
+            val detail = dbHelper.getRKHDetail(noRkh)
 
-    LaunchedEffect(rkhList) {
-        if (isEditMode && rkhList.isNotEmpty()) {
-            selectedRKH = rkhList.find { it["no_rkh"] == initialData?.get("no_rkh") }
+            if (detail != null) {
+                // Isi otomatis field yang ada
+                selectedBlock = detail["location_code"] ?: ""
+                selectedJobType = detail["job_code"] ?: ""
+                supervisi1 = detail["supervisor1"] ?: ""
+                supervisi2 = detail["supervisor2"] ?: ""
+                supervisi3 = detail["supervisor3"] ?: ""
+                supervisi4 = detail["supervisor4"] ?: ""
+                locationCodeAuto = detail["location_code"] ?: detail["location"] ?: ""
+                unit = detail["unit"] ?: ""
+                output = detail["output"] ?: ""
+
+                Toast.makeText(context, "Data RKH Berhasil Dimuat", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
     var selectedEmployees by remember { mutableStateOf(setOf<String>()) }
 
-    var unit by remember { mutableStateOf("") }
-    var output by remember { mutableStateOf("") }
+
     var rate by remember { mutableStateOf("") }
     var lembur by remember { mutableStateOf("0") }
     var dapatBeras by remember { mutableStateOf(false) }
@@ -483,13 +539,12 @@ fun ProgressFormScreen(
         when (activeDialog) {
             "RKH" -> {
                 SearchableMapDialog(
-                    title = "Cari No. RKH",
-                    options = rkhList,
-                    displayProvider = { "RKH:${it["no_rkh"]} - ${it["location"]}" },
+                    title = "Pilih RKH",
+                    options = rkhList, // List yang berisi Map (no_rkh, gang_code, dll)
+                    displayProvider = { it["no_rkh"] ?: "Tanpa Nomor" },
                     onDismiss = { activeDialog = null },
-                    onSelect = {
-                        selectedRKH = it
-                        selectedBlock = "" // Reset blok saat RKH ganti
+                    onSelect = { rkhMap: Map<String, String> -> // Tambahkan tipe data di sini
+                        selectedRKH = rkhMap
                         activeDialog = null
                     }
                 )
@@ -526,6 +581,18 @@ fun ProgressFormScreen(
                     }
                 )
             }
+
+            "WORKERS" -> MultiSearchableListDialog(
+                title = "Pilih Karyawan Progres Kerja",
+                options = availableStaff,
+                selectedItems = selectedEmployees,
+                onDismiss = { activeDialog = null },
+                onToggle = { id ->
+                    val current = selectedEmployees.toMutableSet()
+                    if (current.contains(id)) current.remove(id) else current.add(id)
+                    selectedEmployees = current
+                }
+            )
         }
     }
 
@@ -582,7 +649,7 @@ fun ProgressFormScreen(
                 if (locationCode.isEmpty()) Toast.makeText(context, "Pilih RKH dulu!", Toast.LENGTH_SHORT).show()
                 else activeDialog = "BLOCK"
             }
-            ClickableSearchField("Jenis Pekerjaan", selectedJobType) { activeDialog = "JOB" }
+
 
             // 4. Supervisi (Diubah menjadi 4 baris)
             Text("Personil Supervisi", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
@@ -591,32 +658,36 @@ fun ProgressFormScreen(
             ClickableSearchField("Supervisi 3", supervisi3) { activeDialog = "SUP3" }
             ClickableSearchField("Supervisi 4", supervisi4) { activeDialog = "SUP4" }
 
+
+
             // 5. Karyawan
-            Text("Pilih Karyawan", fontWeight = FontWeight.Bold)
-            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))) {
-                Column(Modifier
-                    .padding(8.dp)
-                    .heightIn(max = 250.dp)
-                    .verticalScroll(rememberScrollState())) {
-                    if (availableStaff.isEmpty()) {
-                        Text("Tidak ada karyawan absen", color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(8.dp))
-                    }
-                    availableStaff.forEach { staff ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(
-                                checked = selectedEmployees.contains(staff["id"]),
-                                onCheckedChange = { isChecked ->
-                                    val current = selectedEmployees.toMutableSet()
-                                    if (isChecked) current.add(staff["id"]!!) else current.remove(staff["id"])
-                                    selectedEmployees = current
-                                }
-                            )
-                            Text("${staff["id"]} - ${staff["name"]}", fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
+            Text("Pilih Karyawan", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+
+            ClickableSearchField(
+                label = "Klik untuk mencari karyawan",
+                value = if (selectedEmployees.isEmpty()) {
+                    "Belum ada karyawan dipilih"
+                } else {
+                    "${selectedEmployees.size} Karyawan dipilih"
+                },
+                onClick = { activeDialog = "WORKERS" } // Memicu dialog muncul
+            )
+
             Text("Terpilih: ${selectedEmployees.size} Karyawan", fontSize = 11.sp, color = Color.Gray)
+
+            OutlinedTextField(
+                value = locationCodeAuto,
+                onValueChange = {},
+                label = { Text("Location Code") },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                enabled = false,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledContainerColor = Color(0xFFF0F0F0),
+                    disabledTextColor = Color.Black,
+                    disabledLabelColor = Color.DarkGray
+                )
+            )
 
             // 6. Hasil Kerja
             Text("Hasil Kerja", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
@@ -649,6 +720,7 @@ fun ProgressFormScreen(
                             sup2 = supervisi2,
                             sup3 = supervisi3,
                             sup4 = supervisi4
+
                         )
                         if (success) {
                             Toast.makeText(context, "Header Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
@@ -673,7 +745,8 @@ fun ProgressFormScreen(
                                 rate = rate.toDoubleOrNull() ?: 0.0,
                                 lembur = lembur.toIntOrNull() ?: 0,
                                 beras = if (dapatBeras) 1 else 0,
-                                locationCode = selectedBlock
+                                locationCode = selectedBlock,
+                                location = selectedRKH!!["location_code"] ?: selectedRKH!!["location"] ?: ""
                             )
                             onSaveSuccess()
                         }
@@ -694,3 +767,4 @@ fun ProgressFormScreen(
         }
     }
 }
+
