@@ -4,6 +4,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,86 +38,175 @@ fun SPBMainScreen(
     empId: String,
     onBackMenu: () -> Unit
 ) {
-    // Pastikan defaultnya adalah false agar muncul LIST dulu
     var isAddingNew by remember { mutableStateOf(false) }
+    var currentEditId by remember { mutableStateOf<String?>(null) } // State untuk Edit
 
-    if (isAddingNew) {
+    if (isAddingNew || currentEditId != null) {
         SPBFormScreen(
             dbHelper = dbHelper,
             fcba = fcba,
             empId = empId,
-            onBack = { isAddingNew = false },
-            onSuccess = { isAddingNew = false }
+            editId = currentEditId,
+            onBack = {
+                isAddingNew = false
+                currentEditId = null
+            },
+            onSuccess = {
+                isAddingNew = false
+                currentEditId = null
+            }
         )
     } else {
         SPBListScreen(
             dbHelper = dbHelper,
-            onTambahClick = { isAddingNew = true }, // Klik tombol + baru masuk ke Form
+            fcba = fcba,
+            onTambahClick = { isAddingNew = true },
+            onEditClick = { id -> currentEditId = id },
             onBack = onBackMenu
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SPBListScreen(
     dbHelper: AttendanceDatabaseHelper,
+    fcba: String,
     onTambahClick: () -> Unit,
+    onEditClick: (String) -> Unit,
     onBack: () -> Unit
 ) {
-    val spbListData = remember { mutableStateListOf<Map<String, String>>() }
+    val context = LocalContext.current
+    var spbListData by remember { mutableStateOf(dbHelper.getAllSPBListMap(fcba)) }
 
-    // Load data setiap kali layar muncul
     LaunchedEffect(Unit) {
-        spbListData.clear()
-        spbListData.addAll(dbHelper.getAllSPB())
+        spbListData = dbHelper.getAllSPBListMap(fcba)
     }
+    // State Menu & Dialog
+    var showMenu by remember { mutableStateOf(false) }
+    var selectedItemForMenu by remember { mutableStateOf<Map<String, String>?>(null) }
+    var selectedDetailItem by remember { mutableStateOf<Map<String, String>?>(null) }
+    var itemToDelete by remember { mutableStateOf<Map<String, String>?>(null) }
+    val sheetState = rememberModalBottomSheetState()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Daftar SPB") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
-                }
+                title = { Text("Daftar SPB", fontWeight = FontWeight.Bold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) } }
             )
         },
         floatingActionButton = {
-            // Tombol Tambah Data (+)
-            FloatingActionButton(
-                onClick = onTambahClick,
-                containerColor = Color(0xFF1A3A8F),
-                contentColor = Color.White
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Tambah SPB")
+            FloatingActionButton(onClick = onTambahClick, containerColor = Color(0xFF1A3A8F)) {
+                Icon(Icons.Default.Add, contentDescription = "Tambah", tint = Color.White)
             }
         }
     ) { padding ->
         if (spbListData.isEmpty()) {
-            Box(Modifier
-                .fillMaxSize()
-                .padding(padding), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("Belum ada data SPB", color = Color.Gray)
             }
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Pastikan 'items' sudah diimport (langkah nomor 1)
                 items(spbListData) { item ->
-                    SPBItemCard(item)
+                    SPBItemCard(
+                        item = item,
+                        onClick = { selectedDetailItem = item },
+                        onLongClick = {
+                            selectedItemForMenu = item
+                            showMenu = true
+                        }
+                    )
                 }
             }
+        }
+
+        // --- 1. MODAL BOTTOM SHEET (MENU) ---
+        if (showMenu && selectedItemForMenu != null) {
+            ModalBottomSheet(onDismissRequest = { showMenu = false }, sheetState = sheetState) {
+                Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 40.dp)) {
+                    Text("Opsi SPB: ${selectedItemForMenu!!["no_spb"]}", fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
+                    ListItem(
+                        headlineContent = { Text("Lihat Detail") },
+                        leadingContent = { Icon(Icons.Default.Visibility, null, tint = Color.Blue) },
+                        modifier = Modifier.clickable { showMenu = false; selectedDetailItem = selectedItemForMenu }
+                    )
+                    ListItem(
+                        headlineContent = { Text("Edit Header") },
+                        leadingContent = { Icon(Icons.Default.Edit, null, tint = Color(0xFFF57C00)) },
+                        modifier = Modifier.clickable { showMenu = false; onEditClick(selectedItemForMenu!!["id"] ?: "") }
+                    )
+                    HorizontalDivider()
+                    ListItem(
+                        headlineContent = { Text("Hapus Data", color = Color.Red) },
+                        leadingContent = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
+                        modifier = Modifier.clickable {
+                            showMenu = false
+                            itemToDelete = selectedItemForMenu
+                        }
+                    )
+                }
+            }
+        }
+
+        // --- 2. DIALOG DETAIL ---
+        if (selectedDetailItem != null) {
+            AlertDialog(
+                onDismissRequest = { selectedDetailItem = null },
+                title = { Text("Detail SPB", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DetailRow("No SPB", selectedDetailItem!!["no_spb"])
+                        DetailRow("Pabrik", selectedDetailItem!!["mill_name"])
+                        DetailRow("Sopir", selectedDetailItem!!["driver_name"])
+                        DetailRow("Kendaraan", selectedDetailItem!!["vehicle_code"])
+                        DetailRow("Pemuat", "${selectedDetailItem!!["loader_1"]}, ${selectedDetailItem!!["loader_2"]}")
+                        DetailRow("Lokasi/Unit", "${selectedDetailItem!!["location_code"]} / ${selectedDetailItem!!["unit"]}")
+                    }
+                },
+                confirmButton = { TextButton(onClick = { selectedDetailItem = null }) { Text("Tutup") } }
+            )
+        }
+
+        // --- 3. DIALOG HAPUS ---
+        if (itemToDelete != null) {
+            AlertDialog(
+                onDismissRequest = { itemToDelete = null },
+                title = { Text("Hapus Data") },
+                text = { Text("Yakin ingin menghapus SPB ${itemToDelete!!["no_spb"]}?") },
+                confirmButton = {
+                    Button(colors = ButtonDefaults.buttonColors(containerColor = Color.Red), onClick = {
+                        if (dbHelper.deleteSPB(itemToDelete!!["id"] ?: "")) {
+                            spbListData = dbHelper.getAllSPBListMap(fcba)
+                            Toast.makeText(context, "Data Terhapus", Toast.LENGTH_SHORT).show()
+                        }
+                        itemToDelete = null
+                    }) { Text("Hapus") }
+                },
+                dismissButton = { TextButton(onClick = { itemToDelete = null }) { Text("Batal") } }
+            )
         }
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun SPBItemCard(item: Map<String, String>) {
+fun SPBItemCard(
+    item: Map<String, String>,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
     Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         elevation = CardDefaults.cardElevation(2.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(8.dp),
@@ -124,22 +214,22 @@ fun SPBItemCard(item: Map<String, String>) {
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(item["spb_no"] ?: "", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+                Text(item["no_spb"] ?: "", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
                 Text(item["created_at"] ?: "", fontSize = 12.sp, color = Color.Gray)
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Row(Modifier.fillMaxWidth()) {
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.weight(1.1f)) {
                     Text("Lokasi", fontSize = 10.sp, color = Color.Gray)
-                    Text(item["location_code"] ?: "-", fontWeight = FontWeight.Medium)
+                    Text(item["location_code"] ?: "-", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                 }
-                Column(Modifier.weight(1f)) {
-                    Text("Jumlah", fontSize = 10.sp, color = Color.Gray)
-                    Text("${item["unit"]} Janjang", fontWeight = FontWeight.Medium)
+                Column(Modifier.weight(0.9f)) {
+                    Text("Unit", fontSize = 10.sp, color = Color.Gray)
+                    Text("${item["unit"]} Jjg", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                 }
                 Column(Modifier.weight(1f)) {
                     Text("Sopir", fontSize = 10.sp, color = Color.Gray)
-                    Text(item["sopir_name"] ?: "-", fontWeight = FontWeight.Medium)
+                    Text(item["driver_name"] ?: "-", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                 }
             }
         }
@@ -153,6 +243,7 @@ fun SPBFormScreen(
     fcba: String,
     empId: String,
     onBack: () -> Unit,
+    editId: String? = null,
     onSuccess: () -> Unit
 ) {
     val context = LocalContext.current
@@ -168,10 +259,11 @@ fun SPBFormScreen(
     var pemuat1 by remember { mutableStateOf("") }
     var pemuat2 by remember { mutableStateOf("") }
 
+    var activeDialog by remember { mutableStateOf<String?>(null) }
     // --- STATE DATA MASTER ---
     val mills = remember { mutableStateListOf<Mill>() }
     val vehicles = remember { mutableStateListOf<Vehicle>() }
-
+    val employeeOptions = remember(fcba) { dbHelper.getEmployeeList(fcba) }
     LaunchedEffect(Unit) {
         mills.clear()
         mills.addAll(dbHelper.getAllMills())
@@ -185,7 +277,22 @@ fun SPBFormScreen(
     // --- STATE DIALOG PENCARIAN ---
     var showMillDialog by remember { mutableStateOf(false) }
     var showVehicleDialog by remember { mutableStateOf(false) }
-    // Dialog Pilih Mill
+    // --- DIALOG PILIH KARYAWAN (SOPIR & PEMUAT) ---
+    if (activeDialog != null) {
+        MasterSearchDialog(
+            title = "Pilih $activeDialog",
+            items = employeeOptions,
+            onDismiss = { activeDialog = null },
+            onSelect = { selectedValue ->
+                when (activeDialog) {
+                    "SOPIR" -> sopirName = selectedValue
+                    "PEMUAT 1" -> pemuat1 = selectedValue
+                    "PEMUAT 2" -> pemuat2 = selectedValue
+                }
+                activeDialog = null
+            }
+        )
+    }
     if (showMillDialog) {
         MasterSearchDialog(
             title = "Pilih Mill / Pabrik",
@@ -343,11 +450,10 @@ fun SPBFormScreen(
                             onClick = { showMillDialog = true }
                         )
 
-                        OutlinedTextField(
+                        ClickableSearchField(
+                            label = "NAMA SOPIR",
                             value = sopirName,
-                            onValueChange = { sopirName = it },
-                            label = { Text("NAMA SOPIR") },
-                            modifier = Modifier.fillMaxWidth()
+                            onClick = { activeDialog = "SOPIR" }
                         )
 
                         ClickableSearchField(
@@ -359,26 +465,27 @@ fun SPBFormScreen(
                         Text(
                             "PEMUAT",
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(top = 8.dp)
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
+
+                            ClickableSearchField(
+                                label = "PEMUAT 1",
                                 value = pemuat1,
-                                onValueChange = { pemuat1 = it },
-                                label = { Text("Pemuat 1") },
-                                modifier = Modifier.weight(1f)
+                                onClick = { activeDialog = "PEMUAT 1" }
                             )
-                            OutlinedTextField(
+
+
+                            ClickableSearchField(
+                                label = "PEMUAT 2",
                                 value = pemuat2,
-                                onValueChange = { pemuat2 = it },
-                                label = { Text("Pemuat 2") },
-                                modifier = Modifier.weight(1f)
+                                onClick = { activeDialog = "PEMUAT 2" }
                             )
-                        }
+
 
                         Spacer(Modifier.height(16.dp))
 
                         // TOMBOL NEXT (Simpan Header ke DB)
+                        // TOMBOL NEXT (Hanya Validasi & Pindah Step)
                         Button(
                             onClick = {
                                 if (selectedMill.isEmpty() || sopirName.isEmpty() || selectedVehicle.isEmpty()) {
@@ -388,29 +495,13 @@ fun SPBFormScreen(
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 } else {
-                                    // Simpan Header ke DB dan ambil ID-nya
-                                    val id = dbHelper.saveSPBHeader(
-                                        spbNo = spbNo,
-                                        mill = selectedMill,
-                                        sopir = sopirName,
-                                        vehicle = selectedVehicle,
-                                        pemuat1 = pemuat1,
-                                        pemuat2 = pemuat2,
-                                        fcba = fcba
-                                    )
-                                    if (id > 0) {
-                                        spbHeaderId = id
-                                        currentStep = 2 // PINDAH KE STEP 2
-                                    } else {
-                                        Toast.makeText(
-                                            context,
-                                            "Gagal menyimpan header",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
+                                    // JANGAN simpan ke DB dulu, langsung pindah ke step 2
+                                    currentStep = 2
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3A8F))
                         ) {
                             Text("NEXT: SCAN LOKASI")
@@ -439,83 +530,83 @@ fun SPBFormScreen(
                     fontSize = 16.sp
                 )
 
-                if (locCode.isEmpty()) {
-                    // Tampilan Instruksi Scan Full Width
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                // --- DI DALAM STEP 2 Card Column ---
+
+                if (locCode.isNotEmpty()) {
+                    // Tampilkan Informasi Hasil Scan agar User Yakin
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4FF)),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Nfc,
-                            contentDescription = null,
-                            modifier = Modifier.size(80.dp),
-                            tint = Color(0xFF1A3A8F)
-                        )
-                        Text(
-                            text = "Tempelkan kartu NFC untuk mengambil lokasi",
-                            color = Color.Gray,
-                            fontSize = 14.sp
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Button(
-                            onClick = { showScanDialog = true },
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3A8F))
-                        ) {
-                            Text("MULAI SCAN")
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Lokasi Terdeteksi:", fontSize = 12.sp, color = Color.Gray)
+                            Text("Code: $locCode", fontWeight = FontWeight.Bold)
+                            Text("Unit: $unit", fontWeight = FontWeight.Bold)
                         }
                     }
-                } else {
-                    // Tampilan Hasil Scan Menyamping dan Menyesuaikan Lebar Layar Penuh
-                    OutlinedTextField(
-                        value = locCode,
-                        onValueChange = {},
-                        label = { Text("Lokasi (Block)") },
-                        readOnly = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
 
-                    OutlinedTextField(
-                        value = unit,
-                        onValueChange = {},
-                        label = { Text("Estimasi Janjang") },
-                        readOnly = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Spacer(Modifier.height(16.dp))
 
-                    Spacer(Modifier.height(12.dp))
-
-                    // TOMBOL AKSI MENYAMPING (Row Bersandingan seperti RKH)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = { currentStep = 1 }, // Kembali ke step 1
-                            modifier = Modifier.weight(1f).height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
-                        ) {
-                            Text("KEMBALI")
-                        }
-
-                        Button(
-                            onClick = {
-                                val success = dbHelper.updateSPBLocation(spbHeaderId, locCode, unit)
+                    // TOMBOL SIMPAN / UPDATE FINAL
+                    Button(
+                        onClick = {
+                            if (editId != null) {
+                                // LOGIC UPDATE (Jika sedang edit header)
+                                val success = dbHelper.updateSPBHeader(
+                                    id = editId!!,
+                                    mill = selectedMill,
+                                    sopir = sopirName,
+                                    vehicle = selectedVehicle,
+                                    pemuat1 = pemuat1,
+                                    pemuat2 = pemuat2
+                                )
                                 if (success) {
-                                    Toast.makeText(context, "SPB Berhasil Disimpan", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Header SPB Berhasil Diperbarui!", Toast.LENGTH_SHORT).show()
+                                    onBack()
+                                } else {
+                                    Toast.makeText(context, "Gagal memperbarui data!", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                // LOGIC SIMPAN BARU
+                                val id = dbHelper.saveSPBFull(
+                                    spbNo = spbNo,
+                                    mill = selectedMill,
+                                    sopir = sopirName,
+                                    vehicle = selectedVehicle,
+                                    pemuat1 = pemuat1,
+                                    pemuat2 = pemuat2,
+                                    fcba = fcba,
+                                    locCode = locCode,
+                                    unit = unit
+                                )
+                                if (id > 0) {
+                                    Toast.makeText(context, "SPB Berhasil Disimpan!", Toast.LENGTH_SHORT).show()
                                     onSuccess()
                                 } else {
-                                    Toast.makeText(context, "Gagal memperbarui data lokasi", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Gagal menyimpan data!", Toast.LENGTH_SHORT).show()
                                 }
-                            },
-                            modifier = Modifier.weight(1.5f).height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-                        ) {
-                            Icon(Icons.Default.Check, null)
-                            Spacer(Modifier.width(6.dp))
-                            Text("SIMPAN & SELESAI")
-                        }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (editId != null) Color(0xFFF57C00) else Color(0xFF2E7D32)
+                        )
+                    ) {
+                        Icon(if (editId != null) Icons.Default.Edit else Icons.Default.Save, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (editId != null) "UPDATE HEADER SPB" else "SIMPAN SPB")
+                    }
+                }
+                else {
+                    // Tombol Scan NFC (Jika belum ada locCode)
+                    Button(
+                        onClick = { showScanDialog = true },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3A8F))
+                    ) {
+                        Icon(Icons.Default.Nfc, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("MULAI SCAN NFC")
                     }
                 }
             }
@@ -567,27 +658,3 @@ fun MasterSearchDialog(
     )
 }
 
-@Composable
-fun ClickableSearchField(label: String, value: String, onClick: () -> Unit) {
-    Box(modifier = Modifier
-        .fillMaxWidth()
-        .padding(vertical = 4.dp)) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = {},
-            label = { Text(label) },
-            readOnly = true,
-            modifier = Modifier.fillMaxWidth(),
-            trailingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent
-            )
-        )
-        // Overlay transparan untuk menangkap klik
-        Box(modifier = Modifier
-            .matchParentSize()
-            .clickable { onClick() }
-        )
-    }
-}

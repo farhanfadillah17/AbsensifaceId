@@ -582,15 +582,16 @@ fun ProgressFormScreen(
                 )
             }
 
-            "WORKERS" -> MultiSearchableListDialog(
-                title = "Pilih Karyawan Progres Kerja",
+            "WORKERS" -> SearchableMapDialog(
+                title = "Pilih Karyawan",
                 options = availableStaff,
-                selectedItems = selectedEmployees,
+                // Menampilkan ID dan Nama di dalam list
+                displayProvider = { "${it["id"]} - ${it["name"]}" },
                 onDismiss = { activeDialog = null },
-                onToggle = { id ->
-                    val current = selectedEmployees.toMutableSet()
-                    if (current.contains(id)) current.remove(id) else current.add(id)
-                    selectedEmployees = current
+                onSelect = { empMap ->
+                    // Karena hanya satu, kita reset Set-nya dan isi dengan satu ID saja
+                    selectedEmployees = setOf(empMap["id"] ?: "")
+                    activeDialog = null
                 }
             )
         }
@@ -668,9 +669,12 @@ fun ProgressFormScreen(
                 value = if (selectedEmployees.isEmpty()) {
                     "Belum ada karyawan dipilih"
                 } else {
-                    "${selectedEmployees.size} Karyawan dipilih"
+                    // Mencari nama karyawan berdasarkan ID yang ada di Set
+                    val selectedId = selectedEmployees.first()
+                    val emp = availableStaff.find { it["id"] == selectedId }
+                    emp?.get("name") ?: selectedId
                 },
-                onClick = { activeDialog = "WORKERS" } // Memicu dialog muncul
+                onClick = { activeDialog = "WORKERS" }
             )
 
             Text("Terpilih: ${selectedEmployees.size} Karyawan", fontSize = 11.sp, color = Color.Gray)

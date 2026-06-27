@@ -121,6 +121,31 @@ fun SearchableMapDialog(
 }
 
 @Composable
+fun ClickableSearchField(label: String, value: String, onClick: () -> Unit) {
+    Box(modifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = 4.dp)) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            label = { Text(label) },
+            readOnly = true,
+            modifier = Modifier.fillMaxWidth(),
+            trailingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent
+            )
+        )
+        // Overlay transparan untuk menangkap klik
+        Box(modifier = Modifier
+            .matchParentSize()
+            .clickable { onClick() }
+        )
+    }
+}
+
+@Composable
 fun MultiSearchableListDialog(
     title: String,
     options: List<Map<String, String>>, // Berisi ID dan Nama Karyawan
@@ -169,6 +194,64 @@ fun MultiSearchableListDialog(
         },
         confirmButton = {
             Button(onClick = onDismiss) { Text("Selesai") }
+        }
+    )
+}
+
+@Composable
+fun EmployeeSingleSelectDialog(
+    title: String,
+    options: List<Map<String, String>>, // Berisi ID dan Nama Karyawan
+    onDismiss: () -> Unit,
+    onSelect: (Map<String, String>) -> Unit // Mengembalikan data karyawan yang dipilih
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredOptions = options.filter {
+        it["name"]?.contains(searchQuery, ignoreCase = true) == true ||
+                it["id"]?.contains(searchQuery, ignoreCase = true) == true
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Cari Nama/NIK...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, null) }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                    items(filteredOptions) { item ->
+                        val id = item["id"] ?: ""
+                        val name = item["name"] ?: ""
+
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    text = "$id - $name",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            },
+                            // Checkbox sudah dihapus sepenuhnya
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSelect(item) // Pilih data
+                                    onDismiss()    // Langsung tutup dialog
+                                }
+                        )
+                        HorizontalDivider(thickness = 0.5.dp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Batal") }
         }
     )
 }

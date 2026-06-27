@@ -46,8 +46,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     companion object {
         // Ganti nama ke v11 untuk reset total terakhir kali
-        const val DATABASE_NAME = "attendance_reset_final_v310.db"
-        const val DATABASE_VERSION = 310
+        const val DATABASE_NAME = "attendance_reset_final_v311.db"
+        const val DATABASE_VERSION = 311
 
         const val T_EMP = "EMPLOYEE"
         const val E_FCCODE = "FCCODE"
@@ -86,7 +86,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
         const val F_CAPTURED = "captured_at"
 
 
-            // ... konstanta lainnya ...
+        // ... konstanta lainnya ...
 
 
         const val R_TYPE = "type"
@@ -95,25 +95,24 @@ class AttendanceDatabaseHelper(private val context: Context) :
         const val R_S3 = "supervisi3"
         const val R_S4 = "supervisi4"
 
-            const val T_PROGRESS = "work_progress" // Tabel untuk progres umum
-            const val P_ID = "id"
-            const val P_RKH = "no_rkh"
-            const val P_EMP_ID = "emp_id"
-            const val P_CATEGORY = "category"
-            const val P_BLOCK = "block_code"
-            const val P_RESULT = "work_result"
-            const val P_EMP_IDS = "emp_ids"
-            const val P_UNIT = "unit"
-            const val P_OUTPUT = "output"
-            const val P_RATE = "rate"
-            const val P_LEMBUR = "lembur"
-            const val P_BERAS = "beras"
-            const val P_NOTES = "notes"
-            const val P_STATUS = "status"
-            const val P_TIMESTAMP = "timestamp"
+        const val T_PROGRESS = "work_progress" // Tabel untuk progres umum
+        const val P_ID = "id"
+        const val P_RKH = "no_rkh"
+        const val P_EMP_ID = "emp_id"
+        const val P_CATEGORY = "category"
+        const val P_BLOCK = "block_code"
+        const val P_RESULT = "work_result"
+        const val P_EMP_IDS = "emp_ids"
+        const val P_UNIT = "unit"
+        const val P_OUTPUT = "output"
+        const val P_RATE = "rate"
+        const val P_LEMBUR = "lembur"
+        const val P_BERAS = "beras"
+        const val P_NOTES = "notes"
+        const val P_STATUS = "status"
+        const val P_TIMESTAMP = "timestamp"
 
-            // ...
-
+        // ...
 
 
         // Di dalam companion object
@@ -168,7 +167,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
             // 3. Tabel Akses Menu
             // Di dalam onCreate AttendanceDatabaseHelper.kt
-            db.execSQL("""
+            db.execSQL(
+                """
     CREATE TABLE IF NOT EXISTS $T_MENU_ACCESS (
         ID INTEGER PRIMARY KEY AUTOINCREMENT,
         EMP_ID TEXT,
@@ -176,7 +176,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
         IS_GRANTED INTEGER DEFAULT 1,
         VALID_UNTIL TEXT -- Sesuaikan dengan API yang mengirim String
     )
-""".trimIndent())
+""".trimIndent()
+            )
 
             // 4. Tabel Master Dropdown RKH
             db.execSQL("CREATE TABLE IF NOT EXISTS $T_AFDELING (FCCODE TEXT PRIMARY KEY, FCNAME TEXT, FCBA TEXT)")
@@ -254,7 +255,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
             db.execSQL("CREATE TABLE IF NOT EXISTS $T_LOCATION (FCCODE TEXT PRIMARY KEY, FCNAME TEXT, FCBA TEXT)")
 
             // 5. Tabel RKH
-            db.execSQL("""
+            db.execSQL(
+                """
     CREATE TABLE IF NOT EXISTS $T_RKH (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         no_rkh TEXT,          
@@ -274,11 +276,13 @@ class AttendanceDatabaseHelper(private val context: Context) :
         output REAL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
-""".trimIndent())
+""".trimIndent()
+            )
 
             // 6. Tabel Employee
             db.execSQL("DROP TABLE IF EXISTS $T_EMP")
-            db.execSQL("""
+            db.execSQL(
+                """
     CREATE TABLE IF NOT EXISTS $T_EMP (
                 FCCODE TEXT NOT NULL, FCNAME TEXT, SECTIONNAME TEXT, GANGCODE TEXT,
                 DATEOFBIRTH TEXT, RELIGION TEXT, RACE TEXT, IDENTITYCARD TEXT,
@@ -303,42 +307,50 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 GET_JP TEXT, FACEEMBEDDING TEXT,
                 PRIMARY KEY (FCCODE, FCBA)
             )
-        """.trimIndent() )
+        """.trimIndent()
+            )
 
 
-                    // 7. Tabel Transaksi & Absensi
+            // 7. Tabel Transaksi & Absensi
             db.execSQL("CREATE TABLE IF NOT EXISTS $T_ATT ($A_ID INTEGER PRIMARY KEY AUTOINCREMENT, $A_EMP_ID TEXT NOT NULL, $A_FCBA TEXT NOT NULL, $A_EMP_NAME TEXT NOT NULL, $A_ACTION TEXT NOT NULL, $A_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP, $A_SOURCE TEXT DEFAULT 'INPUT')")
             db.execSQL("CREATE TABLE IF NOT EXISTS $T_FACE ($F_ID INTEGER PRIMARY KEY AUTOINCREMENT, $F_EMP_ID TEXT NOT NULL, $F_FCBA TEXT NOT NULL, $F_FEATURES TEXT NOT NULL, $F_CAPTURED DATETIME DEFAULT CURRENT_TIMESTAMP)")
 
-            db.execSQL("""
+            db.execSQL(
+                """
                 CREATE TABLE IF NOT EXISTS $T_MAINTENANCE (
                     $M_ID INTEGER PRIMARY KEY AUTOINCREMENT, $M_FCBA TEXT, $M_RKH TEXT, $M_GANG TEXT,
                     $M_S1 TEXT, $M_S2 TEXT, $M_S3 TEXT, $M_S4 TEXT, $M_WORKERS TEXT, 
                     $M_LOCATION TEXT, $M_UNIT REAL, $M_OUTPUT REAL, $M_RATE REAL,
                     $M_BERAS INTEGER, $M_LEMBUR REAL, $M_CREATED TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """.trimIndent())
+            """.trimIndent()
+            )
 
-            db.execSQL("""
+            db.execSQL(
+                """
                 CREATE TABLE IF NOT EXISTS $T_PROGRESS (
                     $P_ID INTEGER PRIMARY KEY AUTOINCREMENT, $P_RKH TEXT, $P_CATEGORY TEXT,
                     $P_EMP_ID TEXT, $P_EMP_IDS TEXT, $P_BLOCK TEXT, $P_UNIT REAL,
                     $P_OUTPUT REAL, $P_RATE REAL, $P_LEMBUR REAL, $P_BERAS INTEGER,
                     $P_RESULT TEXT, $P_NOTES TEXT, $P_STATUS TEXT, $P_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-            """.trimIndent())
+            """.trimIndent()
+            )
 
-            db.execSQL("""
+            db.execSQL(
+                """
                 CREATE TABLE IF NOT EXISTS $T_FRUIT_COUNTING (
                     id INTEGER PRIMARY KEY AUTOINCREMENT, fcba TEXT, tanggal TEXT, no_rkh TEXT,
                     gang_code TEXT, supervisi1 TEXT, supervisi2 TEXT, supervisi3 TEXT, supervisi4 TEXT,
                     karyawan_ids TEXT, location_code TEXT, unit REAL, output REAL, tph_code TEXT,
                     is_beras INTEGER, lembur REAL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """.trimIndent())
+            """.trimIndent()
+            )
 
             db.execSQL("DROP TABLE IF EXISTS TPH")
-            db.execSQL("""
+            db.execSQL(
+                """
     CREATE TABLE IF NOT EXISTS TPH (
         FCCODE TEXT, FCNAME TEXT, FIELDCODE TEXT, 
         "SECTION" TEXT, FCBA TEXT, LATITUDE REAL, LONGITUDE REAL,
@@ -346,10 +358,12 @@ class AttendanceDatabaseHelper(private val context: Context) :
         FCENTRY TEXT, FCEDIT TEXT, FCIP TEXT, -- Tambahkan ini
         PRIMARY KEY (FCCODE, FIELDCODE,"SECTION", FCBA)
     )
-""".trimIndent())
+""".trimIndent()
+            )
 
             // Tambahkan ini di dalam onCreate
-            db.execSQL("""
+            db.execSQL(
+                """
     CREATE TABLE IF NOT EXISTS T_SPB (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         spb_no TEXT,
@@ -359,13 +373,17 @@ class AttendanceDatabaseHelper(private val context: Context) :
         mill_name TEXT,
         driver_name TEXT,
         vehicle_no TEXT,
+        loader_1 TEXT,      
+        loader_2 TEXT,       
         tph_code TEXT,
-        total_janjang INTEGER,
+        total_janjang INTEGER, 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
-""".trimIndent())
+""".trimIndent()
+            )
 
-            db.execSQL("""
+            db.execSQL(
+                """
             CREATE TABLE IF NOT EXISTS BUSINESSUNIT (
                 FCCODE TEXT PRIMARY KEY,
                 FCNAME TEXT,
@@ -396,9 +414,11 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 SAPLOCATION TEXT,
                 ADDRESS TEXT
             )
-        """.trimIndent())
+        """.trimIndent()
+            )
 
-            db.execSQL("""
+            db.execSQL(
+                """
     CREATE TABLE IF NOT EXISTS FIELD (
         FCCODE TEXT PRIMARY KEY,
         FCNAME TEXT,
@@ -466,9 +486,11 @@ class AttendanceDatabaseHelper(private val context: Context) :
         STATUS_TANAMAN TEXT,
         KOPERASI TEXT
     )
-""".trimIndent())
+""".trimIndent()
+            )
 
-            db.execSQL("""
+            db.execSQL(
+                """
     CREATE TABLE IF NOT EXISTS $T_SPB_HEADER (
         spb_no TEXT PRIMARY KEY,
         tanggal TEXT,
@@ -480,9 +502,11 @@ class AttendanceDatabaseHelper(private val context: Context) :
         fcba TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
-""".trimIndent())
+""".trimIndent()
+            )
 
-            db.execSQL("""
+            db.execSQL(
+                """
     CREATE TABLE IF NOT EXISTS $T_SPB_DETAIL (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         spb_no TEXT,
@@ -493,9 +517,11 @@ class AttendanceDatabaseHelper(private val context: Context) :
         employee_code TEXT,
         FOREIGN KEY(spb_no) REFERENCES $T_SPB_HEADER(spb_no)
     )
-""".trimIndent())
+""".trimIndent()
+            )
 
-            db.execSQL("""
+            db.execSQL(
+                """
     CREATE TABLE IF NOT EXISTS $T_MILL (
         CUSTOMERCODE TEXT NOT NULL,
         DESCRIPTION TEXT NOT NULL,
@@ -527,10 +553,12 @@ class AttendanceDatabaseHelper(private val context: Context) :
         CONTROLJOB TEXT,
         PRIMARY KEY (CUSTOMERCODE, FCBA)
     )
-""".trimIndent())
+""".trimIndent()
+            )
 
 // 9. Tabel Vehicle
-            db.execSQL("""
+            db.execSQL(
+                """
     CREATE TABLE IF NOT EXISTS $T_VEHICLE (
         FCCODE TEXT NOT NULL,
         FCNAME TEXT NOT NULL,
@@ -559,8 +587,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
         WBREGISTERED TEXT,
         PRIMARY KEY (FCCODE, FCBA)
     )
-""".trimIndent())
-
+""".trimIndent()
+            )
 
 
             // === LANGKAH 2: ISI DATA AWAL ===
@@ -687,7 +715,13 @@ class AttendanceDatabaseHelper(private val context: Context) :
 //    }
 
     // Fungsi pembantu (helper) agar kode lebih rapi
-    private fun insertAccess(db: SQLiteDatabase, empId: String, menuCode: Int, isGranted: Int, daysValid: Int) {
+    private fun insertAccess(
+        db: SQLiteDatabase,
+        empId: String,
+        menuCode: Int,
+        isGranted: Int,
+        daysValid: Int
+    ) {
         val cvAccess = ContentValues().apply {
             put("EMP_ID", empId)
             put("MENU_CODE", menuCode)
@@ -698,6 +732,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
         }
         db.insert("T_MENU_ACCESS", null, cvAccess)
     }
+
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         db.execSQL("DROP TABLE IF EXISTS $T_USERS")
         db.execSQL("DROP TABLE IF EXISTS $T_EMP")
@@ -762,7 +797,10 @@ class AttendanceDatabaseHelper(private val context: Context) :
                     put("VALID_UNTIL", access.valid_until)
                 }
                 db.insert(T_MENU_ACCESS, null, values)
-                Log.d("SYNC_DEBUG", "Menyimpan ke DB: User=${access.emp_id}, Menu=${access.menu_code}")
+                Log.d(
+                    "SYNC_DEBUG",
+                    "Menyimpan ke DB: User=${access.emp_id}, Menu=${access.menu_code}"
+                )
             }
             db.setTransactionSuccessful()
         } finally {
@@ -776,7 +814,6 @@ class AttendanceDatabaseHelper(private val context: Context) :
     // --- FUNGSI SAVE (TANPA DB.CLOSE()) ---
 
 
-
     fun getEmployeeByOnlyCode(code: String): Employee? {
         return try {
             val db = this.readableDatabase
@@ -786,7 +823,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
                         fccode = cursor.getString(cursor.getColumnIndexOrThrow(E_FCCODE)),
                         fcba = cursor.getString(cursor.getColumnIndexOrThrow(E_FCBA)),
                         name = cursor.getString(cursor.getColumnIndexOrThrow(E_NAME)) ?: "",
-                        sectionName = cursor.getString(cursor.getColumnIndexOrThrow(E_SECTION)) ?: "",
+                        sectionName = cursor.getString(cursor.getColumnIndexOrThrow(E_SECTION))
+                            ?: "",
                         gangCode = cursor.getString(cursor.getColumnIndexOrThrow(E_GANG)) ?: "",
                         position = cursor.getString(cursor.getColumnIndexOrThrow(E_POSITION)) ?: ""
                     )
@@ -797,9 +835,6 @@ class AttendanceDatabaseHelper(private val context: Context) :
             null
         }
     }
-
-
-
 
 
     fun insertFaceMapping(fccode: String, fcba: String, features: FloatArray): Boolean {
@@ -819,7 +854,10 @@ class AttendanceDatabaseHelper(private val context: Context) :
             // Ini agar saat scanner jalan, dia cukup cek satu tabel saja
             val valuesEmp = ContentValues().apply {
                 put("FACEEMBEDDING", features.joinToString(","))
-                put("LASTUPDATE", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
+                put(
+                    "LASTUPDATE",
+                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                )
             }
 
             val updated = db.update(
@@ -848,7 +886,10 @@ class AttendanceDatabaseHelper(private val context: Context) :
         val db = this.readableDatabase
         try {
             // 1. Ambil dari tabel Face Mapping (Hasil Registrasi Manual di HP)
-            db.rawQuery("SELECT $F_FEATURES FROM $T_FACE WHERE $F_EMP_ID = ? AND $F_FCBA = ?", arrayOf(fccode, fcba)).use { cursor ->
+            db.rawQuery(
+                "SELECT $F_FEATURES FROM $T_FACE WHERE $F_EMP_ID = ? AND $F_FCBA = ?",
+                arrayOf(fccode, fcba)
+            ).use { cursor ->
                 while (cursor.moveToNext()) {
                     cursor.getString(0)?.let { str ->
                         featuresList.add(str.split(",").map { it.toFloat() }.toFloatArray())
@@ -857,7 +898,10 @@ class AttendanceDatabaseHelper(private val context: Context) :
             }
 
             // 2. Ambil dari tabel EMPLOYEE (Hasil Impor SQL Oracle)
-            db.rawQuery("SELECT $E_FACE_EMB FROM $T_EMP WHERE $E_FCCODE = ? AND $E_FCBA = ?", arrayOf(fccode, fcba)).use { cursor ->
+            db.rawQuery(
+                "SELECT $E_FACE_EMB FROM $T_EMP WHERE $E_FCCODE = ? AND $E_FCBA = ?",
+                arrayOf(fccode, fcba)
+            ).use { cursor ->
                 if (cursor.moveToFirst()) {
                     cursor.getString(0)?.let { str ->
                         // Bersihkan karakter [ ] jika ada di data SQL
@@ -880,20 +924,22 @@ class AttendanceDatabaseHelper(private val context: Context) :
             val db = this.readableDatabase
             db.rawQuery("SELECT * FROM $T_ATT ORDER BY $A_TIMESTAMP DESC", null).use { c ->
                 while (c.moveToNext()) {
-                    recordList.add(AttendanceRecord(
-                        id = c.getInt(c.getColumnIndexOrThrow(A_ID)),
-                        employeeId = c.getString(c.getColumnIndexOrThrow(A_EMP_ID)),
-                        fcbaId = c.getString(c.getColumnIndexOrThrow(A_FCBA)),
-                        employeeName = c.getString(c.getColumnIndexOrThrow(A_EMP_NAME)),
-                        action = c.getString(c.getColumnIndexOrThrow(A_ACTION)),
-                        timestamp = c.getString(c.getColumnIndexOrThrow(A_TIMESTAMP))
-                    ))
+                    recordList.add(
+                        AttendanceRecord(
+                            id = c.getInt(c.getColumnIndexOrThrow(A_ID)),
+                            employeeId = c.getString(c.getColumnIndexOrThrow(A_EMP_ID)),
+                            fcbaId = c.getString(c.getColumnIndexOrThrow(A_FCBA)),
+                            employeeName = c.getString(c.getColumnIndexOrThrow(A_EMP_NAME)),
+                            action = c.getString(c.getColumnIndexOrThrow(A_ACTION)),
+                            timestamp = c.getString(c.getColumnIndexOrThrow(A_TIMESTAMP))
+                        )
+                    )
                 }
             }
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+        }
         return recordList
     }
-
 
 
     fun getFaceMappingCount(fccode: String, fcba: String): Int {
@@ -911,11 +957,16 @@ class AttendanceDatabaseHelper(private val context: Context) :
     }
 
 
-
     // In AttendanceDatabaseHelper.kt
 
     // GANTI fungsi saveAttendance yang lama dengan yang ini:
-    fun saveAttendance(empId: String, fcba: String, name: String = "",  action: String = "HADIR", source: String = "FACE"): Boolean {
+    fun saveAttendance(
+        empId: String,
+        fcba: String,
+        name: String = "",
+        action: String = "HADIR",
+        source: String = "FACE"
+    ): Boolean {
         return try {
             val db = this.writableDatabase
             val cv = ContentValues().apply {
@@ -935,21 +986,24 @@ class AttendanceDatabaseHelper(private val context: Context) :
     }
 
 
-
     fun getAllMasterEmployees(): List<Employee> {
         val list = mutableListOf<Employee>()
         try {
             val db = readableDatabase
             db.rawQuery("SELECT * FROM $T_EMP ORDER BY $E_NAME ASC", null).use { cursor ->
                 while (cursor.moveToNext()) {
-                    list.add(Employee(
-                        fccode = cursor.getString(cursor.getColumnIndexOrThrow(E_FCCODE)),
-                        fcba = cursor.getString(cursor.getColumnIndexOrThrow(E_FCBA)),
-                        name = cursor.getString(cursor.getColumnIndexOrThrow(E_NAME)) ?: "",
-                        sectionName = cursor.getString(cursor.getColumnIndexOrThrow(E_SECTION)) ?: "",
-                        gangCode = cursor.getString(cursor.getColumnIndexOrThrow(E_GANG)) ?: "",
-                        position = cursor.getString(cursor.getColumnIndexOrThrow(E_POSITION)) ?: ""
-                    ))
+                    list.add(
+                        Employee(
+                            fccode = cursor.getString(cursor.getColumnIndexOrThrow(E_FCCODE)),
+                            fcba = cursor.getString(cursor.getColumnIndexOrThrow(E_FCBA)),
+                            name = cursor.getString(cursor.getColumnIndexOrThrow(E_NAME)) ?: "",
+                            sectionName = cursor.getString(cursor.getColumnIndexOrThrow(E_SECTION))
+                                ?: "",
+                            gangCode = cursor.getString(cursor.getColumnIndexOrThrow(E_GANG)) ?: "",
+                            position = cursor.getString(cursor.getColumnIndexOrThrow(E_POSITION))
+                                ?: ""
+                        )
+                    )
                 }
             }
             Log.d("DB_CHECK", "Berhasil mengambil ${list.size} data employee.")
@@ -966,14 +1020,16 @@ class AttendanceDatabaseHelper(private val context: Context) :
             val db = readableDatabase
             db.rawQuery("SELECT * FROM $T_USERS", null).use { c ->
                 while (c.moveToNext()) {
-                    list.add(UserProfile(
-                        username = c.getString(c.getColumnIndexOrThrow(U_USERNAME)),
-                        empcode = c.getString(c.getColumnIndexOrThrow(U_EMPCODE)),
-                        fcba = c.getString(c.getColumnIndexOrThrow(U_FCBA)) ?: "",
-                        divisi = c.getString(c.getColumnIndexOrThrow(U_DIVISI)) ?: "",
-                        gang = c.getString(c.getColumnIndexOrThrow(U_GANG)) ?: "",
-                        role = c.getString(c.getColumnIndexOrThrow(U_ROLE)) ?: ""
-                    ))
+                    list.add(
+                        UserProfile(
+                            username = c.getString(c.getColumnIndexOrThrow(U_USERNAME)),
+                            empcode = c.getString(c.getColumnIndexOrThrow(U_EMPCODE)),
+                            fcba = c.getString(c.getColumnIndexOrThrow(U_FCBA)) ?: "",
+                            divisi = c.getString(c.getColumnIndexOrThrow(U_DIVISI)) ?: "",
+                            gang = c.getString(c.getColumnIndexOrThrow(U_GANG)) ?: "",
+                            role = c.getString(c.getColumnIndexOrThrow(U_ROLE)) ?: ""
+                        )
+                    )
                 }
             }
             Log.d("DB_CHECK", "Berhasil mengambil ${list.size} data employee.")
@@ -982,7 +1038,6 @@ class AttendanceDatabaseHelper(private val context: Context) :
         }
         return list
     }
-
 
 
     // Tetap sediakan ini jika LoginScreen masih memanggilnya,
@@ -996,7 +1051,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
                     list.add(c.getString(0))
                 }
             }
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+        }
         return list
     }
 
@@ -1024,7 +1080,11 @@ class AttendanceDatabaseHelper(private val context: Context) :
                     if (sql.isNotEmpty()) {
                         // Gunakan REPLACE agar data SRE yang sudah ada tertimpa yang baru (tidak duplikat/error)
                         val finalSql = if (sql.uppercase().startsWith("INSERT INTO")) {
-                            sql.replaceFirst("INSERT INTO", "INSERT OR REPLACE INTO", ignoreCase = true)
+                            sql.replaceFirst(
+                                "INSERT INTO",
+                                "INSERT OR REPLACE INTO",
+                                ignoreCase = true
+                            )
                         } else {
                             sql
                         }
@@ -1040,12 +1100,18 @@ class AttendanceDatabaseHelper(private val context: Context) :
                             }
                         } catch (e: Exception) {
                             // Log error baris tertentu tapi lanjut ke baris berikutnya
-                            Log.e("IMPORT_ERROR", "Gagal di $fileName (baris $processedCount): ${e.message}")
+                            Log.e(
+                                "IMPORT_ERROR",
+                                "Gagal di $fileName (baris $processedCount): ${e.message}"
+                            )
                         }
                     }
                 }
                 db.setTransactionSuccessful()
-                Log.d("DB_CHECK", "IMPORT BERHASIL: $fileName ($processedCount data SRE dimasukkan)")
+                Log.d(
+                    "DB_CHECK",
+                    "IMPORT BERHASIL: $fileName ($processedCount data SRE dimasukkan)"
+                )
             } finally {
                 db.endTransaction()
             }
@@ -1065,6 +1131,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
         cursor.close()
         return isEmpty
     }
+
     // Tambahkan parameter kedua: onProgress (sebuah fungsi callback)
     fun insertEmployee(employees: ApiClient.EmployeeResponse, onProgress: (Int) -> Unit = {}) {
         val db = writableDatabase
@@ -1099,11 +1166,17 @@ class AttendanceDatabaseHelper(private val context: Context) :
                         }
                     } catch (e: Exception) {
                         // Log error baris tertentu tapi lanjut ke baris berikutnya
-                        Log.e("IMPORT_ERROR", "Gagal di import employee (baris $processedCount): ${e.message}")
+                        Log.e(
+                            "IMPORT_ERROR",
+                            "Gagal di import employee (baris $processedCount): ${e.message}"
+                        )
                     }
                 }
                 db.setTransactionSuccessful()
-                Log.d("DB_CHECK", "IMPORT BERHASIL: import employee ($processedCount data SRE dimasukkan)")
+                Log.d(
+                    "DB_CHECK",
+                    "IMPORT BERHASIL: import employee ($processedCount data SRE dimasukkan)"
+                )
             } finally {
                 db.endTransaction()
             }
@@ -1111,6 +1184,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
             Log.e("DB_ERROR", "Error membaca file import employee: ${e.message}")
         }
     }
+
     fun insertField(employees: ApiClient.FieldResponse, onProgress: (Int) -> Unit = {}) {
         val db = writableDatabase
         try {
@@ -1148,17 +1222,160 @@ class AttendanceDatabaseHelper(private val context: Context) :
                         }
                     } catch (e: Exception) {
                         // Log error baris tertentu tapi lanjut ke baris berikutnya
-                        Log.e("IMPORT_ERROR", "Gagal di import field (baris $processedCount): ${e.message}")
+                        Log.e(
+                            "IMPORT_ERROR",
+                            "Gagal di import field (baris $processedCount): ${e.message}"
+                        )
                     }
                 }
                 db.setTransactionSuccessful()
-                Log.d("DB_CHECK", "IMPORT BERHASIL: import field ($processedCount data SRE dimasukkan)")
+                Log.d(
+                    "DB_CHECK",
+                    "IMPORT BERHASIL: import field ($processedCount data SRE dimasukkan)"
+                )
             } finally {
                 db.endTransaction()
             }
         } catch (e: Exception) {
             Log.e("DB_ERROR", "Error membaca file import employee: ${e.message}")
         }
+    }
+
+    fun getSPBById(id: String): Map<String, String>? {
+        val db = readableDatabase
+        val query = "SELECT * FROM T_SPB WHERE id = ?"
+        try {
+            db.rawQuery(query, arrayOf(id)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    return mapOf(
+                        "no_spb" to cursor.getString(cursor.getColumnIndexOrThrow("spb_no")),
+                        "mill_name" to cursor.getString(cursor.getColumnIndexOrThrow("mill_name")),
+                        "driver_name" to cursor.getString(cursor.getColumnIndexOrThrow("driver_name")),
+                        "vehicle_no" to cursor.getString(cursor.getColumnIndexOrThrow("vehicle_no")),
+                        "loader_1" to cursor.getString(cursor.getColumnIndexOrThrow("loader_1")),
+                        "loader_2" to cursor.getString(cursor.getColumnIndexOrThrow("loader_2")),
+                        "location_code" to cursor.getString(cursor.getColumnIndexOrThrow("location_code")),
+                        "unit" to cursor.getString(cursor.getColumnIndexOrThrow("total_janjang"))
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
+    }
+
+
+
+    // 1. Ambil semua data SPB dalam bentuk List Map untuk UI
+    fun getAllSPBListMap(fcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        val query = "SELECT * FROM T_SPB WHERE fcba = ? ORDER BY created_at DESC"
+
+        try {
+            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val map = mutableMapOf<String, String>()
+                    map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id"))
+                    map["no_spb"] = cursor.getString(cursor.getColumnIndexOrThrow("spb_no"))
+                    map["mill_name"] = cursor.getString(cursor.getColumnIndexOrThrow("mill_name"))
+                    map["driver_name"] = cursor.getString(cursor.getColumnIndexOrThrow("driver_name"))
+                    map["vehicle_code"] = cursor.getString(cursor.getColumnIndexOrThrow("vehicle_no"))
+                    map["loader_1"] = cursor.getString(cursor.getColumnIndexOrThrow("loader_1"))
+                    map["loader_2"] = cursor.getString(cursor.getColumnIndexOrThrow("loader_2"))
+                    map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("location_code"))
+                    map["unit"] = cursor.getString(cursor.getColumnIndexOrThrow("total_janjang"))
+                    map["created_at"] = cursor.getString(cursor.getColumnIndexOrThrow("created_at"))
+                    list.add(map)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil SPB list: ${e.message}")
+        }
+        return list
+    }
+
+    // 2. Fungsi Hapus SPB
+    fun deleteSPB(id: String): Boolean {
+        val db = writableDatabase
+        return try {
+            val result = db.delete("T_SPB", "id = ?", arrayOf(id))
+            result > 0
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal hapus SPB: ${e.message}")
+            false
+        }
+    }
+
+    // 3. Fungsi Update Header SPB
+    fun updateSPBHeader(
+        id: String,
+        mill: String,
+        sopir: String,
+        vehicle: String,
+        pemuat1: String,
+        pemuat2: String
+    ): Boolean {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put("mill_name", mill)
+            put("driver_name", sopir)
+            put("vehicle_code", vehicle)
+            put("loader_1", pemuat1)
+            put("loader_2", pemuat2)
+        }
+        return try {
+            db.update("T_SPB", values, "id = ?", arrayOf(id)) > 0
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun saveSPBFull(
+        spbNo: String, mill: String, sopir: String, vehicle: String,
+        pemuat1: String, pemuat2: String, fcba: String,
+        locCode: String, unit: String
+    ): Long {
+        val db = this.writableDatabase
+        return try {
+            val values = ContentValues().apply {
+                put("spb_no", spbNo)             // Cocokkan dengan spb_no di DB
+                put("fcba", fcba)
+                put("mill_name", mill)
+                put("driver_name", sopir)
+                put("vehicle_no", vehicle)       // Cocokkan dengan vehicle_no di DB
+                put("loader_1", pemuat1)         // Pastikan kolom ini ada
+                put("loader_2", pemuat2)         // Pastikan kolom ini ada
+                put("location_code", locCode)
+                put("total_janjang", unit)       // Cocokkan dengan total_janjang di DB
+            }
+            db.insert("T_SPB", null, values)
+        } catch (e: Exception) {
+            android.util.Log.e("DB_ERROR", "Simpan Gagal: ${e.message}")
+            -1L
+        }
+    }
+
+    // Tambahkan ini di AttendanceDatabaseHelper.kt
+    fun getEmployeeList(fcba: String): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+
+        // Query untuk mengambil nama karyawan (menggunakan konstanta T_EMP dan E_NAME yang sudah Anda punya)
+        val query = "SELECT $E_NAME FROM $T_EMP WHERE FCBA = ? ORDER BY $E_NAME ASC"
+
+        try {
+            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val name = cursor.getString(0)
+                    if (!name.isNullOrEmpty()) list.add(name)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil list employee: ${e.message}")
+        }
+        return list
     }
 
     fun insertTph(employees: ApiClient.TphResponse, onProgress: (Int) -> Unit = {}) {
@@ -1816,21 +2033,35 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
 
 //     3. Fungsi Generate Nomor SPB (Contoh: SRE/SPB/20260618/001)
-    fun generateNoSPB(fcba: String): String {
-        val db = readableDatabase
-        val today = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-        val prefix = "$fcba/SPB/$today/"
-        var seq = 1
+fun generateNoSPB(fcba: String): String {
+    val db = readableDatabase
+    val today = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+    // Format Prefix: FCBA/SPB/YYYYMMDD/
+    val prefix = "$fcba/SPB/$today/"
+    var seq = 1
 
-        val query = "SELECT spb_no FROM $T_SPB_HEADER WHERE spb_no LIKE '$prefix%' ORDER BY spb_no DESC LIMIT 1"
-        db.rawQuery(query, null).use { cursor ->
+    // 1. PASTIKAN NAMA TABEL BENAR (Gunakan T_SPB, bukan T_SPB_HEADER jika itu tabel simpan Anda)
+    // 2. Gunakan parameter '?' untuk keamanan query
+    val query = "SELECT spb_no FROM T_SPB WHERE spb_no LIKE ? ORDER BY id DESC LIMIT 1"
+
+    try {
+        db.rawQuery(query, arrayOf("$prefix%")).use { cursor ->
             if (cursor.moveToFirst()) {
-                val lastNo = cursor.getString(0)
-                seq = (lastNo.substringAfterLast("/").toIntOrNull() ?: 0) + 1
+                val lastNo = cursor.getString(0) // Contoh: "SRE/SPB/20260626/001"
+
+                // Mengambil bagian setelah '/' terakhir (yaitu "001")
+                val lastPart = lastNo.substringAfterLast("/")
+                val lastSeq = lastPart.toIntOrNull() ?: 0
+                seq = lastSeq + 1
             }
         }
-        return "$prefix${String.format("%03d", seq)}"
+    } catch (e: Exception) {
+        android.util.Log.e("DB_ERROR", "Gagal generate No SPB: ${e.message}")
     }
+
+    // Format hasil menjadi 3 digit (contoh: 002)
+    return "$prefix${String.format("%03d", seq)}"
+}
 
     fun getAllRKH(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()

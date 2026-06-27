@@ -30,6 +30,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.ui.geometry.isEmpty
 import kotlin.text.toIntOrNull
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -386,6 +387,7 @@ fun FruitCountingFormContent(
 
     // Dialog Pencarian Logic
     if (activeDialog != null) {
+        val availableStaff = presentWorkers
         when (activeDialog) {
             "RKH" -> SearchableMapDialog(
                 title = "Cari No RKH",
@@ -412,15 +414,16 @@ fun FruitCountingFormContent(
                     activeDialog = null
                 }
             )
-            "WORKERS" -> MultiSearchableListDialog(
+            "WORKERS" -> SearchableMapDialog(
                 title = "Pilih Karyawan",
-                options = presentWorkers,
-                selectedItems = selectedWorkers,
+                options = availableStaff,
+                // Menampilkan ID dan Nama di dalam list
+                displayProvider = { "${it["id"]} - ${it["name"]}" },
                 onDismiss = { activeDialog = null },
-                onToggle = { id ->
-                    val current = selectedWorkers.toMutableSet()
-                    if (current.contains(id)) current.remove(id) else current.add(id)
-                    selectedWorkers = current
+                onSelect = { empMap ->
+                    // Ganti selectedEmployees menjadi selectedWorkers
+                    selectedWorkers = setOf(empMap["id"] ?: "")
+                    activeDialog = null
                 }
             )
         }
@@ -478,13 +481,15 @@ fun FruitCountingFormContent(
             Text("Pilih Karyawan", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
 
             ClickableSearchField(
-                label = "Klik untuk Pilih Karyawan",
-                value = if (selectedWorkers.isEmpty()) {
+                label = "Klik untuk mencari karyawan",
+                value = if (selectedWorkers.isEmpty()) { // Gunakan selectedWorkers
                     "Belum ada karyawan dipilih"
                 } else {
-                    "${selectedWorkers.size} Karyawan dipilih"
+                    val selectedId = selectedWorkers.first() // Gunakan selectedWorkers
+                    val emp = presentWorkers.find { it["id"] == selectedId }
+                    emp?.get("name") ?: selectedId
                 },
-                onClick = { activeDialog = "WORKERS" } // Ini akan memicu dialog muncul
+                onClick = { activeDialog = "WORKERS" }
             )
 
             OutlinedTextField(
