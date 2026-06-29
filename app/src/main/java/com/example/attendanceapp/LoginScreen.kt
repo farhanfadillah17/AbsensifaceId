@@ -131,7 +131,7 @@ fun LoginScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212))
+            .background(Color.White)
             .verticalScroll(scrollState)
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -167,8 +167,8 @@ fun LoginScreen(
         }
 
         Text(
-            text = "ATTENDANCE SYSTEM",
-            color = Color.Cyan,
+            text = "SIPDRO",
+            color = Color(0xFF1A3A8F),
             fontSize = 28.sp,
             fontWeight = FontWeight.ExtraBold,
             textAlign = TextAlign.Center
@@ -203,11 +203,11 @@ fun LoginScreen(
                 onNext = { focusManager.moveFocus(FocusDirection.Down) }
             ),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedLabelColor = Color.Cyan,
+                focusedTextColor = Color.Black,
+                unfocusedTextColor = Color.Black,
+                focusedLabelColor = Color(0xFF1A3A8F),
                 unfocusedLabelColor = Color.Gray,
-                focusedBorderColor = Color.Cyan,
+                focusedBorderColor = Color(0xFF1A3A8F),
                 errorBorderColor = Color.Red
             )
         )
@@ -236,11 +236,11 @@ fun LoginScreen(
                 onDone = { focusManager.clearFocus() }
             ),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedLabelColor = Color.Cyan,
+                focusedTextColor = Color.Black,
+                unfocusedTextColor = Color.Black,
+                focusedLabelColor = Color(0xFF1A3A8F),
                 unfocusedLabelColor = Color.Gray,
-                focusedBorderColor = Color.Cyan,
+                focusedBorderColor = Color(0xFF1A3A8F),
                 errorBorderColor = Color.Red
             )
         )
@@ -306,7 +306,7 @@ fun LoginScreen(
             enabled = !isLoading,
             shape = MaterialTheme.shapes.medium,
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF00ACC1),
+                containerColor = Color(0xFF1A3A8F),
                 disabledContainerColor = Color(0xFF005662)
             )
         ) {

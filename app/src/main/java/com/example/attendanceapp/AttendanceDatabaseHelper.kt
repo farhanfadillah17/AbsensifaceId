@@ -602,6 +602,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
             db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (6, 'AKP', 'AKP_FORM')")
             db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (7, 'MASTER DATA', 'EMPLOYEE_FORM')")
             db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (8, 'RENCANA KERJA', 'RKH_VIEW')")
+            db.execSQL("INSERT OR REPLACE INTO $T_MENU VALUES (9, 'SINKRON DATA', 'SYNC')")
 
             // Isi User Default & Hak Akses
 //            insertDefaultUsers(db)
@@ -1056,6 +1057,23 @@ class AttendanceDatabaseHelper(private val context: Context) :
         return list
     }
 
+    fun deleteAllMasterData() {
+        val db = writableDatabase
+        try {
+            db.beginTransaction()
+            db.delete(T_EMP, null, null)
+            db.delete(T_JOB, null, null)
+            db.delete("FIELD", null, null)
+            db.delete(T_TPH, null, null)
+            db.setTransactionSuccessful()
+            Log.d("DB_CHECK", "Semua data master berhasil dihapus.")
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal menghapus data master: ${e.message}")
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     // Tambahkan parameter kedua: onProgress (sebuah fungsi callback)
     fun importSqlFromAssets(fileName: String, onProgress: (Int) -> Unit = {}) {
         val db = writableDatabase
@@ -1403,7 +1421,6 @@ class AttendanceDatabaseHelper(private val context: Context) :
                             values,
                             SQLiteDatabase.CONFLICT_REPLACE
                         )
-                        Log.d("INSERT TPH", "insertTph: $processedCount")
                         processedCount++
                         if (totalStatements > 0) {
                             val progress = (processedCount * 100) / totalStatements
