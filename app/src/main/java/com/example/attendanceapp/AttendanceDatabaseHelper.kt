@@ -312,8 +312,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
 
             // 7. Tabel Transaksi & Absensi
-            db.execSQL("CREATE TABLE IF NOT EXISTS $T_ATT ($A_ID INTEGER PRIMARY KEY AUTOINCREMENT, $A_EMP_ID TEXT NOT NULL, $A_FCBA TEXT NOT NULL, $A_EMP_NAME TEXT NOT NULL, $A_ACTION TEXT NOT NULL, $A_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP, $A_SOURCE TEXT DEFAULT 'INPUT')")
-            db.execSQL("CREATE TABLE IF NOT EXISTS $T_FACE ($F_ID INTEGER PRIMARY KEY AUTOINCREMENT, $F_EMP_ID TEXT NOT NULL, $F_FCBA TEXT NOT NULL, $F_FEATURES TEXT NOT NULL, $F_CAPTURED DATETIME DEFAULT CURRENT_TIMESTAMP)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS $T_ATT ($A_ID INTEGER PRIMARY KEY AUTOINCREMENT, $A_EMP_ID TEXT NOT NULL, $A_FCBA TEXT NOT NULL, $A_EMP_NAME TEXT NOT NULL, $A_ACTION TEXT NOT NULL, $A_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP, $A_SOURCE TEXT DEFAULT 'INPUT', status TEXT DEFAULT 'N')")
+            db.execSQL("CREATE TABLE IF NOT EXISTS $T_FACE ($F_ID INTEGER PRIMARY KEY AUTOINCREMENT, $F_EMP_ID TEXT NOT NULL, $F_FCBA TEXT NOT NULL, $F_FEATURES TEXT NOT NULL, $F_CAPTURED DATETIME DEFAULT CURRENT_TIMESTAMP, status TEXT DEFAULT 'N')")
 
             db.execSQL(
                 """
@@ -814,6 +814,55 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     // --- FUNGSI SAVE (TANPA DB.CLOSE()) ---
 
+
+    fun getPendingAttendance(): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        val query = "SELECT * FROM $T_ATT WHERE status = 'N'"
+        try {
+            db.rawQuery(query, null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val map = mutableMapOf<String, String>()
+                    map["id"] = cursor.getString(cursor.getColumnIndexOrThrow(A_ID))
+                    map["fccode"] = cursor.getString(cursor.getColumnIndexOrThrow(A_EMP_ID))
+                    map["fcba"] = cursor.getString(cursor.getColumnIndexOrThrow(A_FCBA))
+                    map["action"] = cursor.getString(cursor.getColumnIndexOrThrow(A_ACTION))
+                    map["timestamp"] = cursor.getString(cursor.getColumnIndexOrThrow(A_TIMESTAMP))
+                    list.add(map)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error getPendingAttendance: ${e.message}")
+        }
+        return list
+    }
+
+    fun updateAttendanceStatus(id: String, status: String) {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put("status", status)
+        }
+        try {
+            db.update(T_ATT, values, "$A_ID = ?", arrayOf(id))
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error updateAttendanceStatus: ${e.message}")
+        }
+    }
+
+    fun getEmployeeFaceEmbedding(fccode: String, fcba: String): String? {
+        val db = readableDatabase
+        val query = "SELECT $E_FACE_EMB FROM $T_EMP WHERE $E_FCCODE = ? AND $E_FCBA = ?"
+        try {
+            db.rawQuery(query, arrayOf(fccode, fcba)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    return cursor.getString(0)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error getEmployeeFaceEmbedding: ${e.message}")
+        }
+        return null
+    }
 
     fun getEmployeeByOnlyCode(code: String): Employee? {
         return try {

@@ -1,12 +1,10 @@
 package com.example.attendanceapp
 
-import android.util.Log
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Query
+import retrofit2.http.*
 
 private const val username = "SIP"
 private const val password = "Sejahtera2025"
@@ -71,6 +69,29 @@ class ApiClient {
         return api.getAccess()
     }
 
+    suspend fun postAttendance(
+        employeeCode: String,
+        checkType: String,
+        checkTime: String,
+        deviceId: String,
+        fcba: String,
+        createdBy: String
+    ): PostResponse {
+        return api.postAttendance(employeeCode, checkType, checkTime, deviceId, fcba, createdBy)
+    }
+
+    suspend fun getNoFace(fcba: String): NoFaceResponse {
+        return api.getNoFace(fcba)
+    }
+
+    suspend fun postFaceEmbedding(
+        fccode: String,
+        fcba: String,
+        faceEmbedding: String
+    ): PostResponse {
+        return api.postFaceEmbedding(fccode, fcba, faceEmbedding)
+    }
+
     interface ApiService {
 
         @GET("get_data_employee.asp")
@@ -102,6 +123,30 @@ class ApiClient {
 
         @GET("get_data_access.asp")
         suspend fun getAccess(): AccessResponse
+
+        @FormUrlEncoded
+        @POST("post_data_absen.asp")
+        suspend fun postAttendance(
+            @retrofit2.http.Field("employeecode") employeeCode: String,
+            @retrofit2.http.Field("checktype") checkType: String,
+            @retrofit2.http.Field("checktime") checkTime: String,
+            @retrofit2.http.Field("deviceid") deviceId: String,
+            @retrofit2.http.Field("fcba") fcba: String,
+            @retrofit2.http.Field("createdby") createdBy: String
+        ): PostResponse
+
+        @GET("get_data_noface.asp")
+        suspend fun getNoFace(
+            @Query("fcba") fcba: String
+        ): NoFaceResponse
+
+        @FormUrlEncoded
+        @POST("post_data_face.asp")
+        suspend fun postFaceEmbedding(
+            @retrofit2.http.Field("fccode") fccode: String,
+            @retrofit2.http.Field("fcba") fcba: String,
+            @retrofit2.http.Field("faceembedding") faceEmbedding: String
+        ): PostResponse
 
     }
 
@@ -197,6 +242,20 @@ class ApiClient {
     data class AccessResponse(
         val header: Header,
         val detail: List<Access>
+    )
+
+    data class PostResponse(
+        val success: Boolean,
+        val message: String
+    )
+
+    data class NoFaceDetail(
+        val emp_id: String
+    )
+
+    data class NoFaceResponse(
+        val header: Header,
+        val detail: List<NoFaceDetail>
     )
 
 }

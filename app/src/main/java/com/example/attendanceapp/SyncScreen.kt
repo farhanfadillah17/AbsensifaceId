@@ -128,12 +128,106 @@ fun SyncScreen(
                 onClick = {
                     scope.launch {
                         isSyncing = true
-                        syncStatus = "Menyiapkan data upload..."
-                        delay(1000)
-                        syncStatus = "Mengirim data ke server..."
-                        delay(2000)
-                        syncStatus = "Upload selesai!"
-                        isSyncing = false
+                        syncStatus = "Mencari data transaksi..."
+                        
+                        try {
+                            // 1. Upload Transaksi Absensi
+                            val pendingData = withContext(Dispatchers.IO) {
+                                dbHelper.getPendingAttendance()
+                            }
+
+                            if (pendingData.isNotEmpty()) {
+                                var successCount = 0
+                                var failCount = 0
+                                val total = pendingData.size
+                                val deviceId = android.provider.Settings.Secure.getString(
+                                    context.contentResolver, 
+                                    android.provider.Settings.Secure.ANDROID_ID
+                                )
+
+                                pendingData.forEachIndexed { index, data ->
+                                    val currentProgress = index + 1
+                                    syncStatus = "Upload data absen $currentProgress/$total..."
+
+                                    try {
+                                        val response = withContext(Dispatchers.IO) {
+                                            apiClient.postAttendance(
+                                                employeeCode = data["fccode"] ?: "",
+                                                checkType = data["action"] ?: "",
+                                                checkTime = data["timestamp"] ?: "",
+                                                deviceId = deviceId,
+                                                fcba = data["fcba"] ?: "",
+                                                createdBy = userName
+                                            )
+                                        }
+
+                                        if (response.success) {
+                                            withContext(Dispatchers.IO) {
+                                                dbHelper.updateAttendanceStatus(data["id"] ?: "", "Y")
+                                            }
+                                            successCount++
+                                        } else {
+                                            failCount++
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("UPLOAD_ERROR", "Error at row $index: ${e.message}")
+                                        failCount++
+                                    }
+                                }
+                                syncStatus = "Upload absen selesai! Berhasil: $successCount, Gagal: $failCount"
+                                delay(2000)
+                            }
+
+                            // 2. Upload Face Embedding
+                            syncStatus = "Checking data face di server..."
+                            val noFaceList = withContext(Dispatchers.IO) {
+                                apiClient.getNoFace(fcba)
+                            }
+
+                            if (noFaceList.detail.isNotEmpty()) {
+                                Log.d("FACE_UPLOAD", "SyncScreen: {${noFaceList.detail}}")
+                                var faceSuccessCount = 0
+                                val totalFace = noFaceList.detail.size
+                                
+                                noFaceList.detail.forEachIndexed { index, item ->
+                                    val current = index + 1
+                                    syncStatus = "Checking face local $current/$totalFace..."
+                                    
+                                    val localEmbedding = withContext(Dispatchers.IO) {
+                                        dbHelper.getEmployeeFaceEmbedding(item.emp_id, fcba)
+                                    }
+
+                                    if (!localEmbedding.isNullOrEmpty()) {
+                                        syncStatus = "Upload face ${item.emp_id}..."
+                                        Log.d("FACE_UPLOAD", "Uploading face for ${item.emp_id}")
+                                        try {
+                                            val faceResponse = withContext(Dispatchers.IO) {
+                                                apiClient.postFaceEmbedding(item.emp_id, fcba, localEmbedding)
+                                            }
+                                            if (faceResponse.success) {
+                                                faceSuccessCount++
+                                            }else{
+                                                Log.e("FACE_UPLOAD_ERROR", "Error uploading face for ${item.emp_id}: ${faceResponse.message}")
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e("FACE_UPLOAD_ERROR", "Error uploading face for ${item.emp_id}: ${e.message}")
+                                        }
+                                    }
+                                }
+                                syncStatus = "Upload wajah selesai! Berhasil: $faceSuccessCount"
+                                delay(2000)
+                                syncStatus = ""
+                            } else {
+                                syncStatus = "Semua wajah sudah sinkron"
+                                delay(2000)
+                                syncStatus = ""
+                            }
+
+                        } catch (e: Exception) {
+                            syncStatus = "Gagal Upload: ${e.message}"
+                        } finally {
+                            isSyncing = false
+                        }
                     }
                 }
             )
