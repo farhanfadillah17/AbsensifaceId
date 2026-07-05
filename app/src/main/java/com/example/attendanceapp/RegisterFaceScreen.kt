@@ -55,7 +55,9 @@ fun RegisterFaceScreen(
     var samplesCount by remember { mutableStateOf(0) }
     val totalSamplesNeeded = 5
     var isProcessing by remember { mutableStateOf(false) }
-    var statusText by remember { mutableStateOf("Arahkan wajah ke kamera") }
+    var isLivenessVerified by remember { mutableStateOf(false) }
+    var blinkStep by remember { mutableIntStateOf(0) }
+    var statusText by remember { mutableStateOf("Arahkan wajah & kedipkan mata") }
     var faceDetected by remember { mutableStateOf(false) }
 
     var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_FRONT) }
@@ -64,9 +66,11 @@ fun RegisterFaceScreen(
 
     val previewView = remember { PreviewView(context) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    val livenessHelper = remember { PassiveLivenessHelper() }
     val faceDetector = remember {
         val options = FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
             .build()
         FaceDetection.getClient(options)
     }
@@ -118,6 +122,46 @@ fun RegisterFaceScreen(
                             faceDetected = faces.isNotEmpty()
                             if (faces.isNotEmpty()) {
                                 val face = faces[0]
+
+                                // --- 1. Passive Liveness Check ---
+                                if (!isLivenessVerified && !isProcessing) {
+                                    val bitmap = ImageUtils.yuv420ToBitmap(imageProxy)
+                                    if (bitmap != null) {
+                                        val faceBitmap = ImageUtils.cropFace(bitmap, face.boundingBox)
+                                        val passiveResult = livenessHelper.analyze(faceBitmap, face)
+                                        if (!passiveResult.isLive) {
+                                            statusText = "⚠️ ${passiveResult.message}"
+                                            return@addOnSuccessListener
+                                        }
+                                    }
+                                }
+
+                                // --- 2. Active Liveness Check (Blink Detection) ---
+                                if (!isLivenessVerified && !isProcessing) {
+                                    val leftEyeOpen = face.leftEyeOpenProbability ?: -1f
+                                    val rightEyeOpen = face.rightEyeOpenProbability ?: -1f
+
+                                    if (leftEyeOpen != -1f && rightEyeOpen != -1f) {
+                                        when (blinkStep) {
+                                            0 -> {
+                                                if (leftEyeOpen > 0.7f && rightEyeOpen > 0.7f) blinkStep = 1
+                                                statusText = "Arahkan wajah dengan jelas"
+                                            }
+                                            1 -> {
+                                                if (leftEyeOpen < 0.25f && rightEyeOpen < 0.25f) blinkStep = 2
+                                                statusText = "Silahkan berkedip..."
+                                            }
+                                            2 -> {
+                                                if (leftEyeOpen > 0.7f && rightEyeOpen > 0.7f) {
+                                                    isLivenessVerified = true
+                                                    statusText = "Kedipan terdeteksi!"
+                                                }
+                                            }
+                                        }
+                                    }
+                                    return@addOnSuccessListener
+                                }
+
                                 val faceWidth = face.boundingBox.width()
                                 val frameWidth = mediaImage.width
                                 val faceSizeRatio = faceWidth.toFloat() / frameWidth.toFloat()
@@ -154,6 +198,7 @@ fun RegisterFaceScreen(
                                 }
                             } else {
                                 statusText = "Wajah tidak terdeteksi"
+                                if (!isProcessing) blinkStep = 0
                             }
                         }
                         .addOnCompleteListener { imageProxy.close() }

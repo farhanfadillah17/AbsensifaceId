@@ -52,15 +52,19 @@ fun AttendanceCameraScreen(
     var hasFlash by remember { mutableStateOf(false) }
 
     var isVerifying by remember { mutableStateOf(false) }
-    var statusText by remember { mutableStateOf("Arahkan wajah untuk verifikasi") }
+    var isLivenessVerified by remember { mutableStateOf(false) }
+    var blinkStep by remember { mutableIntStateOf(0) } // 0: wait open, 1: wait closed, 2: wait open (blinked)
+    var statusText by remember { mutableStateOf("Arahkan wajah & kedipkan mata") }
     var faceDetected by remember { mutableStateOf(false) }
 
     val previewView = remember { PreviewView(context) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    val livenessHelper = remember { PassiveLivenessHelper() }
 
     val faceDetector = remember {
         val options = FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
             .build()
         FaceDetection.getClient(options)
     }
@@ -91,45 +95,103 @@ fun AttendanceCameraScreen(
                     faceDetector.process(image)
                         .addOnSuccessListener { faces ->
                             faceDetected = faces.isNotEmpty()
-                            if (faces.isNotEmpty() && !isVerifying) {
-                                isVerifying = true
+                            if (faces.isNotEmpty()) {
                                 val face = faces[0]
 
-                                scope.launch {
-                                    statusText = "Sedang memverifikasi..."
-                                    delay(1000)
+                                // --- 1. Passive Liveness Check (Texture/Sharpness/Skin) ---
+                                if (!isLivenessVerified && !isVerifying && verifiedEmployee != null) {
+                                    val bitmap = ImageUtils.yuv420ToBitmap(imageProxy)
+                                    if (bitmap != null) {
+                                        val faceBitmap = ImageUtils.cropFace(bitmap, face.boundingBox)
+                                        val passiveResult = livenessHelper.analyze(faceBitmap, face)
+                                        
+                                        if (!passiveResult.isLive) {
+                                            statusText = "⚠️ ${passiveResult.message}"
+                                            return@addOnSuccessListener
+                                        }
+                                    }
+                                }
 
-                                    val currentFeatures = faceDataHelper.extractFeatures(face)
+                                // --- 2. Active Liveness Check (Blink Detection) ---
+                                if (!isLivenessVerified && !isVerifying && verifiedEmployee != null) {
+                                    val leftEyeOpen = face.leftEyeOpenProbability ?: -1f
+                                    val rightEyeOpen = face.rightEyeOpenProbability ?: -1f
 
-                                    // PERBAIKAN 1: Ganti .id menjadi .fccode dan tambahkan .fcba
-                                    // Pastikan fungsi verifyFace di FaceDataHelper juga menerima fcba
-                                    val isMatched = faceDataHelper.verifyFace(
-                                        currentEmployee.fccode,
-                                        currentEmployee.fcba,
-                                        currentFeatures
-                                    )
+                                    if (leftEyeOpen != -1f && rightEyeOpen != -1f) {
+                                        // Threshold diperketat: 0.15 (sangat tertutup) dan 0.85 (sangat terbuka)
+                                        when (blinkStep) {
+                                            0 -> { // Tunggu mata terbuka
+                                                if (leftEyeOpen > 0.85f && rightEyeOpen > 0.85f) blinkStep = 1
+                                                statusText = "Arahkan wajah & kedipkan mata"
+                                            }
+                                            1 -> { // Kedipan 1: Menutup
+                                                if (leftEyeOpen < 0.15f && rightEyeOpen < 0.15f) blinkStep = 2
+                                                statusText = "Berkedip (1/2)..."
+                                            }
+                                            2 -> { // Kedipan 1: Membuka kembali
+                                                if (leftEyeOpen > 0.85f && rightEyeOpen > 0.85f) blinkStep = 3
+                                                statusText = "Bagus! Sekali lagi..."
+                                            }
+                                            3 -> { // Kedipan 2: Menutup
+                                                if (leftEyeOpen < 0.15f && rightEyeOpen < 0.15f) blinkStep = 4
+                                                statusText = "Tahan, sedang diproses..."
+                                            }
+                                            4 -> { // Kedipan 2: Membuka kembali
+                                                if (leftEyeOpen > 0.85f && rightEyeOpen > 0.85f) {
+                                                    isLivenessVerified = true
+                                                    statusText = "Kedipan terverifikasi!"
+                                                }
+                                            }
+                                        }
+                                    }
+                                    return@addOnSuccessListener
+                                }
 
-                                    if (isMatched) {
-                                        statusText = "✅ Verifikasi Berhasil!"
+                                // --- 3. Identity Verification ---
+                                if (isLivenessVerified && !isVerifying && verifiedEmployee != null) {
+                                    isVerifying = true
 
-                                        // PERBAIKAN 2: Sesuaikan parameter saveAttendance (fccode, fcba, action)
-                                        // PERBAIKAN: Masukkan semua parameter yang dibutuhkan oleh DatabaseHelper
-                                        dbHelper.saveAttendance(
-                                            empId = currentEmployee.fccode,
-                                            fcba = currentEmployee.fcba,
-                                            name = currentEmployee.name, // Kamu sebelumnya lupa memasukkan parameter 'name'
-                                            action = action.name,         // Ini adalah parameter 'action'
-                                            source = "FACE"               // Ini adalah parameter 'source'
+                                    scope.launch {
+                                        statusText = "Sedang memverifikasi..."
+                                        delay(500)
+
+                                        val currentFeatures = faceDataHelper.extractFeatures(face)
+
+                                        val isMatched = faceDataHelper.verifyFace(
+                                            verifiedEmployee.fccode,
+                                            verifiedEmployee.fcba,
+                                            currentFeatures
                                         )
 
-                                        delay(1500)
-                                        onSuccess()
-                                    } else {
-                                        statusText = "❌ Wajah tidak cocok"
-                                        delay(2000)
-                                        isVerifying = false
-                                        statusText = "Coba arahkan wajah kembali"
+                                        if (isMatched) {
+                                            statusText = "✅ Verifikasi Berhasil!"
+
+                                            dbHelper.saveAttendance(
+                                                empId = verifiedEmployee.fccode,
+                                                fcba = verifiedEmployee.fcba,
+                                                name = verifiedEmployee.name,
+                                                action = action.name,
+                                                source = "FACE"
+                                            )
+
+                                            delay(1500)
+                                            onSuccess()
+                                        } else {
+                                            statusText = "❌ Wajah tidak cocok"
+                                            delay(2000)
+                                            // Reset liveness agar user harus berkedip lagi jika gagal
+                                            isLivenessVerified = false
+                                            blinkStep = 0
+                                            isVerifying = false
+                                            statusText = "Coba arahkan wajah & kedip kembali"
+                                        }
                                     }
+                                }
+                            } else {
+                                // Jika wajah hilang, reset progress kedipan
+                                if (!isVerifying) {
+                                    blinkStep = 0
+                                    statusText = "Arahkan wajah ke kamera"
                                 }
                             }
                         }

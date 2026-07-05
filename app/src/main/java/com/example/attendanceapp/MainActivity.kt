@@ -58,7 +58,7 @@ data class MenuConfig(
 
 // 2. Enum Screen
 enum class Screen {
-    LOGIN, DASHBOARD, HOME, EMPLOYEE_FORM, REGISTER_FACE, QR_SCAN, FACE_VERIFY, HISTORY, PROGRESS_MENU, FRUIT_COUNTING, ANCAK_PANEN, SPB_MENU, SPB_FORM, AKP_FORM, RKH_VIEW,RKH_FORM, TRANSFER_DATA, SYNC
+    LOGIN, DASHBOARD, HOME, EMPLOYEE_FORM, REGISTER_FACE, QR_SCAN, FACE_VERIFY, HISTORY, PROGRESS_MENU, FRUIT_COUNTING, ANCAK_PANEN, SPB_MENU, SPB_FORM, AKP_FORM, RKH_VIEW,RKH_FORM, TRANSFER_DATA, SYNC, MASTER_DATA, EMPLOYEE_MENU, NFC_REGISTER, NFC_ATTENDANCE
 }
 
 class MainActivity : ComponentActivity() {
@@ -287,10 +287,12 @@ fun AppNavigation(
     val currentScreen = backStack.last()
 
     var pendingEmployee by remember { mutableStateOf<Employee?>(null) }
+    var employeeWorkFlow by remember { mutableStateOf("FACE") } // "FACE" or "NFC"
     var currentAction by remember { mutableStateOf(AttendanceAction.CHECK_IN) }
     var verifiedEmployee by remember { mutableStateOf<Employee?>(null) }
     var selectedCategory by remember { mutableStateOf("") }
     var selectedSpbCategory by remember { mutableStateOf("") }
+    var nfcAction by remember { mutableStateOf("READ") } // "READ" or "WRITE"
 
 
 
@@ -299,7 +301,7 @@ fun AppNavigation(
     }
 
     fun navigateBack() {
-        if (backStack.size > 1) backStack.removeLast()
+        if (backStack.size > 1) backStack.removeAt(backStack.size - 1)
     }
 
     fun navigateDashboard() {
@@ -345,8 +347,8 @@ fun AppNavigation(
             sessionManager = sessionManager,
             dbHelper = db,
             onRegisterFace = { navigateTo(Screen.EMPLOYEE_FORM) },
-            onCheckIn = { currentAction = AttendanceAction.CHECK_IN; navigateTo(Screen.QR_SCAN) },
-            onCheckOut = { currentAction = AttendanceAction.CHECK_OUT; navigateTo(Screen.QR_SCAN) },
+            onCheckIn = { currentAction = AttendanceAction.CHECK_IN; navigateTo(Screen.NFC_ATTENDANCE) },
+            onCheckOut = { currentAction = AttendanceAction.CHECK_OUT; navigateTo(Screen.NFC_ATTENDANCE) },
             onHistory = { navigateTo(Screen.HISTORY) },
             onFeature2 = { navigateTo(Screen.TRANSFER_DATA) },
             onFeature3 = {
@@ -357,7 +359,14 @@ fun AppNavigation(
         Screen.EMPLOYEE_FORM -> EmployeeFormScreen(
             dbHelper = db,
             onBack = { navigateBack() },
-            onNext = { emp -> pendingEmployee = emp; navigateTo(Screen.REGISTER_FACE) })
+            onNext = { emp -> 
+                pendingEmployee = emp
+                if (employeeWorkFlow == "NFC") {
+                    navigateTo(Screen.NFC_REGISTER)
+                } else {
+                    navigateTo(Screen.REGISTER_FACE)
+                }
+            })
 
         Screen.REGISTER_FACE -> {
             pendingEmployee?.let { emp ->
@@ -369,7 +378,7 @@ fun AppNavigation(
                     onSuccess = {
                         pendingEmployee = null
                         while (backStack.lastOrNull() != Screen.HOME && backStack.size > 1) {
-                            backStack.removeLast()
+                            backStack.removeAt(backStack.size - 1)
                         }
                     })
             } ?: LaunchedEffect(Unit) { navigateBack() }
@@ -380,6 +389,25 @@ fun AppNavigation(
             dbHelper = db,
             onBack = { navigateBack() },
             onQRVerified = { result ->
+                if (currentAction == AttendanceAction.RECEIVE) {
+                    val count = db.receiveTransferredData(result.fccode)
+                    if (count > 0) Toast.makeText(
+                        context, "Berhasil terima $count data", Toast.LENGTH_SHORT
+                    ).show()
+                    else Toast.makeText(context, "Gagal: Data tidak valid", Toast.LENGTH_SHORT)
+                        .show()
+                    navigateBack()
+                } else {
+                    verifiedEmployee = result
+                    navigateTo(Screen.FACE_VERIFY)
+                }
+            })
+
+        Screen.NFC_ATTENDANCE -> AttendanceNFCScreen(
+            action = currentAction,
+            dbHelper = db,
+            onBack = { navigateBack() },
+            onNfcVerified = { result ->
                 if (currentAction == AttendanceAction.RECEIVE) {
                     val count = db.receiveTransferredData(result.fccode)
                     if (count > 0) Toast.makeText(
@@ -405,7 +433,7 @@ fun AppNavigation(
                     onSuccess = {
                         verifiedEmployee = null
                         while (backStack.lastOrNull() != Screen.HOME && backStack.size > 1) {
-                            backStack.removeLast()
+                            backStack.removeAt(backStack.size - 1)
                         }
                     })
             } ?: LaunchedEffect(Unit) { navigateBack() }
@@ -503,6 +531,43 @@ fun AppNavigation(
             onBack = { navigateBack() },
             context = context,
         )
+
+        Screen.MASTER_DATA -> MasterDataMainScreen(
+            sessionManager = sessionManager,
+            onEmployeeClick = { navigateTo(Screen.EMPLOYEE_MENU) },
+            onFieldClick = { 
+                // Sementara tampilkan toast atau arahkan ke layar dummy jika belum ada form Field
+                Toast.makeText(context, "Menu Field segera hadir", Toast.LENGTH_SHORT).show()
+            },
+            onBack = { navigateBack() }
+        )
+
+        Screen.EMPLOYEE_MENU -> EmployeeMenuScreen(
+            sessionManager = sessionManager,
+            onFaceRegisterClick = { 
+                employeeWorkFlow = "FACE"
+                navigateTo(Screen.EMPLOYEE_FORM) 
+            },
+            onNfcRegisterClick = { 
+                employeeWorkFlow = "NFC"
+                navigateTo(Screen.EMPLOYEE_FORM) 
+            },
+            onBack = { navigateBack() }
+        )
+
+        Screen.NFC_REGISTER -> {
+            pendingEmployee?.let { emp ->
+                NfcRegisterScreen(
+                    dbHelper = db,
+                    employee = emp,
+                    onBack = { navigateBack() },
+                    onStartWriting = { jsonString ->
+                        (context as? MainActivity)?.dataToWrite = jsonString
+                        Toast.makeText(context, "Siap menulis, tempelkan kartu!", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            } ?: LaunchedEffect(Unit) { navigateBack() }
+        }
     }
 }
 
@@ -752,7 +817,7 @@ fun DashboardScreen(
         MenuConfig("PEMBUATAN SPB", Icons.Default.LocalShipping, listOf(), true, route = "4"),
         MenuConfig("ANCAK PANEN", Icons.Default.Agriculture, listOf(), route = "5"),
         MenuConfig("AKP", Icons.Default.Assessment, listOf(), route = "6"),
-        MenuConfig("MASTER DATA", Icons.Default.Storage, listOf(), color = Color(0xFFD32F2F), route = "7"),
+        MenuConfig("MASTER DATA", Icons.Default.Storage, listOf(), color = Color(0xFF1A3A8F), route = "7"),
         MenuConfig("RENCANA KERJA", Icons.Default.EditNote, listOf(), route = "8"),
         MenuConfig("SINKRON DATA", Icons.Default.Sync, listOf(), route = "9")
     )
@@ -841,7 +906,7 @@ fun DashboardScreen(
                                 "4" -> onNavigate(Screen.SPB_MENU)
                                 "5" -> onNavigate(Screen.ANCAK_PANEN)
                                 "6" -> onNavigate(Screen.AKP_FORM)
-                                "7" -> onNavigate(Screen.EMPLOYEE_FORM)
+                                "7" -> onNavigate(Screen.MASTER_DATA)
                                 "8" -> onNavigate(Screen.RKH_VIEW)
                                 "9" -> onNavigate(Screen.SYNC)
                             }

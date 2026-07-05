@@ -924,21 +924,67 @@ class AttendanceDatabaseHelper(private val context: Context) :
     fun getEmployeeByOnlyCode(code: String): Employee? {
         return try {
             val db = this.readableDatabase
-            db.query(T_EMP, null, "$E_FCCODE = ?", arrayOf(code), null, null, null).use { cursor ->
+            db.query(
+                T_EMP,
+                null,
+                "$E_FCCODE = ?",
+                arrayOf(code),
+                null,
+                null,
+                null
+            ).use { cursor ->
                 if (cursor.moveToFirst()) {
                     Employee(
                         fccode = cursor.getString(cursor.getColumnIndexOrThrow(E_FCCODE)),
                         fcba = cursor.getString(cursor.getColumnIndexOrThrow(E_FCBA)),
                         name = cursor.getString(cursor.getColumnIndexOrThrow(E_NAME)) ?: "",
-                        sectionName = cursor.getString(cursor.getColumnIndexOrThrow(E_SECTION))
-                            ?: "",
+                        sectionName = cursor.getString(cursor.getColumnIndexOrThrow(E_SECTION)) ?: "",
                         gangCode = cursor.getString(cursor.getColumnIndexOrThrow(E_GANG)) ?: "",
-                        position = cursor.getString(cursor.getColumnIndexOrThrow(E_POSITION)) ?: ""
+                        position = cursor.getString(cursor.getColumnIndexOrThrow(E_POSITION)) ?: "",
+                        gender = cursor.getString(cursor.getColumnIndexOrThrow("GENDER")) ?: "",
+                        address = cursor.getString(cursor.getColumnIndexOrThrow("ADDRESS")) ?: "",
+                        companyNik = cursor.getString(cursor.getColumnIndexOrThrow("COMPANY_NIK")) ?: "",
+                        faceEmbedding = cursor.getString(cursor.getColumnIndexOrThrow(E_FACE_EMB)),
+                        lastUpdate = cursor.getString(cursor.getColumnIndexOrThrow(E_LAST_UPDATE)) ?: ""
                     )
                 } else null
             }
         } catch (e: Exception) {
             Log.e("DB_ERROR", "Error getEmployeeByOnlyCode: ${e.message}")
+            null
+        }
+    }
+
+    fun getEmployeeByCodeBa(code: String, ba: String): Employee? {
+        return try {
+            val db = this.readableDatabase
+            db.query(
+                T_EMP,
+                null,
+                "$E_FCCODE = ? AND $E_FCBA = ?",
+                arrayOf(code, ba),
+                null,
+                null,
+                null
+            ).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    Employee(
+                        fccode = cursor.getString(cursor.getColumnIndexOrThrow(E_FCCODE)),
+                        fcba = cursor.getString(cursor.getColumnIndexOrThrow(E_FCBA)),
+                        name = cursor.getString(cursor.getColumnIndexOrThrow(E_NAME)) ?: "",
+                        sectionName = cursor.getString(cursor.getColumnIndexOrThrow(E_SECTION)) ?: "",
+                        gangCode = cursor.getString(cursor.getColumnIndexOrThrow(E_GANG)) ?: "",
+                        position = cursor.getString(cursor.getColumnIndexOrThrow(E_POSITION)) ?: "",
+                        gender = cursor.getString(cursor.getColumnIndexOrThrow("GENDER")) ?: "",
+                        address = cursor.getString(cursor.getColumnIndexOrThrow("ADDRESS")) ?: "",
+                        companyNik = cursor.getString(cursor.getColumnIndexOrThrow("COMPANY_NIK")) ?: "",
+                        faceEmbedding = cursor.getString(cursor.getColumnIndexOrThrow(E_FACE_EMB)),
+                        lastUpdate = cursor.getString(cursor.getColumnIndexOrThrow(E_LAST_UPDATE)) ?: ""
+                    )
+                } else null
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error getEmployeeByCodeBa: ${e.message}")
             null
         }
     }
@@ -1082,6 +1128,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 put(A_EMP_NAME, name)
                 put(A_ACTION, action)
                 put(A_SOURCE, source)
+                // Simpan jam device (Lokal) bukan jam server/DB
+                put(A_TIMESTAMP, SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
             }
             val result = db.insert(T_ATT, null, cv)
             Log.d("DB_CHECK", "Absensi Berhasil Disimpan: $result")
@@ -1750,17 +1798,12 @@ class AttendanceDatabaseHelper(private val context: Context) :
         }
     }
 
-    fun getSupervisors(userFcba: String): List<String> {
-        val list = mutableListOf<String>()
+    fun getSupervisorsMap(userFcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
 
-        // PERBAIKAN 1: Tambahkan log untuk melihat FCBA yang dicari
-        Log.d("DB_CHECK", "Mencari Supervisor untuk FCBA: $userFcba")
-
-        // PERBAIKAN 2: Gunakan query yang lebih sederhana dulu untuk memastikan tabel ada isinya
-        // Jika dengan query ini data muncul, berarti filter LIKE Anda sebelumnya yang salah
         val query = """
-        SELECT $E_NAME 
+        SELECT $E_FCCODE, $E_NAME 
         FROM $T_EMP 
         WHERE FCBA = ? 
         AND ($E_POSITION LIKE '%MANDOR%' OR $E_POSITION LIKE '%SUPERVISI%' OR $E_POSITION LIKE '%ASISTEN%' OR $E_POSITION IS NULL)
@@ -1770,15 +1813,21 @@ class AttendanceDatabaseHelper(private val context: Context) :
         try {
             db.rawQuery(query, arrayOf(userFcba)).use { cursor ->
                 while (cursor.moveToNext()) {
-                    val name = cursor.getString(0)
-                    if (!name.isNullOrEmpty()) list.add(name)
+                    val map = mutableMapOf<String, String>()
+                    map["code"] = cursor.getString(0) ?: ""
+                    map["name"] = cursor.getString(1) ?: ""
+                    if (map["code"]?.isNotEmpty() == true) list.add(map)
                 }
             }
         } catch (e: Exception) {
             Log.e("DB_ERROR", "Gagal ambil data supervisi: ${e.message}")
         }
-
         return list
+    }
+
+    // Fungsi lama untuk kompatibilitas
+    fun getSupervisors(userFcba: String): List<String> {
+        return getSupervisorsMap(userFcba).map { it["name"] ?: "" }
     }
 
 
@@ -2247,40 +2296,27 @@ fun generateNoSPB(fcba: String): String {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
 
-        // QUERY DIPERBAIKI:
-        // 1. GROUP BY no_rkh agar data dengan nomor sama jadi satu baris
-        // 2. GROUP_CONCAT menggabungkan blok-blok (Blok A, Blok B, dst)
-        // 3. MAX(id) untuk mendapatkan ID referensi hapus/edit
         val query = """
         SELECT 
-            id, 
-            no_rkh, 
-            fcba, 
-            afdeling, 
-            gangcode, 
-            job_code, 
-            GROUP_CONCAT(location_code, ', ') as combined_locations, 
-            SUM(CAST(jumlah_hk AS REAL)) as total_hk 
-        FROM $T_RKH 
-        WHERE fcba = ? COLLATE NOCASE
-        GROUP BY no_rkh
-        ORDER BY created_at DESC
+            r.*,
+            j.fcname job_name
+        FROM $T_RKH r
+        LEFT JOIN $T_JOB j ON r.job_code = j.fccode
+        WHERE r.fcba = ? COLLATE NOCASE
+        ORDER BY r.id DESC
     """.trimIndent()
 
         try {
             db.rawQuery(query, arrayOf(fcba)).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
-                    map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id")) ?: ""
-                    map["no_rkh"] = cursor.getString(cursor.getColumnIndexOrThrow("no_rkh")) ?: ""
-                    map["fcba"] = cursor.getString(cursor.getColumnIndexOrThrow("fcba")) ?: ""
-                    map["afdeling"] = cursor.getString(cursor.getColumnIndexOrThrow("afdeling")) ?: ""
-                    map["gang_code"] = cursor.getString(cursor.getColumnIndexOrThrow("gangcode")) ?: ""
-                    map["job_code"] = cursor.getString(cursor.getColumnIndexOrThrow("job_code")) ?: ""
-
-                    // Ambil hasil gabungan lokasi
-                    map["location"] = cursor.getString(cursor.getColumnIndexOrThrow("combined_locations")) ?: ""
-                    map["jumlah_hk"] = cursor.getString(cursor.getColumnIndexOrThrow("total_hk")) ?: "0"
+                    cursor.columnNames.forEach { col ->
+                        val idx = cursor.getColumnIndex(col)
+                        map[col] = cursor.getString(idx) ?: ""
+                    }
+                    // Alias untuk detail agar konsisten
+                    map["location"] = map["location_code"] ?: ""
+                    map["job_name"] = map["job_name"] ?: map["job_code"] ?: "-"
 
                     list.add(map)
                 }
@@ -2490,19 +2526,22 @@ fun generateNoSPB(fcba: String): String {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
 
-        // PERBAIKAN: Gunakan GROUP BY no_rkh agar tidak duplikat di list cari
-        // Gunakan GROUP_CONCAT agar semua blok (location_code) tergabung menjadi satu
         val query = """
         SELECT 
-            MAX(id) as id, 
-            no_rkh, 
-            gangcode, 
-            supervisi1, supervisi2, supervisi3, supervisi4,
-            unit, output,
-            GROUP_CONCAT(location_code, ', ') as combined_locations
-        FROM $T_RKH 
-        WHERE fcba = ? AND type LIKE '%Panen%'
-        GROUP BY no_rkh
+            MAX(r.id) as id, 
+            r.no_rkh, 
+            r.gangcode, 
+            r.supervisi1, r.supervisi2, r.supervisi3, r.supervisi4,
+            e1.fcname as name1, e2.fcname as name2, e3.fcname as name3, e4.fcname as name4,
+            r.unit, r.output,
+            GROUP_CONCAT(r.location_code, ', ') as combined_locations
+        FROM $T_RKH r
+        LEFT JOIN $T_EMP e1 ON r.supervisi1 = e1.fccode AND r.fcba = e1.fcba
+        LEFT JOIN $T_EMP e2 ON r.supervisi2 = e2.fccode AND r.fcba = e2.fcba
+        LEFT JOIN $T_EMP e3 ON r.supervisi3 = e3.fccode AND r.fcba = e3.fcba
+        LEFT JOIN $T_EMP e4 ON r.supervisi4 = e4.fccode AND r.fcba = e4.fcba
+        WHERE r.fcba = ? AND r.type LIKE '%Panen%'
+        GROUP BY r.no_rkh
         ORDER BY id DESC
     """.trimIndent()
 
@@ -2513,14 +2552,21 @@ fun generateNoSPB(fcba: String): String {
                     map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id"))
                     map["no_rkh"] = cursor.getString(cursor.getColumnIndexOrThrow("no_rkh"))
                     map["gangcode"] = cursor.getString(cursor.getColumnIndexOrThrow("gangcode"))
-                    map["supervisi1"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi1"))
-                    map["supervisi2"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi2"))
-                    map["supervisi3"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi3"))
-                    map["supervisi4"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi4"))
+                    
+                    // Code Supervisi (FCCode)
+                    map["supervisi1"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi1")) ?: ""
+                    map["supervisi2"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi2")) ?: ""
+                    map["supervisi3"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi3")) ?: ""
+                    map["supervisi4"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi4")) ?: ""
+                    
+                    // Nama Supervisi (Hasil Join)
+                    map["supervisi1_name"] = cursor.getString(cursor.getColumnIndexOrThrow("name1")) ?: map["supervisi1"] ?: ""
+                    map["supervisi2_name"] = cursor.getString(cursor.getColumnIndexOrThrow("name2")) ?: map["supervisi2"] ?: ""
+                    map["supervisi3_name"] = cursor.getString(cursor.getColumnIndexOrThrow("name3")) ?: map["supervisi3"] ?: ""
+                    map["supervisi4_name"] = cursor.getString(cursor.getColumnIndexOrThrow("name4")) ?: map["supervisi4"] ?: ""
+                    
                     map["unit"] = cursor.getString(cursor.getColumnIndexOrThrow("unit"))
                     map["output"] = cursor.getString(cursor.getColumnIndexOrThrow("output"))
-
-                    // Gunakan hasil gabungan lokasi
                     map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("combined_locations"))
 
                     list.add(map)

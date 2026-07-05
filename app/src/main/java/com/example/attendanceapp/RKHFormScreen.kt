@@ -1,5 +1,6 @@
 package com.example.attendanceapp
 
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -58,50 +59,63 @@ fun RKHItemCard(
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(Modifier.padding(16.dp)) {
-            // Baris 1: Nomor RKH
-            Text(
-                text = data["no_rkh"] ?: "-",
-                fontWeight = FontWeight.ExtraBold,
-                color = Color(0xFF1A3A8F),
-                fontSize = 16.sp
-            )
-
-            HorizontalDivider(Modifier.padding(vertical = 8.dp), thickness = 0.5.dp)
-
-            // Baris 2: AFD (Afdeling)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // PERBAIKAN: Gunakan modifier untuk mengatur size
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = Color.Gray
-                )
-                Spacer(Modifier.width(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                // Baris 1: Nomor RKH
                 Text(
-                    text = "Afdeling: ${data["afdeling"] ?: "-"}",
-                    fontSize = 14.sp,
-                    color = Color.DarkGray
+                    text = data["no_rkh"] ?: "-",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF1A3A8F),
+                    fontSize = 16.sp
+                )
+                Text(
+                    text = data["type"]?.substringBefore(" ") ?: "",
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Bold
                 )
             }
 
-            Spacer(Modifier.height(4.dp))
+            HorizontalDivider(Modifier.padding(vertical = 8.dp), thickness = 0.5.dp)
 
-            // Baris 3: GANG
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // PERBAIKAN: Gunakan modifier untuk mengatur size
-                Icon(
-                    imageVector = Icons.Default.Groups,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = Color.Gray
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "Gang: ${data["gangcode"] ?: data["gang_code"] ?: "-"}",
-                    fontSize = 14.sp,
-                    color = Color.DarkGray
-                )
+            // Baris: JOB
+            Text(
+                text = data["job_name"] ?: data["job_code"] ?: "-",
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = Color.Black
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                // Kolom 1
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.LocationOn, null, Modifier.size(14.dp), Color.Gray)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Afd: ${data["afdeling"] ?: "-"}", fontSize = 13.sp)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Groups, null, Modifier.size(14.dp), Color.Gray)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Gang: ${data["gangcode"] ?: "-"}", fontSize = 13.sp)
+                    }
+                }
+                // Kolom 2
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Info, null, Modifier.size(14.dp), Color.Gray)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Blok: ${data["location_code"] ?: "-"}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Edit, null, Modifier.size(14.dp), Color.Gray)
+                        Spacer(Modifier.width(4.dp))
+                        Text("HK: ${data["jumlah_hk"] ?: "-"}", fontSize = 13.sp)
+                    }
+                }
             }
         }
     }
@@ -117,8 +131,9 @@ fun RKHMainScreen(
     onAddClick: () -> Unit,
     onEditClick: (String) -> Unit // Untuk Edit Header
 ) {
-    // 1. STATE MANAGEMENT
-    var rkhDataList by remember { mutableStateOf(dbHelper.getAllRKH(fcba)) }
+    // 1. STATE MANAGEMENT - Gunakan getAllRKHListMap agar konsisten
+    var rkhDataList by remember { mutableStateOf(dbHelper.getAllRKHListMap(fcba)) }
+    Log.d("test rkh", "RKHMainScreen: $rkhDataList")
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
 
@@ -148,7 +163,9 @@ fun RKHMainScreen(
     ) { padding ->
         // --- TAMPILAN LIST DATA ---
         if (rkhDataList.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            Box(Modifier
+                .fillMaxSize()
+                .padding(padding), contentAlignment = Alignment.Center) {
                 Text("Belum ada data RKH tersimpan", color = Color.Gray)
             }
         } else {
@@ -240,9 +257,16 @@ fun RKHMainScreen(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         DetailRow("No RKH", selectedDetailItem!!["no_rkh"])
-                        DetailRow("Pekerjaan", selectedDetailItem!!["job_name"])
-                        DetailRow("Lokasi", selectedDetailItem!!["location"])
-                        DetailRow("HK / Unit", "${selectedDetailItem!!["hk"]} / ${selectedDetailItem!!["unit"]}")
+                        DetailRow("Tipe", selectedDetailItem!!["type"])
+                        DetailRow("Afdeling", selectedDetailItem!!["afdeling"])
+                        DetailRow("Gang", selectedDetailItem!!["gangcode"])
+                        DetailRow("Pekerjaan", "${selectedDetailItem!!["job_code"]} - ${selectedDetailItem!!["job_name"]}")
+                        DetailRow("Lokasi/Blok", selectedDetailItem!!["location_code"])
+                        DetailRow("Jumlah HK", selectedDetailItem!!["jumlah_hk"])
+                        DetailRow("Unit", selectedDetailItem!!["unit"])
+                        DetailRow("Output", selectedDetailItem!!["output"])
+                        DetailRow("Supervisor", listOfNotNull(selectedDetailItem!!["supervisi1"], selectedDetailItem!!["supervisi2"], selectedDetailItem!!["supervisi3"], selectedDetailItem!!["supervisi4"]).filter { it.isNotEmpty() }.joinToString(", "))
+                        DetailRow("Tgl Buat", selectedDetailItem!!["created_at"])
                     }
                 },
                 confirmButton = {
@@ -320,10 +344,14 @@ fun RKHFormScreen(
         mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
     }
 
-    var sup1 by remember { mutableStateOf("") }
-    var sup2 by remember { mutableStateOf("") }
-    var sup3 by remember { mutableStateOf("") }
-    var sup4 by remember { mutableStateOf("") }
+    var sup1Code by remember { mutableStateOf("") }
+    var sup1Name by remember { mutableStateOf("") }
+    var sup2Code by remember { mutableStateOf("") }
+    var sup2Name by remember { mutableStateOf("") }
+    var sup3Code by remember { mutableStateOf("") }
+    var sup3Name by remember { mutableStateOf("") }
+    var sup4Code by remember { mutableStateOf("") }
+    var sup4Name by remember { mutableStateOf("") }
 
     var selectedAfd by remember { mutableStateOf("") }
     var selectedGang by remember { mutableStateOf("") }
@@ -367,33 +395,45 @@ fun RKHFormScreen(
             dbHelper.getBlockList(fcba)
         }
     }
-    val supervisorOptions = remember(fcba) { dbHelper.getSupervisors(fcba) }
+    val supervisorOptions = remember(fcba) { dbHelper.getSupervisorsMap(fcba) }
 
     // Dialog Logic
     if (activeDialog != null) {
-        SearchableListDialog(
-            title = "Cari $activeDialog",
-            options = when (activeDialog) {
-                "AFD" -> afdelingList
-                "GANG" -> gangList
-                "JOB" -> jobList
-                "LOC" -> locationList
-                "SUP1", "SUP2", "SUP3", "SUP4" -> supervisorOptions // Tambahkan opsi untuk supervisor
-                else -> emptyList()
-            },
-            onDismiss = { activeDialog = null }
-        ) { selectedValue ->
-            when (activeDialog) {
-                "AFD" -> { selectedAfd = selectedValue; selectedGang = "" }
-                "GANG" -> selectedGang = selectedValue
-                "JOB" -> selectedJob = selectedValue
-                "LOC" -> selectedLoc = selectedValue
-                "SUP1" -> sup1 = selectedValue
-                "SUP2" -> sup2 = selectedValue
-                "SUP3" -> sup3 = selectedValue
-                "SUP4" -> sup4 = selectedValue
+        if (activeDialog!!.startsWith("SUP")) {
+            SearchableListDialog(
+                title = "Cari $activeDialog",
+                options = supervisorOptions.map { it["name"] ?: "" },
+                onDismiss = { activeDialog = null }
+            ) { selectedName ->
+                val selectedCode = supervisorOptions.find { it["name"] == selectedName }?.get("code") ?: ""
+                when (activeDialog) {
+                    "SUP1" -> { sup1Code = selectedCode; sup1Name = selectedName }
+                    "SUP2" -> { sup2Code = selectedCode; sup2Name = selectedName }
+                    "SUP3" -> { sup3Code = selectedCode; sup3Name = selectedName }
+                    "SUP4" -> { sup4Code = selectedCode; sup4Name = selectedName }
+                }
+                activeDialog = null
             }
-            activeDialog = null
+        } else {
+            SearchableListDialog(
+                title = "Cari $activeDialog",
+                options = when (activeDialog) {
+                    "AFD" -> afdelingList
+                    "GANG" -> gangList
+                    "JOB" -> jobList
+                    "LOC" -> locationList
+                    else -> emptyList()
+                },
+                onDismiss = { activeDialog = null }
+            ) { selectedValue ->
+                when (activeDialog) {
+                    "AFD" -> { selectedAfd = selectedValue; selectedGang = "" }
+                    "GANG" -> selectedGang = selectedValue
+                    "JOB" -> selectedJob = selectedValue
+                    "LOC" -> selectedLoc = selectedValue
+                }
+                activeDialog = null
+            }
         }
     }
 
@@ -450,10 +490,10 @@ fun RKHFormScreen(
 
                         // PERBAIKAN: SUPERVISI SEKARANG BISA DIPILIH (Bukan Ketik Manual)
                         Text("PERSONIL SUPERVISI", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
-                        ClickableSearchField(label = "SUPERVISI 1", value = sup1) { activeDialog = "SUP1" }
-                        ClickableSearchField(label = "SUPERVISI 2", value = sup2) { activeDialog = "SUP2" }
-                        ClickableSearchField(label = "SUPERVISI 3", value = sup3) { activeDialog = "SUP3" }
-                        ClickableSearchField(label = "SUPERVISI 4", value = sup4) { activeDialog = "SUP4" }
+                        ClickableSearchField(label = "SUPERVISI 1", value = sup1Name) { activeDialog = "SUP1" }
+                        ClickableSearchField(label = "SUPERVISI 2", value = sup2Name) { activeDialog = "SUP2" }
+                        ClickableSearchField(label = "SUPERVISI 3", value = sup3Name) { activeDialog = "SUP3" }
+                        ClickableSearchField(label = "SUPERVISI 4", value = sup4Name) { activeDialog = "SUP4" }
 
                         Text("DETAIL PEKERJAAN", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                         ClickableSearchField(label = "JOB CODE", value = selectedJob) { activeDialog = "JOB" }
@@ -531,7 +571,7 @@ fun RKHFormScreen(
                                         // Menambahkan ke list 'addedBlocks' yang sudah Anda buat di State
                                         addedBlocks = addedBlocks + mapOf(
                                             "loc" to selectedLoc,
-
+                                            "hk" to hk
                                         )
                                         // Reset input field saja, agar bisa pilih blok lain
                                         selectedLoc = ""
@@ -583,14 +623,14 @@ fun RKHFormScreen(
                     Button(
                         onClick = {
                             val finalBlocks = if (selectedLoc.isNotEmpty()) {
-                                addedBlocks + mapOf("loc" to selectedLoc)
+                                addedBlocks + mapOf("loc" to selectedLoc, "hk" to hk)
                             } else addedBlocks
 
                             if (finalBlocks.isEmpty()) {
                                 Toast.makeText(context, "Belum ada blok yang dipilih!", Toast.LENGTH_SHORT).show()
                             } else {
 
-                                android.util.Log.d("SIMPAN_RKH", "Menyimpan RKH: $noRkh | Unit: $unit | Output: $output")
+                                android.util.Log.d("SIMPAN_RKH", "Menyimpan RKH: $noRkh | HK: $hk | Unit: $unit | Output: $output")
                                 // Loop untuk simpan setiap blok ke Database dengan No RKH yang sama
                                 finalBlocks.forEach { block ->
                                     dbHelper.insertRKHFull(
@@ -600,7 +640,7 @@ fun RKHFormScreen(
                                         fcba = fcba,
                                         afd = selectedAfd,
                                         gang = selectedGang,
-                                        s1 = sup1, s2 = sup2, s3 = sup3, s4 = sup4,
+                                        s1 = sup1Code, s2 = sup2Code, s3 = sup3Code, s4 = sup4Code,
                                         job = selectedJob,
                                         loc = block["loc"] ?: "",
                                         hk = block["hk"]?.toDoubleOrNull() ?: 0.0,
@@ -612,7 +652,9 @@ fun RKHFormScreen(
                                 onSuccess()
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().height(55.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(55.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
                     ) {
                         Text("SIMPAN RKH SEKARANG", fontWeight = FontWeight.Bold)

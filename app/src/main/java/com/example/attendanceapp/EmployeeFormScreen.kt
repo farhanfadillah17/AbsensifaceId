@@ -68,7 +68,7 @@ fun EmployeeFormScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Registrasi Wajah", color = Color.White) },
+                title = { Text("Registrasi Karyawan", color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
@@ -86,13 +86,13 @@ fun EmployeeFormScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF121212))
+                    .background(Color.White)
                     .padding(padding)
                     .verticalScroll(rememberScrollState())
                     .padding(20.dp)
             ) {
-                Text("Langkah 1: Pilih Karyawan", color = Color(0xFF90CAF9), fontSize = 14.sp)
-                Text("Pilih dari Master Data", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text("Langkah 1: Pilih Karyawan", color = Color(0xFF1A237E), fontSize = 14.sp)
+                Text("Pilih dari Master Data", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 22.sp)
 
                 Spacer(Modifier.height(24.dp))
 
@@ -108,7 +108,7 @@ fun EmployeeFormScreen(
                         .clickable { showSheet = true },
                     trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, tint = Color.White) },
                     colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = Color.White,
+                        disabledTextColor = Color.Black,
                         disabledBorderColor = Color.Gray,
                         disabledTrailingIconColor = Color.White
                     )
@@ -138,7 +138,7 @@ fun EmployeeFormScreen(
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3F51B5))
                 ) {
-                    Text("LANJUT SCAN WAJAH", fontWeight = FontWeight.Bold)
+                    Text("NEXT", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -195,12 +195,11 @@ fun InfoDisplayField(label: String, value: String) {
         Text(label, color = Color(0xFF90CAF9), fontSize = 12.sp)
         Text(
             text = value.ifEmpty { "-" },
-            color = Color.White,
+            color = Color.Black,
             fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
+                .background(Color.Gray, RoundedCornerShape(8.dp))
                 .padding(12.dp)
         )
     }

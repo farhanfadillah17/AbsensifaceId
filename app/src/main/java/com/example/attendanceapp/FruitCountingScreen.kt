@@ -337,12 +337,16 @@ fun FruitCountingFormContent(
     val isEditMode = initialData != null
 
     // Form States
-    // Form States
     var selectedRKH by remember { mutableStateOf<Map<String, String>?>(null) }
     var supervisi1 by remember { mutableStateOf(initialData?.get("supervisor1") ?: "") }
     var supervisi2 by remember { mutableStateOf(initialData?.get("supervisor2") ?: "") }
     var supervisi3 by remember { mutableStateOf(initialData?.get("supervisor3") ?: "") }
     var supervisi4 by remember { mutableStateOf(initialData?.get("supervisor4") ?: "") }
+
+    var supervisi1Name by remember { mutableStateOf("") }
+    var supervisi2Name by remember { mutableStateOf("") }
+    var supervisi3Name by remember { mutableStateOf("") }
+    var supervisi4Name by remember { mutableStateOf("") }
 
     // PERBAIKAN: Ambil data karyawan dari initialData dan pecah string menjadi Set
     var selectedWorkers by remember {
@@ -401,11 +405,17 @@ fun FruitCountingFormContent(
     LaunchedEffect(selectedRKH) {
         selectedRKH?.let { rkh ->
             if (!isEditMode || activeDialog == "RKH") {
-                // Sesuaikan "supervisi1" dengan nama kolom asli di table_rkh Anda
+                // Simpan Code ke variabel untuk DB
                 supervisi1 = rkh["supervisi1"] ?: supervisi1
                 supervisi2 = rkh["supervisi2"] ?: supervisi2
                 supervisi3 = rkh["supervisi3"] ?: supervisi3
                 supervisi4 = rkh["supervisi4"] ?: supervisi4
+
+                // Simpan Name ke variabel untuk UI
+                supervisi1Name = rkh["supervisi1_name"] ?: supervisi1
+                supervisi2Name = rkh["supervisi2_name"] ?: supervisi2
+                supervisi3Name = rkh["supervisi3_name"] ?: supervisi3
+                supervisi4Name = rkh["supervisi4_name"] ?: supervisi4
 
                 // Sesuaikan "unit" dan "output" dengan kolom di table_rkh
                 unit = rkh["unit"] ?: unit
@@ -419,7 +429,7 @@ fun FruitCountingFormContent(
     }
 
     var selectedLocationCode by remember { mutableStateOf(initialData?.get("location_code") ?: "") }
-    val supervisorOptions = remember { dbHelper.getSupervisors(fcba) }
+    val supervisorOptions = remember { dbHelper.getSupervisorsMap(fcba) }
     val presentWorkers = remember { dbHelper.getEmployeesAlreadyCheckedIn(fcba) }
     val locationCodeFromRKH = selectedRKH?.get("location_code") ?: ""
     val tphList = remember(selectedLocationCode) {
@@ -437,7 +447,7 @@ fun FruitCountingFormContent(
             "RKH" -> SearchableMapDialog(
                 title = "Cari No RKH",
                 options = rkhList,
-                displayProvider = { "RKH:${it["no_rkh"]} " },
+                displayProvider = { "${it["no_rkh"]} " },
                 onDismiss = { activeDialog = null },
                 onSelect = { selectedRKH = it; selectedTPH = ""; activeDialog = null }
             )
@@ -462,19 +472,25 @@ fun FruitCountingFormContent(
                 onDismiss = { activeDialog = null },
                 onSelect = { selectedTPH = it; activeDialog = null }
             )
-            "SUP1", "SUP2", "SUP3", "SUP4" -> SearchableListDialog(
-                title = "Cari Personil", options = supervisorOptions,
-                onDismiss = { activeDialog = null },
-                onSelect = {
-                    when(activeDialog) {
-                        "SUP1" -> supervisi1 = it
-                        "SUP2" -> supervisi2 = it
-                        "SUP3" -> supervisi3 = it
-                        "SUP4" -> supervisi4 = it
+            "SUP1", "SUP2", "SUP3", "SUP4" -> {
+                SearchableMapDialog(
+                    title = "Cari Personil",
+                    options = supervisorOptions,
+                    displayProvider = { "${it["code"]} - ${it["name"]}" },
+                    onDismiss = { activeDialog = null },
+                    onSelect = { supMap ->
+                        val code = supMap["code"] ?: ""
+                        val name = supMap["name"] ?: ""
+                        when (activeDialog) {
+                            "SUP1" -> { supervisi1 = code; supervisi1Name = name }
+                            "SUP2" -> { supervisi2 = code; supervisi2Name = name }
+                            "SUP3" -> { supervisi3 = code; supervisi3Name = name }
+                            "SUP4" -> { supervisi4 = code; supervisi4Name = name }
+                        }
+                        activeDialog = null
                     }
-                    activeDialog = null
-                }
-            )
+                )
+            }
             "WORKERS" -> SearchableMapDialog(
                 title = "Pilih Karyawan",
                 options = availableStaff,
@@ -532,7 +548,7 @@ fun FruitCountingFormContent(
             Text("Referensi RKH", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
             ClickableSearchField(
                 label = "Pilih No. RKH",
-                value = if (selectedRKH != null) "RKH:${selectedRKH?.get("no_rkh")} " else "",
+                value = if (selectedRKH != null) "${selectedRKH?.get("no_rkh")} " else "",
                 onClick = { activeDialog = "RKH" }
             )
 
@@ -554,11 +570,11 @@ fun FruitCountingFormContent(
 
             Text("Personil Supervisi", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
 
-            // Supervisi Rows
-            ClickableSearchField("Supervisi 1 (Wajib)", supervisi1) { activeDialog = "SUP1" }
-            ClickableSearchField("Supervisi 2", supervisi2) { activeDialog = "SUP2" }
-            ClickableSearchField("Supervisi 3", supervisi3) { activeDialog = "SUP3" }
-            ClickableSearchField("Supervisi 4", supervisi4) { activeDialog = "SUP4" }
+            // Supervisi Rows - Tampilkan Nama
+            ClickableSearchField("Supervisi 1 (Wajib)", supervisi1Name) { activeDialog = "SUP1" }
+            ClickableSearchField("Supervisi 2", supervisi2Name) { activeDialog = "SUP2" }
+            ClickableSearchField("Supervisi 3", supervisi3Name) { activeDialog = "SUP3" }
+            ClickableSearchField("Supervisi 4", supervisi4Name) { activeDialog = "SUP4" }
 
 
 
