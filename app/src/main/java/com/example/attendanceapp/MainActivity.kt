@@ -8,14 +8,11 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -32,19 +29,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.attendanceapp.ui.theme.AttendanceAppTheme
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Grass
 import androidx.compose.runtime.produceState
 import android.content.Context
-import android.content.SharedPreferences
 import android.nfc.NfcAdapter
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.util.Log
-import com.google.mlkit.common.sdkinternal.SharedPrefManager
 import kotlinx.coroutines.withContext
 import android.nfc.NdefMessage
 import android.nfc.NdefRecord
@@ -68,7 +58,7 @@ data class MenuConfig(
 
 // 2. Enum Screen
 enum class Screen {
-    LOGIN, DASHBOARD, HOME, EMPLOYEE_FORM, REGISTER_FACE, QR_SCAN, FACE_VERIFY, HISTORY, PROGRESS_MENU, FRUIT_COUNTING, ANCAK_PANEN, SPB_MENU, SPB_FORM, AKP_FORM, RKH_VIEW,RKH_FORM, TRANSFER_DATA
+    LOGIN, DASHBOARD, HOME, EMPLOYEE_FORM, REGISTER_FACE, QR_SCAN, FACE_VERIFY, HISTORY, PROGRESS_MENU, FRUIT_COUNTING, ANCAK_PANEN, SPB_MENU, SPB_FORM, AKP_FORM, RKH_VIEW,RKH_FORM, TRANSFER_DATA, SYNC
 }
 
 class MainActivity : ComponentActivity() {
@@ -505,6 +495,14 @@ fun AppNavigation(
                 navigateBack()
             }
         )
+
+        Screen.SYNC -> SyncScreen(
+            sessionManager = sessionManager,
+            dbHelper = db,
+            apiClient = apiClient,
+            onBack = { navigateBack() },
+            context = context,
+        )
     }
 }
 
@@ -755,7 +753,8 @@ fun DashboardScreen(
         MenuConfig("ANCAK PANEN", Icons.Default.Agriculture, listOf(), route = "5"),
         MenuConfig("AKP", Icons.Default.Assessment, listOf(), route = "6"),
         MenuConfig("MASTER DATA", Icons.Default.Storage, listOf(), color = Color(0xFFD32F2F), route = "7"),
-        MenuConfig("RENCANA KERJA", Icons.Default.EditNote, listOf(), route = "8")
+        MenuConfig("RENCANA KERJA", Icons.Default.EditNote, listOf(), route = "8"),
+        MenuConfig("SINKRON DATA", Icons.Default.Sync, listOf(), route = "9")
     )
 
     val filteredMenus = allMenus.filter { menu -> allowedMenuRoutes.contains(menu.route) }
@@ -782,12 +781,13 @@ fun DashboardScreen(
         ) {
             Spacer(modifier = Modifier.height(16.dp))
             Text("Selamat Datang,", fontSize = 14.sp, color = Color.Gray)
-            Text(userName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+            Text(userName.uppercase(), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
             Text("Role: $userRole", fontSize = 12.sp, color = Color.Gray)
 
             val context = LocalContext.current
             val sharedPref = context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
             val isFirstRun = sharedPref.getBoolean("isFirstRun", true)
+            // loading api jika belum import
             if (isFirstRun) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
@@ -843,6 +843,7 @@ fun DashboardScreen(
                                 "6" -> onNavigate(Screen.AKP_FORM)
                                 "7" -> onNavigate(Screen.EMPLOYEE_FORM)
                                 "8" -> onNavigate(Screen.RKH_VIEW)
+                                "9" -> onNavigate(Screen.SYNC)
                             }
                         }
                     )

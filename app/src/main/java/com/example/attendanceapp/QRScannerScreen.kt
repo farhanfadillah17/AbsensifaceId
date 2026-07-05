@@ -111,7 +111,7 @@ fun QRScannerScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = themeColor, // Berubah jadi Biru jika mode Terima
+                    containerColor = Color(0xFF1A3A8F), // Berubah jadi Biru jika mode Terima
                     titleContentColor = Color.White
                 )
             )
@@ -247,7 +247,7 @@ fun QRScannerScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color(0xFF1E1E1E))
+                        .background(Color(0xFF1A3A8F))
                         .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Top
