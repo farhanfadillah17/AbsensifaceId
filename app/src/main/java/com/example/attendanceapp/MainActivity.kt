@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
 
     // Simpan data yang ingin ditulis di sini
     var dataToWrite: String? = null
+    var onNfcWriteSuccess: (() -> Unit)? = null // Callback untuk reset UI setelah sukses tulis
     var onNfcRead: ((String) -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -192,6 +193,8 @@ class MainActivity : ComponentActivity() {
                         Toast.makeText(this, "Data Berhasil Disimpan ke Kartu!", Toast.LENGTH_LONG)
                             .show()
                         dataToWrite = null // Reset agar tidak menulis ulang secara tidak sengaja
+                        onNfcWriteSuccess?.invoke() // Reset UI di Screen
+                        onNfcWriteSuccess = null
                     } else {
                         Toast.makeText(
                             this,
@@ -561,9 +564,14 @@ fun AppNavigation(
                     dbHelper = db,
                     employee = emp,
                     onBack = { navigateBack() },
-                    onStartWriting = { jsonString ->
-                        (context as? MainActivity)?.dataToWrite = jsonString
-                        Toast.makeText(context, "Siap menulis, tempelkan kartu!", Toast.LENGTH_SHORT).show()
+                    onStartWriting = { jsonString, onComplete ->
+                        val mainActivity = (context as? MainActivity)
+                        mainActivity?.dataToWrite = jsonString
+                        mainActivity?.onNfcWriteSuccess = onComplete
+                        
+                        if (jsonString.isNotEmpty()) {
+                            Toast.makeText(context, "Siap menulis, tempelkan kartu!", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
             } ?: LaunchedEffect(Unit) { navigateBack() }

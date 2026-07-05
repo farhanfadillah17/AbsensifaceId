@@ -53,13 +53,29 @@ fun AttendanceCameraScreen(
 
     var isVerifying by remember { mutableStateOf(false) }
     var isLivenessVerified by remember { mutableStateOf(false) }
+    var isDistanceVerified by remember { mutableStateOf(false) }
     var blinkStep by remember { mutableIntStateOf(0) } // 0: wait open, 1: wait closed, 2: wait open (blinked)
+    var initialFaceWidth by remember { mutableFloatStateOf(0f) }
     var statusText by remember { mutableStateOf("Arahkan wajah & kedipkan mata") }
     var faceDetected by remember { mutableStateOf(false) }
 
     val previewView = remember { PreviewView(context) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     val livenessHelper = remember { PassiveLivenessHelper() }
+
+    // --- CLEANUP CAMERA ---
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+                val cameraProvider = cameraProviderFuture.get()
+                cameraProvider.unbindAll() // Matikan semua fungsi kamera
+            } catch (e: Exception) {
+                Log.e("AttendanceCamera", "Gagal unbind kamera saat exit", e)
+            }
+            cameraExecutor.shutdown() // Matikan thread eksekutor
+        }
+    }
 
     val faceDetector = remember {
         val options = FaceDetectorOptions.Builder()
@@ -138,8 +154,20 @@ fun AttendanceCameraScreen(
                                             }
                                             4 -> { // Kedipan 2: Membuka kembali
                                                 if (leftEyeOpen > 0.85f && rightEyeOpen > 0.85f) {
+                                                    // Simpan lebar wajah awal sebelum user mundur
+                                                    initialFaceWidth = face.boundingBox.width().toFloat()
+                                                    blinkStep = 5
+                                                    statusText = "Bagus! Sekarang mundur sedikit..."
+                                                }
+                                            }
+                                            5 -> { // Step Mundur (Anti-Spoofing Frame HP)
+                                                val currentWidth = face.boundingBox.width().toFloat()
+                                                // Jika lebar wajah mengecil setidaknya 15% (user menjauh)
+                                                if (currentWidth < initialFaceWidth * 0.85f) {
                                                     isLivenessVerified = true
-                                                    statusText = "Kedipan terverifikasi!"
+                                                    statusText = "Wajah terverifikasi!"
+                                                } else {
+                                                    statusText = "Silahkan mundur sedikit lagi..."
                                                 }
                                             }
                                         }

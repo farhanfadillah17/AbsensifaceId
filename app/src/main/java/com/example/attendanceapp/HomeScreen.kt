@@ -139,28 +139,40 @@ fun HomeScreen(
                 onClick = onCheckOut
             )
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // MENU BAWAH: Riwayat & Daftar Wajah
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 40.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                SecondaryButton(
-                    title = "Riwayat",
-                    icon = Icons.Default.History,
-                    modifier = Modifier.weight(1f),
-                    onClick = onHistory
-                )
-                SecondaryButton(
-                    title = "Daftar Wajah",
-                    icon = Icons.Default.Face,
-                    modifier = Modifier.weight(1f),
-                    onClick = onRegisterFace
-                )
-            }
+            // TOMBOL UTAMA: Absen Masuk
+            MainActionButton(
+                title = "RIWAYAT ABSENSI",
+                subtitle = "Klik untuk lihat data absensi",
+                icon = Icons.Default.History,
+                color = primaryColor,
+                contentColor = Color.White,
+                onClick = onHistory
+            )
+
+//            Spacer(modifier = Modifier.weight(1f))
+//
+//            // MENU BAWAH: Riwayat & Daftar Wajah
+//            Row(
+//                modifier = Modifier
+//                    .fillMaxWidth()
+//                    .padding(bottom = 40.dp),
+//                horizontalArrangement = Arrangement.spacedBy(12.dp)
+//            ) {
+//                SecondaryButton(
+//                    title = "Riwayat",
+//                    icon = Icons.Default.History,
+//                    modifier = Modifier.weight(1f),
+//                    onClick = onHistory
+//                )
+//                SecondaryButton(
+//                    title = "Daftar Wajah",
+//                    icon = Icons.Default.Face,
+//                    modifier = Modifier.weight(1f),
+//                    onClick = onRegisterFace
+//                )
+//            }
         }
     }
 }

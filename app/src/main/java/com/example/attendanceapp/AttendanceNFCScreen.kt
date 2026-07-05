@@ -46,6 +46,7 @@ fun AttendanceNFCScreen(
 
     // Register NFC Listener
     LaunchedEffect(Unit) {
+        isProcessing = false // Reset status saat masuk screen
         activity?.onNfcRead = { rawJson ->
             if (!isProcessing) {
                 try {

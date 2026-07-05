@@ -25,10 +25,17 @@ fun NfcRegisterScreen(
     dbHelper: AttendanceDatabaseHelper,
     employee: Employee,
     onBack: () -> Unit,
-    onStartWriting: (String) -> Unit
+    onStartWriting: (String, () -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     var isWaitingForNfc by remember { mutableStateOf(false) }
+
+    // Efek untuk mematikan mode waiting saat pindah screen
+    DisposableEffect(Unit) {
+        onDispose {
+            onStartWriting("", {}) // Bersihkan listener di MainActivity saat exit
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -81,7 +88,9 @@ fun NfcRegisterScreen(
                             addProperty("gangcode", employee.gangCode)
                             addProperty("fcba", employee.fcba)
                         }
-                        onStartWriting(json.toString())
+                        onStartWriting(json.toString()) {
+                            isWaitingForNfc = false
+                        }
                         isWaitingForNfc = true
                     },
                     modifier = Modifier.fillMaxWidth().height(56.dp),

@@ -280,12 +280,16 @@ fun NfcTransferDialog(data: Map<String, String>, onDismiss: () -> Unit) {
     // Saat dialog muncul, kirim data ke MainActivity agar siap ditulis saat kartu ditempel
     LaunchedEffect(jsonString) {
         activity?.dataToWrite = jsonString
+        activity?.onNfcWriteSuccess = {
+            onDismiss()
+        }
     }
 
     // Saat dialog ditutup (dismiss), hapus antrian data agar tidak menulis ke kartu lain secara tidak sengaja
     DisposableEffect(Unit) {
         onDispose {
             activity?.dataToWrite = null
+            activity?.onNfcWriteSuccess = null
         }
     }
 
