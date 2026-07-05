@@ -312,6 +312,9 @@ fun RKHFormScreen(
     var selectedType by remember { mutableStateOf("") }
     var showTypeDialog by remember { mutableStateOf(false) }
 
+    // Tambahkan ini di bagian State Data
+    var addedBlocks by remember { mutableStateOf(listOf<Map<String, String>>()) }
+
     var noRkh by remember { mutableStateOf("Generating...") }
     var rkhDate by remember {
         mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
@@ -337,15 +340,20 @@ fun RKHFormScreen(
         noRkh = dbHelper.generateNoRKH(fcba)
     }
 
+
+
     // Data Lists
     val afdelingList = remember(fcba) { dbHelper.getAfdelingList(fcba) }
     val gangList = remember(fcba, selectedAfd) {
         if (selectedAfd.isNotEmpty()) dbHelper.getGangsByAfdeling(selectedAfd, fcba) else emptyList()
     }
     val jobList = remember(fcba) { dbHelper.getJobList(fcba) }
-    val locationList = remember(fcba, selectedAfd) {
-        if (selectedAfd.isNotEmpty()) {
-            // Ambil blok yang kodenya sesuai dengan Afdeling (Misal Afd: OA, cari blok OA01, OA02)
+    val locationList = remember(fcba, selectedAfd, selectedType) {
+        if (selectedType.contains("bibitan", ignoreCase = true)) {
+            // JALUR PEMBIBITAN: Ambil data dari tabel Master Nursery
+            dbHelper.getNurseryLocations(fcba)
+        } else if (selectedAfd.isNotEmpty()) {
+            // JALUR BLOK: Ambil blok berdasarkan Afdeling
             val filtered = dbHelper.getBlocksByLocation(selectedAfd)
 
             // Jika filter afdeling tidak menghasilkan data, tampilkan semua blok (fallback)
@@ -355,7 +363,7 @@ fun RKHFormScreen(
                 filtered
             }
         } else {
-            // Jika belum pilih afdeling, tampilkan semua blok yang ada
+            // Default: Tampilkan semua blok jika afdeling belum dipilih
             dbHelper.getBlockList(fcba)
         }
     }
@@ -458,10 +466,21 @@ fun RKHFormScreen(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                         )
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("UNIT") }, modifier = Modifier.weight(1f))
-                            OutlinedTextField(value = output, onValueChange = { output = it }, label = { Text("OUTPUT") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                        }
+                        OutlinedTextField(
+                            value = unit,
+                            onValueChange = { unit = it },
+                            label = { Text("UNIT") },
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                        )
+
+                        OutlinedTextField(
+                            value = output,
+                            onValueChange = { output = it },
+                            label = { Text("OUTPUT") },
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                        )
                     }
                 }
 
@@ -480,59 +499,125 @@ fun RKHFormScreen(
                 ) { Text("NEXT (PILIH LOKASI)") }
 
             } else {
-                // --- STEP 2: LOKASI & SAVE ---
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color.LightGray)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text("LOKASI KERJA", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
-                        Text("No. RKH: $noRkh", fontSize = 12.sp, color = Color.Gray)
+                // --- STEP 2: LOKASI & DAFTAR BLOK ---
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color.LightGray)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            val isNursery = selectedType.contains("bibitan", ignoreCase = true)
 
-                        ClickableSearchField(label = "LOCATION / BLOK", value = selectedLoc) { activeDialog = "LOC" }
-                    }
-                }
-
-                Button(
-                    onClick = {
-                        if (selectedLoc.isEmpty()) {
-                            Toast.makeText(context, "Pilih Lokasi terlebih dahulu!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            val finalNoRkh = dbHelper.generateNoRKH(fcba)
-                            val result = dbHelper.insertRKHFull(
-                                noRkh = finalNoRkh,
-                                tanggal = rkhDate,
-                                type = selectedType,
-                                fcba = fcba,
-                                afd = selectedAfd,
-                                gang = selectedGang,
-                                s1 = sup1, s2 = sup2, s3 = sup3, s4 = sup4,
-                                job = selectedJob,
-                                loc = selectedLoc,
-                                hk = hk.toDoubleOrNull() ?: 0.0,
-                                unit = unit,
-                                out = output.toDoubleOrNull() ?: 0.0
+                            Text(
+                                text = if (isNursery) "INPUT NURSERY UNTUK RKH: $noRkh" else "INPUT BLOK UNTUK RKH: $noRkh",
+                                fontWeight = FontWeight.Bold,
+                                color = if (isNursery) Color(0xFFE65100) else Color(0xFF2E7D32)
                             )
 
-                            if (result != -1L) {
-                                Toast.makeText(context, "RKH Berhasil Disimpan", Toast.LENGTH_LONG).show()
-                                onSuccess()
+                            ClickableSearchField(
+                                label = if (isNursery) "PILIH LOKASI NURSERY" else "PILIH LOKASI / BLOK",
+                                value = selectedLoc
+                            ) {
+                                activeDialog = "LOC"
+                            }
+
+
+
+
+                            // TOMBOL TAMBAH KE DAFTAR (Bukan Simpan ke DB dulu)
+                            Button(
+                                onClick = {
+                                    if (selectedLoc.isNotEmpty()) {
+                                        // Menambahkan ke list 'addedBlocks' yang sudah Anda buat di State
+                                        addedBlocks = addedBlocks + mapOf(
+                                            "loc" to selectedLoc,
+
+                                        )
+                                        // Reset input field saja, agar bisa pilih blok lain
+                                        selectedLoc = ""
+
+                                    } else {
+                                        Toast.makeText(context, "Pilih lokasi dulu!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57C00))
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Tambah Blok ke Daftar")
                             }
                         }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(55.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("SIMPAN RKH", fontWeight = FontWeight.Bold) }
+                    }
 
-                // Tombol Kembali Manual
-                OutlinedButton(
-                    onClick = { currentStep = 1 },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("KEMBALI KE STEP 1") }
+                    // --- TAMPILAN DAFTAR BLOK YANG SUDAH DITAMBAHKAN ---
+                    if (addedBlocks.isNotEmpty()) {
+                        Text("Daftar Blok Terpilih (${addedBlocks.size}):", fontWeight = FontWeight.Bold)
+                        addedBlocks.forEachIndexed { index, block ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("${index + 1}. ", fontWeight = FontWeight.Bold)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Blok: ${block["loc"]}", fontWeight = FontWeight.SemiBold)
+
+                                    }
+                                    IconButton(onClick = {
+                                        addedBlocks = addedBlocks.filterIndexed { i, _ -> i != index }
+                                    }) {
+                                        Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // TOMBOL FINAL SIMPAN SEMUA KE DATABASE
+                    Button(
+                        onClick = {
+                            val finalBlocks = if (selectedLoc.isNotEmpty()) {
+                                addedBlocks + mapOf("loc" to selectedLoc)
+                            } else addedBlocks
+
+                            if (finalBlocks.isEmpty()) {
+                                Toast.makeText(context, "Belum ada blok yang dipilih!", Toast.LENGTH_SHORT).show()
+                            } else {
+
+                                android.util.Log.d("SIMPAN_RKH", "Menyimpan RKH: $noRkh | Unit: $unit | Output: $output")
+                                // Loop untuk simpan setiap blok ke Database dengan No RKH yang sama
+                                finalBlocks.forEach { block ->
+                                    dbHelper.insertRKHFull(
+                                        noRkh = noRkh,
+                                        tanggal = rkhDate,
+                                        type = selectedType,
+                                        fcba = fcba,
+                                        afd = selectedAfd,
+                                        gang = selectedGang,
+                                        s1 = sup1, s2 = sup2, s3 = sup3, s4 = sup4,
+                                        job = selectedJob,
+                                        loc = block["loc"] ?: "",
+                                        hk = block["hk"]?.toDoubleOrNull() ?: 0.0,
+                                        unit = unit.toDoubleOrNull() ?: 0.0,
+                                        out = output.toDoubleOrNull() ?: 0.0
+                                    )
+                                }
+                                Toast.makeText(context, "Berhasil simpan ${finalBlocks.size} blok", Toast.LENGTH_SHORT).show()
+                                onSuccess()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(55.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                    ) {
+                        Text("SIMPAN RKH SEKARANG", fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }

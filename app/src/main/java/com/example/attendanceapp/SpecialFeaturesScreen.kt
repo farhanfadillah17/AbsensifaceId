@@ -1,8 +1,13 @@
 package com.example.attendanceapp
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.launch
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,12 +38,32 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.decodeBitmap
+
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+
+import androidx.activity.result.launch
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.ui.layout.ContentScale
+import com.google.accompanist.permissions.isGranted
+import java.io.ByteArrayOutputStream
+import com.google.accompanist.permissions.rememberPermissionState
 
 // ... (bagian import tetap sama)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -342,11 +367,16 @@ fun ProgressListScreen(
         }
     ) { padding ->
         if (progressData.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            Box(Modifier
+                .fillMaxSize()
+                .padding(padding), contentAlignment = Alignment.Center) {
                 Text("Belum ada data $category tersimpan", color = Color.Gray)
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+            LazyColumn(Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)) {
                 items(progressData) { item ->
                     Card(
                         Modifier
@@ -489,28 +519,34 @@ fun ProgressFormScreen(
     var supervisi2 by remember { mutableStateOf("") }
     var supervisi3 by remember { mutableStateOf("") }
     var supervisi4 by remember { mutableStateOf("") }
-    var locationCodeAuto by remember { mutableStateOf("") }
+
     var unit by remember { mutableStateOf("") }
     var output by remember { mutableStateOf("") }
 
-// --- LOGIKA AUTO-FILL ---
 // Setiap kali selectedRKH berubah (saat user memilih dari dialog)
+    // --- LOGIKA AUTO-FILL ---
     LaunchedEffect(selectedRKH) {
         selectedRKH?.get("no_rkh")?.let { noRkh ->
             // Ambil detail lengkap dari DB
             val detail = dbHelper.getRKHDetail(noRkh)
 
             if (detail != null) {
-                // Isi otomatis field yang ada
-                selectedBlock = detail["location_code"] ?: ""
+                // 1. PENTING: Update selectedRKH dengan detail lengkap dari DB
+                // Ini agar key "location_code" tersedia saat dialog SELECT_LOCATION dibuka
+                selectedRKH = detail
+
+                // 2. Isi otomatis field lainnya (kecuali Lokasi/selectedLocationCode)
                 selectedJobType = detail["job_code"] ?: ""
                 supervisi1 = detail["supervisor1"] ?: ""
                 supervisi2 = detail["supervisor2"] ?: ""
                 supervisi3 = detail["supervisor3"] ?: ""
                 supervisi4 = detail["supervisor4"] ?: ""
-                locationCodeAuto = detail["location_code"] ?: detail["location"] ?: ""
+
                 unit = detail["unit"] ?: ""
                 output = detail["output"] ?: ""
+
+                // 3. JANGAN isi selectedLocationCode di sini agar form tetap kosong (User pilih manual)
+                // selectedLocationCode tetap "" karena sudah di-reset di onSelect RKH
 
                 Toast.makeText(context, "Data RKH Berhasil Dimuat", Toast.LENGTH_SHORT).show()
             }
@@ -518,6 +554,7 @@ fun ProgressFormScreen(
     }
 
     var selectedEmployees by remember { mutableStateOf(setOf<String>()) }
+
 
 
     var rate by remember { mutableStateOf("") }
@@ -528,35 +565,71 @@ fun ProgressFormScreen(
     // State untuk Dialog Pencarian (Shared Component)
     var activeDialog by remember { mutableStateOf<String?>(null) }
 
+    val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
     // Logic: Blok berdasarkan lokasi RKH
-    val locationCode = selectedRKH?.get("location") ?: ""
-    val blockList = remember(locationCode) {
-        if (locationCode.isNotEmpty()) dbHelper.getBlocksByLocation(locationCode) else emptyList()
+    var selectedLocationCode by remember { mutableStateOf(initialData?.get("location_code") ?: "") }
+    var showSmartCamera by remember { mutableStateOf(false) }
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+// Launcher Kamera
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) {
+        if (it != null) bitmap = it
+    }
+
+// Launcher Galeri
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let {
+            bitmap = if (Build.VERSION.SDK_INT < 28) {
+                MediaStore.Images.Media.getBitmap(context.contentResolver, it)
+            } else {
+                val source = ImageDecoder.createSource(context.contentResolver, it)
+                ImageDecoder.decodeBitmap(source)
+            }
+            showSmartCamera = false // Tutup kamera setelah pilih galeri
+        }
     }
 
     // --- LOGIKA DIALOG PENCARIAN (Shared Component) ---
     if (activeDialog != null) {
         when (activeDialog) {
-            "RKH" -> {
-                SearchableMapDialog(
-                    title = "Pilih RKH",
-                    options = rkhList, // List yang berisi Map (no_rkh, gang_code, dll)
-                    displayProvider = { it["no_rkh"] ?: "Tanpa Nomor" },
+            "RKH" -> SearchableMapDialog(
+                title = "Cari No RKH",
+                options = rkhList,
+                displayProvider = { "RKH:${it["no_rkh"]} " },
+                onDismiss = { activeDialog = null },
+                onSelect = {
+                    selectedRKH = it
+                    selectedLocationCode = "" // RESET lokasi agar user memilih ulang untuk RKH baru
+                    activeDialog = null
+                }
+            )
+
+            "SELECT_LOCATION" -> {
+                // 1. Ambil data dari RKH yang sedang dipilih
+                val rkhType = (selectedRKH?.get("type") ?: "").uppercase()
+
+                // 2. Ambil string lokasi (Contoh: "F01, F02, F03")
+                val rawLocationString = selectedRKH?.get("location_code") ?: ""
+
+                // 3. Pecah string menjadi List dan bersihkan spasi
+                val optionsFromRKH = rawLocationString.split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+
+                android.util.Log.d("DEBUG_PROGRESS", "Lokasi di RKH: $optionsFromRKH")
+
+                SearchableListDialog(
+                    title = if (rkhType.contains("BIBITAN")) "Pilih Lokasi Nursery (Sesuai RKH)" else "Pilih Blok (Sesuai RKH)",
+                    options = optionsFromRKH, // Hanya menampilkan yang ada di RKH
                     onDismiss = { activeDialog = null },
-                    onSelect = { rkhMap: Map<String, String> -> // Tambahkan tipe data di sini
-                        selectedRKH = rkhMap
+                    onSelect = {
+                        selectedLocationCode = it
                         activeDialog = null
                     }
                 )
             }
-            "BLOCK" -> {
-                SearchableListDialog(
-                    title = "Pilih Blok",
-                    options = blockList,
-                    onDismiss = { activeDialog = null },
-                    onSelect = { selectedBlock = it; activeDialog = null }
-                )
-            }
+
+
             "JOB" -> {
                 SearchableListDialog(
                     title = "Jenis Pekerjaan",
@@ -606,6 +679,26 @@ fun ProgressFormScreen(
             )
         }
     ) { padding ->
+
+        if (showSmartCamera) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { showSmartCamera = false },
+                properties = androidx.compose.ui.window.DialogProperties(
+                    usePlatformDefaultWidth = false // Agar fullscreen
+                )
+            ) {
+                SmartCameraView(
+                    onImageCaptured = { capturedBitmap ->
+                        bitmap = capturedBitmap
+                        showSmartCamera = false
+                    },
+                    onGalleryClick = {
+                        galleryLauncher.launch("image/*")
+                    },
+                    onClose = { showSmartCamera = false }
+                )
+            }
+        }
         Column(
             modifier = Modifier
                 .padding(padding)
@@ -618,7 +711,7 @@ fun ProgressFormScreen(
             Text("Referensi RKH", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
             ClickableSearchField(
                 label = "Pilih No. RKH",
-                value = if (selectedRKH != null) "RKH:${selectedRKH?.get("no_rkh")} - ${selectedRKH?.get("location")}" else "",
+                value = if (selectedRKH != null) "RKH:${selectedRKH?.get("no_rkh")} " else "",
                 onClick = { activeDialog = "RKH" }
             )
 
@@ -642,13 +735,6 @@ fun ProgressFormScreen(
                     enabled = false,
                     colors = OutlinedTextFieldDefaults.colors(disabledContainerColor = Color(0xFFF0F0F0), disabledTextColor = Color.Black)
                 )
-            }
-
-            // 3. Detail Pekerjaan
-            Text("Detail Pekerjaan", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
-            ClickableSearchField("Pilih Blok", selectedBlock) {
-                if (locationCode.isEmpty()) Toast.makeText(context, "Pilih RKH dulu!", Toast.LENGTH_SHORT).show()
-                else activeDialog = "BLOCK"
             }
 
 
@@ -679,37 +765,73 @@ fun ProgressFormScreen(
 
             Text("Terpilih: ${selectedEmployees.size} Karyawan", fontSize = 11.sp, color = Color.Gray)
 
-            OutlinedTextField(
-                value = locationCodeAuto,
-                onValueChange = {},
-                label = { Text("Location Code") },
-                modifier = Modifier.fillMaxWidth(),
-                readOnly = true,
-                enabled = false,
-                colors = OutlinedTextFieldDefaults.colors(
-                    disabledContainerColor = Color(0xFFF0F0F0),
-                    disabledTextColor = Color.Black,
-                    disabledLabelColor = Color.DarkGray
-                )
+            Text("Lokasi Kerja", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+            ClickableSearchField(
+                label = "Pilih Lokasi / Blok",
+                value = selectedLocationCode,
+                onClick = {
+                    if (selectedRKH != null) {
+                        activeDialog = "SELECT_LOCATION"
+                    } else {
+                        Toast.makeText(context, "Pilih No RKH terlebih dahulu", Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
 
             // 6. Hasil Kerja
             Text("Hasil Kerja", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(unit, { unit = it }, label = { Text("Unit") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                OutlinedTextField(output, { output = it }, label = { Text("Output") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            OutlinedTextField(
+                value = unit,
+                onValueChange = { unit = it },
+                label = { Text("UNIT") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            )
+
+            OutlinedTextField(
+                value = output,
+                onValueChange = { output = it },
+                label = { Text("OUTPUT") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            )
+
+            // --- INPUT FOTO (PENGGANTI BERAS & LEMBUR) ---
+            Text("Dokumentasi Foto", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+
+            if (bitmap != null) {
+                Card(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+                    Image(
+                        bitmap = bitmap!!.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(lembur, { lembur = it }, label = { Text("Jam Lembur") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                Spacer(Modifier.width(16.dp))
-                Checkbox(checked = dapatBeras, onCheckedChange = { dapatBeras = it })
-                Text("Beras")
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        // Cek apakah izin sudah diberikan
+                        if (cameraPermissionState.status.isGranted) {
+                            showSmartCamera = true // Panggil kamera kustom
+                        } else {
+                            cameraPermissionState.launchPermissionRequest()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+                ) {
+                    Icon(Icons.Default.CameraAlt, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Kamera")
+                }
+
             }
 
-            OutlinedTextField(keterangan, { keterangan = it }, label = { Text("Keterangan") }, modifier = Modifier
-                .fillMaxWidth()
-                .height(90.dp))
+
 
             Button(
                 onClick = {
@@ -739,6 +861,12 @@ fun ProgressFormScreen(
                         } else if (selectedEmployees.isEmpty()) {
                             Toast.makeText(context, "Pilih karyawan!", Toast.LENGTH_SHORT).show()
                         } else {
+                            // 1. Simpan foto ke storage internal dan ambil alamat path-nya
+                            val savedPath = if (bitmap != null) {
+                                dbHelper.saveImageToFile(context, bitmap!!, "ProgressWork")
+                            } else null
+
+
                             dbHelper.savePlantationProgress(
                                 rkh = selectedRKH!!["no_rkh"] ?: "",
                                 category = category,
@@ -749,8 +877,9 @@ fun ProgressFormScreen(
                                 rate = rate.toDoubleOrNull() ?: 0.0,
                                 lembur = lembur.toIntOrNull() ?: 0,
                                 beras = if (dapatBeras) 1 else 0,
-                                locationCode = selectedBlock,
-                                location = selectedRKH!!["location_code"] ?: selectedRKH!!["location"] ?: ""
+                                locationCode = selectedLocationCode,
+                                location = selectedLocationCode,
+                                photoPath = savedPath
                             )
                             onSaveSuccess()
                         }
@@ -771,4 +900,7 @@ fun ProgressFormScreen(
         }
     }
 }
+
+
+
 

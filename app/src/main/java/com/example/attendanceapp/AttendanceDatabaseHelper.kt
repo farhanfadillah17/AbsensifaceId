@@ -11,6 +11,9 @@ import androidx.compose.ui.geometry.isEmpty
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
+import java.io.File
+import java.io.FileOutputStream
+import android.graphics.Bitmap
 
 // --- DATA CLASSES ---
 data class Employee(
@@ -46,8 +49,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     companion object {
         // Ganti nama ke v11 untuk reset total terakhir kali
-        const val DATABASE_NAME = "attendance_reset_final_v311.db"
-        const val DATABASE_VERSION = 311
+        const val DATABASE_NAME = "attendance_reset_final_v314.db"
+        const val DATABASE_VERSION = 314
 
         const val T_EMP = "EMPLOYEE"
         const val E_FCCODE = "FCCODE"
@@ -148,9 +151,21 @@ class AttendanceDatabaseHelper(private val context: Context) :
         const val T_FRUIT_COUNTING = "fruit_counting"
         const val T_TPH = "TPH"
 
+        const val T_NURSERY = "NURSERY"
 
         const val T_MILL = "CUSTOMER"
         const val T_VEHICLE = "VEHICLE"
+
+        // Tabel Riwayat Upload Foto
+        const val T_PHOTO_HISTORY = "photo_upload_history"
+        const val PH_ID = "id"
+        const val PH_LOCAL_PATH = "local_path"
+        const val PH_FILE_NAME = "file_name"
+        const val PH_STATUS = "upload_status" // 0: Pending, 1: Success
+        const val PH_CREATED_AT = "created_at"
+
+        // Update konstanta kolom di tabel lain (dari BLOB ke PATH)
+        const val COLUMN_PHOTO_PATH = "photo_path"
 
     }
 
@@ -321,7 +336,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
                     $M_ID INTEGER PRIMARY KEY AUTOINCREMENT, $M_FCBA TEXT, $M_RKH TEXT, $M_GANG TEXT,
                     $M_S1 TEXT, $M_S2 TEXT, $M_S3 TEXT, $M_S4 TEXT, $M_WORKERS TEXT, 
                     $M_LOCATION TEXT, $M_UNIT REAL, $M_OUTPUT REAL, $M_RATE REAL,
-                    $M_BERAS INTEGER, $M_LEMBUR REAL, $M_CREATED TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    $M_BERAS INTEGER, $M_LEMBUR REAL, photo_path TEXT, $M_CREATED TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """.trimIndent()
             )
@@ -332,7 +347,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
                     $P_ID INTEGER PRIMARY KEY AUTOINCREMENT, $P_RKH TEXT, $P_CATEGORY TEXT,
                     $P_EMP_ID TEXT, $P_EMP_IDS TEXT, $P_BLOCK TEXT, $P_UNIT REAL,
                     $P_OUTPUT REAL, $P_RATE REAL, $P_LEMBUR REAL, $P_BERAS INTEGER,
-                    $P_RESULT TEXT, $P_NOTES TEXT, $P_STATUS TEXT, $P_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP
+                    $P_RESULT TEXT, $P_NOTES TEXT, $P_STATUS TEXT, $COLUMN_PHOTO_PATH TEXT, $P_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """.trimIndent()
             )
@@ -343,7 +358,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
                     id INTEGER PRIMARY KEY AUTOINCREMENT, fcba TEXT, tanggal TEXT, no_rkh TEXT,
                     gang_code TEXT, supervisi1 TEXT, supervisi2 TEXT, supervisi3 TEXT, supervisi4 TEXT,
                     karyawan_ids TEXT, location_code TEXT, unit REAL, output REAL, tph_code TEXT,
-                    is_beras INTEGER, lembur REAL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    is_beras INTEGER, lembur REAL, $COLUMN_PHOTO_PATH, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """.trimIndent()
             )
@@ -589,6 +604,48 @@ class AttendanceDatabaseHelper(private val context: Context) :
     )
 """.trimIndent()
             )
+
+            db.execSQL("""
+        CREATE TABLE IF NOT EXISTS $T_NURSERY (
+    NURSERYCODE      TEXT NOT NULL,
+    DESCRIPTION      TEXT NOT NULL,
+    DATEPLANTED      TEXT NOT NULL,
+    CROP             TEXT NOT NULL,
+    PLANTINGMATERIAL TEXT,
+    CLONE            TEXT NOT NULL,
+    SOURCE           TEXT,
+    TYPE             TEXT,
+    STATUS           TEXT,
+    FCENTRY          TEXT,
+    FCEDIT           TEXT,
+    FCIP             TEXT,
+    FCBA             TEXT NOT NULL,
+    STOCKCODE        TEXT NOT NULL,
+    STORECODE        TEXT NOT NULL,
+    LASTUPDATE       TEXT NOT NULL,
+    LASTTIME         TEXT NOT NULL,
+    YEARPLANTING     TEXT,
+
+    PRIMARY KEY (NURSERYCODE, FCBA),
+
+    FOREIGN KEY (STORECODE, FCBA)
+        REFERENCES STORE (FCCODE, FCBA),
+
+    FOREIGN KEY (STOCKCODE, FCBA)
+        REFERENCES STOCK (FCCODE, FCBA)
+)
+    """.trimIndent())
+
+
+            db.execSQL("""
+        CREATE TABLE IF NOT EXISTS $T_PHOTO_HISTORY (
+            $PH_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            $PH_LOCAL_PATH TEXT,
+            $PH_FILE_NAME TEXT,
+            $PH_STATUS INTEGER DEFAULT 0,
+            $PH_CREATED_AT TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """.trimIndent())
 
 
             // === LANGKAH 2: ISI DATA AWAL ===
@@ -1831,7 +1888,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
         job: String,
         loc: String,
         hk: Double,
-        unit: String,   // Diubah ke String karena bisa berisi "KG", "HK", dll
+        unit: Double,   // Diubah ke String karena bisa berisi "KG", "HK", dll
         out: Double
     ): Long {
         val db = this.writableDatabase
@@ -1898,7 +1955,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
         lembur: Int,
         beras: Int,
         locationCode: String,
-        location: String
+        location: String,
+        photoPath: String? = null
     ): Long {
         val db = this.writableDatabase
         return try {
@@ -1914,11 +1972,26 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 put(P_LEMBUR, lembur)
                 put(P_BERAS, beras)
                 put(P_STATUS, "COMPLETED")
+                put("photo_path", photoPath)
             }
-            db.insert(T_PROGRESS, null, values)
+            val rowId = db.insert(T_PROGRESS, null, values)
+
+            // CATAT KE HISTORY UPLOAD (Agar bisa di-upload ke server nantinya)
+            if (rowId != -1L && !photoPath.isNullOrEmpty()) {
+                val historyValues = ContentValues().apply {
+                    put(PH_LOCAL_PATH, photoPath)
+                    put(PH_STATUS, 0)
+                }
+                db.insert(T_PHOTO_HISTORY, null, historyValues)
+            }
+
+            db.setTransactionSuccessful()
+            rowId
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal simpan progres plantation: ${e.message}")
+            Log.e("DB_ERROR", "Gagal simpan Progres: ${e.message}")
             -1L
+        } finally {
+            db.endTransaction()
         }
     }
 
@@ -2066,8 +2139,25 @@ fun generateNoSPB(fcba: String): String {
     fun getAllRKH(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        // Sesuaikan nama tabel (table_rkh) dengan konstanta Anda
-        val query = "SELECT * FROM table_rkh WHERE fcba = ? ORDER BY created_at DESC"
+
+        // PERBAIKAN: Gunakan GROUP BY dan GROUP_CONCAT
+        val query = """
+        SELECT 
+            MAX(id) as id, 
+            no_rkh, 
+            fcba, 
+            afdeling, 
+            gangcode, 
+            job_code, 
+            type,
+            GROUP_CONCAT(location_code, ', ') as location_code, 
+            SUM(CAST(jumlah_hk AS REAL)) as jumlah_hk,
+            created_at
+        FROM $T_RKH 
+        WHERE fcba = ? COLLATE NOCASE
+        GROUP BY no_rkh 
+        ORDER BY id DESC
+    """.trimIndent()
 
         try {
             db.rawQuery(query, arrayOf(fcba)).use { cursor ->
@@ -2091,28 +2181,41 @@ fun generateNoSPB(fcba: String): String {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
 
-        // TAMBAHKAN KOLOM 'id' (atau ROWID) di SELECT
+        // QUERY DIPERBAIKI:
+        // 1. GROUP BY no_rkh agar data dengan nomor sama jadi satu baris
+        // 2. GROUP_CONCAT menggabungkan blok-blok (Blok A, Blok B, dst)
+        // 3. MAX(id) untuk mendapatkan ID referensi hapus/edit
         val query = """
-    SELECT id, no_rkh, fcba, afdeling, gangcode, job_code, location_code, jumlah_hk 
-    FROM $T_RKH 
-    WHERE fcba = ? COLLATE NOCASE
-    ORDER BY created_at DESC
-""".trimIndent()
+        SELECT 
+            id, 
+            no_rkh, 
+            fcba, 
+            afdeling, 
+            gangcode, 
+            job_code, 
+            GROUP_CONCAT(location_code, ', ') as combined_locations, 
+            SUM(CAST(jumlah_hk AS REAL)) as total_hk 
+        FROM $T_RKH 
+        WHERE fcba = ? COLLATE NOCASE
+        GROUP BY no_rkh
+        ORDER BY created_at DESC
+    """.trimIndent()
 
         try {
             db.rawQuery(query, arrayOf(fcba)).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
-                    // AMBIL ID DISINI AGAR BISA DIGUNAKAN SAAT HAPUS
                     map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id")) ?: ""
-
                     map["no_rkh"] = cursor.getString(cursor.getColumnIndexOrThrow("no_rkh")) ?: ""
                     map["fcba"] = cursor.getString(cursor.getColumnIndexOrThrow("fcba")) ?: ""
                     map["afdeling"] = cursor.getString(cursor.getColumnIndexOrThrow("afdeling")) ?: ""
                     map["gang_code"] = cursor.getString(cursor.getColumnIndexOrThrow("gangcode")) ?: ""
                     map["job_code"] = cursor.getString(cursor.getColumnIndexOrThrow("job_code")) ?: ""
-                    map["location"] = cursor.getString(cursor.getColumnIndexOrThrow("location_code")) ?: ""
-                    map["jumlah_hk"] = cursor.getString(cursor.getColumnIndexOrThrow("jumlah_hk")) ?: "0"
+
+                    // Ambil hasil gabungan lokasi
+                    map["location"] = cursor.getString(cursor.getColumnIndexOrThrow("combined_locations")) ?: ""
+                    map["jumlah_hk"] = cursor.getString(cursor.getColumnIndexOrThrow("total_hk")) ?: "0"
+
                     list.add(map)
                 }
             }
@@ -2127,13 +2230,23 @@ fun generateNoSPB(fcba: String): String {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
 
-        // Query yang sama dengan tambahan filter TYPE
+        // Tambahkan GROUP BY no_rkh dan GROUP_CONCAT agar blok digabung
         val query = """
-    SELECT id, no_rkh, fcba, afdeling, gangcode, job_code, location_code, jumlah_hk 
-    FROM $T_RKH 
-    WHERE fcba = ? AND type = ? COLLATE NOCASE
-    ORDER BY created_at DESC
-""".trimIndent()
+        SELECT 
+            id, 
+            no_rkh, 
+            MAX(type) as type,  
+            fcba, 
+            afdeling, 
+            gangcode, 
+            job_code,               
+            GROUP_CONCAT(location_code, ', ') as combined_locations, 
+            SUM(CAST(jumlah_hk AS REAL)) as total_hk 
+        FROM $T_RKH 
+        WHERE fcba = ? AND type = ? COLLATE NOCASE
+        GROUP BY no_rkh
+        ORDER BY created_at DESC
+    """.trimIndent()
 
         try {
             db.rawQuery(query, arrayOf(fcba, type)).use { cursor ->
@@ -2141,12 +2254,14 @@ fun generateNoSPB(fcba: String): String {
                     val map = mutableMapOf<String, String>()
                     map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id")) ?: ""
                     map["no_rkh"] = cursor.getString(cursor.getColumnIndexOrThrow("no_rkh")) ?: ""
+                    map["type"] = cursor.getString(cursor.getColumnIndexOrThrow("type")) ?: ""
                     map["fcba"] = cursor.getString(cursor.getColumnIndexOrThrow("fcba")) ?: ""
                     map["afdeling"] = cursor.getString(cursor.getColumnIndexOrThrow("afdeling")) ?: ""
                     map["gang_code"] = cursor.getString(cursor.getColumnIndexOrThrow("gangcode")) ?: ""
                     map["job_code"] = cursor.getString(cursor.getColumnIndexOrThrow("job_code")) ?: ""
-                    map["location"] = cursor.getString(cursor.getColumnIndexOrThrow("location_code")) ?: ""
-                    map["jumlah_hk"] = cursor.getString(cursor.getColumnIndexOrThrow("jumlah_hk")) ?: "0"
+
+                    map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("combined_locations")) ?: ""
+                    map["jumlah_hk"] = cursor.getString(cursor.getColumnIndexOrThrow("total_hk")) ?: "0"
                     list.add(map)
                 }
             }
@@ -2160,41 +2275,93 @@ fun generateNoSPB(fcba: String): String {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
 
-        // Sesuaikan SELECT dengan kolom di tabel table_rkh Anda
+        // PERBAIKAN: Tambahkan GROUP BY dan GROUP_CONCAT
         val query = """
-        SELECT no_rkh, fcba, afdeling, gangcode, job_code, location_code, jumlah_hk 
+        SELECT 
+            id, 
+            no_rkh, 
+            fcba, 
+            afdeling, 
+            gangcode, 
+            job_code,
+            MAX(type) as type,
+            GROUP_CONCAT(location_code, ', ') as combined_locations, 
+            SUM(CAST(jumlah_hk AS REAL)) as total_hk 
         FROM $T_RKH 
         WHERE fcba = ? COLLATE NOCASE
+        GROUP BY no_rkh
+        ORDER BY id DESC
     """.trimIndent()
 
         try {
             db.rawQuery(query, arrayOf(userFcba)).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
-                    // Mengambil data menggunakan getColumnIndexOrThrow agar aman
+                    map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id")) ?: ""
                     map["no_rkh"] = cursor.getString(cursor.getColumnIndexOrThrow("no_rkh")) ?: ""
-                    map["location"] = cursor.getString(cursor.getColumnIndexOrThrow("location_code")) ?: ""
+                    map["fcba"] = cursor.getString(cursor.getColumnIndexOrThrow("fcba")) ?: ""
                     map["afdeling"] = cursor.getString(cursor.getColumnIndexOrThrow("afdeling")) ?: ""
                     map["gang_code"] = cursor.getString(cursor.getColumnIndexOrThrow("gangcode")) ?: ""
                     map["job_code"] = cursor.getString(cursor.getColumnIndexOrThrow("job_code")) ?: ""
-                    map["fcba"] = cursor.getString(cursor.getColumnIndexOrThrow("fcba")) ?: ""
+                    map["type"] = cursor.getString(cursor.getColumnIndexOrThrow("type")) ?: ""
+                    // Ambil lokasi gabungan
+                    map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("combined_locations")) ?: ""
+                    map["jumlah_hk"] = cursor.getString(cursor.getColumnIndexOrThrow("total_hk")) ?: "0"
+
                     list.add(map)
                 }
             }
-            Log.d("DB_RKH", "Berhasil mengambil ${list.size} RKH untuk FCBA: $userFcba")
+            Log.d("DB_RKH", "Berhasil mengambil ${list.size} RKH Terkelompok untuk FCBA: $userFcba")
         } catch (e: Exception) {
             Log.e("DB_ERROR", "Gagal getRKHList: ${e.message}")
         }
         return list
     }
 
+    // Tambahkan fungsi ini di AttendanceDatabaseHelper.kt
+
+    /**
+     * Simpan detail blok untuk RKH yang sedang dibuat.
+     * Fungsi ini bisa dipanggil berulang kali setiap user klik "Next/Tambah Blok"
+     */
+    fun insertRKHDetail(noRKH: String, locationCode: String, jumlahHK: String): Long {
+        val db = this.writableDatabase
+        val values = ContentValues().apply {
+            put("no_rkh", noRKH)
+            put("location_code", locationCode)
+            put("jumlah_hk", jumlahHK)
+            put("created_at", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
+        }
+        return try {
+            // Asumsi Anda menggunakan satu tabel T_RKH yang menampung banyak baris dengan no_rkh yang sama
+            db.insert(T_RKH, null, values)
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal simpan detail RKH: ${e.message}")
+            -1L
+        }
+    }
+
     fun getRKHDetail(noRkh: String): Map<String, String>? {
         val db = readableDatabase
+        // Menggunakan GROUP_CONCAT untuk menggabungkan semua blok menjadi satu string
+        // Menggunakan MAX untuk kolom lain agar data tetap terbawa dalam GROUP BY
         val query = """
-        SELECT no_rkh, fcba, afdeling, gangcode, job_code, location_code, jumlah_hk, 
-               supervisi1, supervisi2, supervisi3, supervisi4, unit, output
+        SELECT no_rkh, 
+               MAX(type) as type,
+               MAX(fcba) as fcba, 
+               MAX(afdeling) as afdeling, 
+               MAX(gangcode) as gangcode, 
+               MAX(job_code) as job_code,               
+               GROUP_CONCAT(location_code, ', ') as combined_locations, 
+               MAX(supervisi1) as supervisi1, 
+               MAX(supervisi2) as supervisi2, 
+               MAX(supervisi3) as supervisi3, 
+               MAX(supervisi4) as supervisi4, 
+               MAX(unit) as unit, 
+               MAX(output) as output
         FROM $T_RKH 
         WHERE no_rkh = ?
+        GROUP BY no_rkh
     """.trimIndent()
 
         return try {
@@ -2202,12 +2369,13 @@ fun generateNoSPB(fcba: String): String {
                 if (cursor.moveToFirst()) {
                     mapOf(
                         "no_rkh" to (cursor.getString(cursor.getColumnIndexOrThrow("no_rkh")) ?: ""),
-                        "fcba" to (cursor.getString(cursor.getColumnIndexOrThrow("fcba")) ?: ""),
-                        "afdeling" to (cursor.getString(cursor.getColumnIndexOrThrow("afdeling")) ?: ""),
-                        "gang_code" to (cursor.getString(cursor.getColumnIndexOrThrow("gangcode")) ?: ""),
+                        "type" to (cursor.getString(cursor.getColumnIndexOrThrow("type")) ?: ""),
                         "job_code" to (cursor.getString(cursor.getColumnIndexOrThrow("job_code")) ?: ""),
-                        "location_code" to (cursor.getString(cursor.getColumnIndexOrThrow("location_code")) ?: ""),
-                        "jumlah_hk" to (cursor.getString(cursor.getColumnIndexOrThrow("jumlah_hk")) ?: "0"),
+                        "gang_code" to (cursor.getString(cursor.getColumnIndexOrThrow("gangcode")) ?: ""),
+
+
+                        // AMBIL HASIL GABUNGAN BLOK DI SINI
+                        "location_code" to (cursor.getString(cursor.getColumnIndexOrThrow("combined_locations")) ?: ""),
                         "supervisor1" to (cursor.getString(cursor.getColumnIndexOrThrow("supervisi1")) ?: ""),
                         "supervisor2" to (cursor.getString(cursor.getColumnIndexOrThrow("supervisi2")) ?: ""),
                         "supervisor3" to (cursor.getString(cursor.getColumnIndexOrThrow("supervisi3")) ?: ""),
@@ -2218,7 +2386,6 @@ fun generateNoSPB(fcba: String): String {
                 } else null
             }
         } catch (e: Exception) {
-            android.util.Log.e("DB_ERROR", "Gagal ambil detail RKH: ${e.message}")
             null
         }
     }
@@ -2256,24 +2423,49 @@ fun generateNoSPB(fcba: String): String {
     fun getRKHPanenList(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        // Ambil semua kolom agar auto-fill mendapatkan data lengkap (supervisi, unit, out)
-        val query = "SELECT * FROM table_rkh WHERE fcba = ? AND type LIKE '%Panen%' COLLATE NOCASE"
+
+        // PERBAIKAN: Gunakan GROUP BY no_rkh agar tidak duplikat di list cari
+        // Gunakan GROUP_CONCAT agar semua blok (location_code) tergabung menjadi satu
+        val query = """
+        SELECT 
+            MAX(id) as id, 
+            no_rkh, 
+            gangcode, 
+            supervisi1, supervisi2, supervisi3, supervisi4,
+            unit, output,
+            GROUP_CONCAT(location_code, ', ') as combined_locations
+        FROM $T_RKH 
+        WHERE fcba = ? AND type LIKE '%Panen%'
+        GROUP BY no_rkh
+        ORDER BY id DESC
+    """.trimIndent()
 
         try {
             db.rawQuery(query, arrayOf(fcba)).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
-                    cursor.columnNames.forEach { col ->
-                        map[col] = cursor.getString(cursor.getColumnIndexOrThrow(col)) ?: ""
-                    }
+                    map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id"))
+                    map["no_rkh"] = cursor.getString(cursor.getColumnIndexOrThrow("no_rkh"))
+                    map["gangcode"] = cursor.getString(cursor.getColumnIndexOrThrow("gangcode"))
+                    map["supervisi1"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi1"))
+                    map["supervisi2"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi2"))
+                    map["supervisi3"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi3"))
+                    map["supervisi4"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi4"))
+                    map["unit"] = cursor.getString(cursor.getColumnIndexOrThrow("unit"))
+                    map["output"] = cursor.getString(cursor.getColumnIndexOrThrow("output"))
+
+                    // Gunakan hasil gabungan lokasi
+                    map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("combined_locations"))
+
                     list.add(map)
                 }
             }
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "RKH Panen Error: ${e.message}")
+            android.util.Log.e("DB_ERROR", "Gagal getRKHPanenList: ${e.message}")
         }
         return list
     }
+
 
     fun getBlockList(userFcba: String): List<String> {
         val list = mutableListOf<String>()
@@ -2308,6 +2500,26 @@ fun generateNoSPB(fcba: String): String {
 
         return list
     }
+
+
+    // Fungsi untuk mengambil daftar blok yang ada di dalam satu nomor RKH
+    fun getLocationsByRKH(noRkh: String): List<String> {
+        val list = mutableListOf<String>()
+        val db = readableDatabase
+        val query = "SELECT DISTINCT location_code FROM $T_RKH WHERE no_rkh = ?"
+        try {
+            db.rawQuery(query, arrayOf(noRkh)).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val loc = cursor.getString(0)
+                    if (!loc.isNullOrEmpty()) list.add(loc)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil lokasi RKH: ${e.message}")
+        }
+        return list
+    }
+
 
 
 
@@ -2356,9 +2568,11 @@ fun generateNoSPB(fcba: String): String {
         rate: Double,
         beras: Int,
         lembur: Double,
+        photoPath: String? = null,
         category: String = "PERHITUNGAN_BUAH"
     ): Long {
         val db = this.writableDatabase
+        db.beginTransaction()
         return try {
             val values = ContentValues().apply {
                 put("fcba", fcba)
@@ -2377,16 +2591,61 @@ fun generateNoSPB(fcba: String): String {
                 // put("rate", rate) // Aktifkan jika kolom 'rate' sudah Anda buat di DB
                 put("is_beras", beras)
                 put("lembur", lembur)
+                put("photo_path", photoPath)
                 put("tanggal", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
             }
-            db.insert("fruit_counting", null, values)
+            val rowId = db.insert("fruit_counting", null, values)
+
+            // JIKA ADA FOTO, CATAT KE TABEL HISTORY UPLOAD
+            if (rowId != -1L && !photoPath.isNullOrEmpty()) {
+                val historyValues = ContentValues().apply {
+                    put(PH_LOCAL_PATH, photoPath)
+                    put(PH_STATUS, 0) // Status 0 = Belum terupload ke server
+                }
+                db.insert(T_PHOTO_HISTORY, null, historyValues)
+            }
+
+            db.setTransactionSuccessful()
+            rowId
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal simpan: ${e.message}")
+            Log.e("DB_ERROR", "Gagal simpan dengan Path: ${e.message}")
             -1L
+        } finally {
+            db.endTransaction()
         }
     }
 
+    fun saveImageToFile(context: android.content.Context, bitmap: android.graphics.Bitmap, folderName: String): String? {
+        return try {
+            val directory = java.io.File(context.filesDir, "AttendancePhotos/$folderName")
+            if (!directory.exists()) directory.mkdirs()
 
+            val fileName = "IMG_${System.currentTimeMillis()}.jpg"
+            val file = java.io.File(directory, fileName)
+
+            java.io.FileOutputStream(file).use { out ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+            }
+            file.absolutePath // Ini yang akan disimpan di DB
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun getPendingPhotos(): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        val query = "SELECT * FROM $T_PHOTO_HISTORY WHERE $PH_STATUS = 0"
+        db.rawQuery(query, null).use { c ->
+            while (c.moveToNext()) {
+                val map = mutableMapOf<String, String>()
+                map["id"] = c.getString(c.getColumnIndexOrThrow(PH_ID))
+                map["path"] = c.getString(c.getColumnIndexOrThrow(PH_LOCAL_PATH))
+                list.add(map)
+            }
+        }
+        return list
+    }
 
     // Ambil Blok berdasarkan Location Code
     fun getBlocksByLocation(locationCode: String): List<String> {
@@ -2422,6 +2681,31 @@ fun generateNoSPB(fcba: String): String {
         }
 
         return list
+    }
+
+    fun getNurseryLocations(fcba: String): List<String> {
+        val list = mutableListOf<String>()
+        val db = this.readableDatabase
+
+        Log.d("DB_CHECK", "Mencari Nursery untuk FCBA: '$fcba'")
+
+        // Gunakan TRIM dan UPPER pada kedua sisi untuk memastikan 'KML' == 'Kml '
+        val query = "SELECT DISTINCT TRIM(NURSERYCODE) FROM $T_NURSERY " +
+                "WHERE STATUS = 'Y' AND UPPER(TRIM(FCBA)) = UPPER(TRIM(?)) " +
+                "ORDER BY NURSERYCODE ASC"
+
+        return try {
+            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
+                while (cursor.moveToNext()) {
+                    list.add(cursor.getString(0))
+                }
+            }
+            Log.d("DB_CHECK", "Nursery ditemukan untuk $fcba: ${list.size} data")
+            list
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal mengambil data Nursery: ${e.message}")
+            emptyList()
+        }
     }
 
     fun saveSPBHeader(
@@ -2508,6 +2792,7 @@ fun generateNoSPB(fcba: String): String {
                     val catIdx = cursor.getColumnIndex(P_CATEGORY)
                     val blockIdx = cursor.getColumnIndex(P_BLOCK)
                     val timeIdx = cursor.getColumnIndex(P_TIMESTAMP)
+                    val pathIdx = cursor.getColumnIndex("photo_path")
 
                     do {
                         val map = mutableMapOf<String, String>()
@@ -2523,6 +2808,8 @@ fun generateNoSPB(fcba: String): String {
                         // Ambil timestamp
                         map["created_at"] = if (timeIdx != -1) cursor.getString(timeIdx) ?: "" else ""
 
+                        map["photo_path"] = if (pathIdx != -1) cursor.getString(pathIdx) ?: "" else ""
+
                         list.add(map)
                     } while (cursor.moveToNext())
                 }
@@ -2531,6 +2818,28 @@ fun generateNoSPB(fcba: String): String {
             Log.e("DB_ERROR", "getAllProgress Error: ${e.message}")
         }
         return list
+    }
+
+    fun saveImageToStorage(bitmap: Bitmap, type: String): String? {
+        return try {
+            // Buat folder "AttendancePhotos" di dalam file internal aplikasi
+            val directory = File(context.filesDir, "AttendancePhotos")
+            if (!directory.exists()) directory.mkdirs()
+
+            // Nama file unik: FOTO_JENIS_TIMESTAMP.jpg
+            val fileName = "IMG_${type}_${System.currentTimeMillis()}.jpg"
+            val file = File(directory, fileName)
+
+            val out = FileOutputStream(file)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out) // Kompres 80%
+            out.flush()
+            out.close()
+
+            file.absolutePath // Kembalikan path lengkap file
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
     // Di dalam class AttendanceDatabaseHelper

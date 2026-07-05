@@ -33,6 +33,22 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.ui.geometry.isEmpty
 import kotlin.text.toIntOrNull
 
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.launch
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.layout.ContentScale
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FruitCountingScreen(
@@ -106,12 +122,16 @@ fun FruitCountingScreen(
             }
         ) { padding ->
             if (fruitDataList.isEmpty()) {
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Box(Modifier
+                    .fillMaxSize()
+                    .padding(padding), contentAlignment = Alignment.Center) {
                     Text("Belum ada data. Klik + untuk menambah.")
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(padding),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -338,9 +358,34 @@ fun FruitCountingFormContent(
     var rate by remember { mutableStateOf(initialData?.get("rate") ?: "") }
 
     var selectedTPH by remember(initialData) { mutableStateOf(initialData?.get("tph_code") ?: "") }
-    var lembur by remember { mutableStateOf(initialData?.get("lembur") ?: "0") }
-    var isBeras by remember { mutableStateOf(initialData?.get("beras") == "1") }
+//    var lembur by remember { mutableStateOf(initialData?.get("lembur") ?: "0") }
+
+    val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
+//    var isBeras by remember { mutableStateOf(initialData?.get("beras") == "1") }
     var activeDialog by remember { mutableStateOf<String?>(null) }
+
+    // --- STATE FOTO ---
+    var showSmartCamera by remember { mutableStateOf(false) }
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    // Launcher Kamera
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) {
+        if (it != null) bitmap = it
+    }
+
+
+    // Launcher Galeri (untuk dipanggil dari dalam SmartCameraView)
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let {
+            bitmap = if (Build.VERSION.SDK_INT < 28) {
+                MediaStore.Images.Media.getBitmap(context.contentResolver, it)
+            } else {
+                val source = ImageDecoder.createSource(context.contentResolver, it)
+                ImageDecoder.decodeBitmap(source)
+            }
+            showSmartCamera = false // Tutup kamera setelah pilih galeri
+        }
+    }
 
     // Master Data
 
@@ -373,13 +418,13 @@ fun FruitCountingFormContent(
         }
     }
 
+    var selectedLocationCode by remember { mutableStateOf(initialData?.get("location_code") ?: "") }
     val supervisorOptions = remember { dbHelper.getSupervisors(fcba) }
     val presentWorkers = remember { dbHelper.getEmployeesAlreadyCheckedIn(fcba) }
     val locationCodeFromRKH = selectedRKH?.get("location_code") ?: ""
-    val tphList = remember(locationCodeFromRKH) {
-        if (locationCodeFromRKH.isNotEmpty()) {
-            // 3. Tambahkan fcba ke getTPHByLocation
-            dbHelper.getTPHByLocation(locationCodeFromRKH, fcba)
+    val tphList = remember(selectedLocationCode) {
+        if (selectedLocationCode.isNotEmpty()) {
+            dbHelper.getTPHByLocation(selectedLocationCode, fcba)
         } else {
             emptyList()
         }
@@ -392,10 +437,26 @@ fun FruitCountingFormContent(
             "RKH" -> SearchableMapDialog(
                 title = "Cari No RKH",
                 options = rkhList,
-                displayProvider = { "RKH:${it["no_rkh"]} - ${it["location_code"] ?: it["location"] ?: "-"}" },
+                displayProvider = { "RKH:${it["no_rkh"]} " },
                 onDismiss = { activeDialog = null },
                 onSelect = { selectedRKH = it; selectedTPH = ""; activeDialog = null }
             )
+
+            "SELECT_LOCATION" -> {
+                // Pecah string "A01, A02" menjadi list [A01, A02]
+                val locations = selectedRKH?.get("location_code")?.split(", ")?.filter { it.isNotEmpty() } ?: emptyList()
+                SearchableListDialog(
+                    title = "Pilih Blok/Lokasi",
+                    options = locations,
+                    onDismiss = { activeDialog = null },
+                    onSelect = {
+                        selectedLocationCode = it
+                        selectedTPH = "" // Reset TPH jika lokasi ganti
+                        activeDialog = null
+                    }
+                )
+            }
+
             "TPH" -> SearchableListDialog(
                 title = "Cari TPH", options = tphList,
                 onDismiss = { activeDialog = null },
@@ -438,16 +499,40 @@ fun FruitCountingFormContent(
             )
         }
     ) { padding ->
+
+        if (showSmartCamera) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { showSmartCamera = false },
+                properties = androidx.compose.ui.window.DialogProperties(
+                    usePlatformDefaultWidth = false // Agar fullscreen
+                )
+            ) {
+                SmartCameraView(
+                    onImageCaptured = { capturedBitmap ->
+                        bitmap = capturedBitmap
+                        showSmartCamera = false
+                    },
+                    onGalleryClick = {
+                        galleryLauncher.launch("image/*")
+                    },
+                    onClose = { showSmartCamera = false }
+                )
+            }
+        }
+
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 1. Pilih No RKH
+            Text("Referensi RKH", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
             ClickableSearchField(
-                label = "Pilih No RKH",
-                value = if (selectedRKH != null) {
-                    "RKH:${selectedRKH?.get("no_rkh")} - ${selectedRKH?.get("location_code") ?: selectedRKH?.get("location")}"
-                } else "",
+                label = "Pilih No. RKH",
+                value = if (selectedRKH != null) "RKH:${selectedRKH?.get("no_rkh")} " else "",
                 onClick = { activeDialog = "RKH" }
             )
 
@@ -492,51 +577,82 @@ fun FruitCountingFormContent(
                 onClick = { activeDialog = "WORKERS" }
             )
 
-            OutlinedTextField(
-                value = selectedRKH?.get("location_code") ?: selectedRKH?.get("location") ?: "",
-                onValueChange = {},
-                label = { Text("Location Code") },
-                modifier = Modifier.fillMaxWidth(),
-                readOnly = true,
-                enabled = false,
-                colors = OutlinedTextFieldDefaults.colors(
-                    disabledTextColor = Color.Black,
-                    disabledBorderColor = Color.Gray,
-                    disabledLabelColor = Color.DarkGray,
-                    disabledContainerColor = Color(0xFFF5F5F5) // Background abu-abu sebagai penanda otomatis
-                )
+            // Ganti OutlinedTextField lama dengan ClickableSearchField
+            Text("Lokasi Kerja", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+            ClickableSearchField(
+                label = "Pilih Lokasi / Blok",
+                value = selectedLocationCode,
+                onClick = {
+                    if (selectedRKH != null) {
+                        activeDialog = "SELECT_LOCATION"
+                    } else {
+                        Toast.makeText(context, "Pilih No RKH terlebih dahulu", Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("Unit") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                OutlinedTextField(value = output, onValueChange = { output = it }, label = { Text("Output") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-            }
 
             ClickableSearchField("Pilih TPH", selectedTPH) { activeDialog = "TPH" }
 
-            // FIELD BERAS & LEMBUR
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    Checkbox(checked = isBeras, onCheckedChange = { isBeras = it })
-                    Text("Beras")
+            OutlinedTextField(
+                value = unit,
+                onValueChange = { unit = it },
+                label = { Text("UNIT") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            )
+
+            OutlinedTextField(
+                value = output,
+                onValueChange = { output = it },
+                label = { Text("OUTPUT") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            )
+
+
+            // --- INPUT FOTO (PENGGANTI BERAS & LEMBUR) ---
+            Text("Dokumentasi Foto", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+
+            if (bitmap != null) {
+                Card(modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)) {
+                    Image(
+                        bitmap = bitmap!!.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                 }
-                OutlinedTextField(
-                    value = lembur,
-                    onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) lembur = it },
-                    label = { Text("Lembur (Jam)") },
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
-                )
             }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        // Cek apakah izin sudah diberikan
+                        if (cameraPermissionState.status.isGranted) {
+                            showSmartCamera = true // Memicu Dialog SmartCameraView muncul
+                        } else {
+                            cameraPermissionState.launchPermissionRequest()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+                ) {
+                    Icon(Icons.Default.CameraAlt, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Kamera")
+                }
+
+            }
+
 
             Spacer(Modifier.height(8.dp))
 
             Button(
-                modifier = Modifier.fillMaxWidth().height(55.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(55.dp),
                 onClick = {
                     if (isEditMode) {
                         // JALANKAN UPDATE HEADER
@@ -558,6 +674,9 @@ fun FruitCountingFormContent(
                         if (selectedRKH == null || supervisi1.isEmpty() || selectedWorkers.isEmpty() || selectedTPH.isEmpty()) {
                             Toast.makeText(context, "Lengkapi data wajib!", Toast.LENGTH_SHORT).show()
                         } else {
+                            val savedPhotoPath = if (bitmap != null) {
+                                dbHelper.saveImageToFile(context, bitmap!!, "FruitCounting")
+                            } else null
                             // Isi parameter sesuai dengan variabel yang ada di State Form Anda
                             dbHelper.saveFruitCalculation(
                                 fcba = fcba,
@@ -570,8 +689,9 @@ fun FruitCountingFormContent(
                                 unit = unit.toDoubleOrNull() ?: 0.0,
                                 output = output.toDoubleOrNull() ?: 0.0,
                                 rate = rate.toDoubleOrNull() ?: 0.0, // Tambahkan rate jika ada field-nya
-                                beras = if (isBeras) 1 else 0,
-                                lembur = lembur.toDoubleOrNull() ?: 0.0
+                                beras =  0,
+                                lembur =  0.0,
+                                photoPath = savedPhotoPath
                             )
                             Toast.makeText(context, "Data Berhasil Disimpan", Toast.LENGTH_SHORT).show()
                             onSaveSuccess()

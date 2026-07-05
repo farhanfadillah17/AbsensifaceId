@@ -140,6 +140,11 @@ class MainActivity : ComponentActivity() {
                 // 2. Jalankan pengecekan dan import data master
                 LaunchedEffect(Unit) {
                     scope.launch(Dispatchers.IO) {
+
+                        if (db.isTableEmpty("NURSERY")) {
+                            Log.d("DB_INIT", "Mengimport data Nursery...")
+                            db.importSqlFromAssets("nursery.sql")
+                        }
                         // Cek Tabel Mill (CUSTOMER)
                         if (db.isTableEmpty("CUSTOMER")) {
                             db.importSqlFromAssets("mill.sql")
