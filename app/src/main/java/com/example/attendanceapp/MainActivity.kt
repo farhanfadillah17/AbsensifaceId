@@ -186,8 +186,8 @@ class MainActivity : ComponentActivity() {
 
             val tag: Tag? = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
             tag?.let {
-                if (dataToWrite != null) {
-                    // --- MODE MENULIS (Untuk Fruit Counting) ---
+                if (!dataToWrite.isNullOrEmpty()) {
+                    // --- MODE MENULIS ---
                     val success = writeNdefMessage(it, dataToWrite!!)
                     if (success) {
                         Toast.makeText(this, "Data Berhasil Disimpan ke Kartu!", Toast.LENGTH_LONG)
@@ -820,13 +820,13 @@ fun DashboardScreen(
     val allMenus = listOf(
         // Sesuaikan angka route dengan urutan menu di database/API Anda
         MenuConfig("ABSENSI", Icons.Default.PersonSearch, listOf(), true, route = "1"),
-        MenuConfig("PROGRESS KERJA", Icons.Default.TrendingUp, listOf(), true, route = "2"),
-        MenuConfig("PERHITUNGAN BUAH", Icons.Default.Analytics, listOf(), route = "3"),
-        MenuConfig("PEMBUATAN SPB", Icons.Default.LocalShipping, listOf(), true, route = "4"),
-        MenuConfig("ANCAK PANEN", Icons.Default.Agriculture, listOf(), route = "5"),
-        MenuConfig("AKP", Icons.Default.Assessment, listOf(), route = "6"),
+//        MenuConfig("PROGRESS KERJA", Icons.Default.TrendingUp, listOf(), true, route = "2"),
+//        MenuConfig("PERHITUNGAN BUAH", Icons.Default.Analytics, listOf(), route = "3"),
+//        MenuConfig("PEMBUATAN SPB", Icons.Default.LocalShipping, listOf(), true, route = "4"),
+//        MenuConfig("ANCAK PANEN", Icons.Default.Agriculture, listOf(), route = "5"),
+//        MenuConfig("AKP", Icons.Default.Assessment, listOf(), route = "6"),
         MenuConfig("MASTER DATA", Icons.Default.Storage, listOf(), color = Color(0xFF1A3A8F), route = "7"),
-        MenuConfig("RENCANA KERJA", Icons.Default.EditNote, listOf(), route = "8"),
+//        MenuConfig("RENCANA KERJA", Icons.Default.EditNote, listOf(), route = "8"),
         MenuConfig("SINKRON DATA", Icons.Default.Sync, listOf(), route = "9")
     )
 
