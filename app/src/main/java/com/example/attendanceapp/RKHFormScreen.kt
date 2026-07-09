@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -28,10 +29,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.geometry.isEmpty
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -286,15 +290,32 @@ fun RKHMainScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
                         // Di dalam Dialog Konfirmasi Hapus RKHFormScreen.kt
                         onClick = {
-                            val id = itemToDelete?.get("id")
-                            if (id != null) {
-                                if (dbHelper.deleteRKH(id)) {
+                            val rkhNo = itemToDelete?.get("no_rkh")
+                            if (rkhNo != null) {
+                                // 1. Hapus dari database (Pastikan fungsi deleteRKH di Helper menerima No RKH sebagai parameter)
+                                if (dbHelper.deleteRKH(rkhNo)) {
                                     Toast.makeText(context, "Berhasil dihapus", Toast.LENGTH_SHORT).show()
 
-                                    // PAKSA REFRESH menggunakan fungsi yang mengandung ID
-                                    rkhDataList = dbHelper.getAllRKHListMap(fcba)
+                                    // 2. Ambil data mentah terbaru dari database
+                                    val newRawData = dbHelper.getAllRKHListMap(fcba)
+
+                                    // 3. Proses pengelompokan (Grouping) agar list kembali sinkron
+                                    rkhDataList = newRawData.groupBy { it["no_rkh"] }.map { (noRkh, records) ->
+                                        // Ambil satu record sebagai template
+                                        val combined = records.first().toMutableMap()
+
+                                        // Gabungkan semua location_code dari grup yang sama
+                                        val allLocations = records.mapNotNull { it["location_code"] }
+                                            .filter { it.isNotBlank() }
+                                            .distinct()
+                                            .joinToString(", ")
+
+                                        combined["location_code"] = allLocations
+                                        combined
+                                    }
                                 }
                             }
+                            // 4. Tutup dialog konfirmasi hapus
                             itemToDelete = null
                         }
                     ) { Text("Hapus", color = Color.White) }
@@ -371,6 +392,7 @@ fun RKHFormScreen(
 
 
     // Data Lists
+    val focusManager = LocalFocusManager.current
     val afdelingList = remember(fcba) { dbHelper.getAfdelingList(fcba) }
     val gangList = remember(fcba, selectedAfd) {
         if (selectedAfd.isNotEmpty()) dbHelper.getGangsByAfdeling(selectedAfd, fcba) else emptyList()
@@ -503,23 +525,44 @@ fun RKHFormScreen(
                             onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) hk = it },
                             label = { Text("JUMLAH HK") },
                             modifier = Modifier.fillMaxWidth(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                            singleLine = true, // KUNCI UTAMA: Agar tidak bisa enter baris baru
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Next // Pindah ke kolom berikutnya
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                            )
                         )
 
                         OutlinedTextField(
                             value = unit,
-                            onValueChange = { unit = it },
-                            label = { Text("UNIT") },
+                            onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) unit = it },
+                            label = { Text("Unit") },
                             modifier = Modifier.fillMaxWidth(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                            singleLine = true, // KUNCI UTAMA: Agar tidak bisa enter baris baru
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Next // Pindah ke kolom berikutnya
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                            )
                         )
 
                         OutlinedTextField(
                             value = output,
-                            onValueChange = { output = it },
-                            label = { Text("OUTPUT") },
+                            onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) output = it },
+                            label = { Text("Output") },
                             modifier = Modifier.fillMaxWidth(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                            singleLine = true, // KUNCI UTAMA
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done // Selesai / Tutup Keyboard
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = { focusManager.clearFocus() }
+                            )
                         )
                     }
                 }

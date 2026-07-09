@@ -45,6 +45,8 @@ import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.LocalShipping // Untuk Traksi
+import androidx.compose.material.icons.filled.Settings // Untuk Workshop
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.decodeBitmap
 
@@ -58,9 +60,13 @@ import androidx.activity.result.launch
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import com.google.accompanist.permissions.isGranted
 import java.io.ByteArrayOutputStream
 import com.google.accompanist.permissions.rememberPermissionState
@@ -78,8 +84,13 @@ fun ProgressMenuScreen(
     // Navigasi internal: "CHOOSER", "LIST", "FORM"
     var currentStep by remember { mutableStateOf("CHOOSER") }
     var selectedCategory by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val sharedPref = remember { context.getSharedPreferences("UserSession", Context.MODE_PRIVATE) }
     var itemToEdit by remember { mutableStateOf<Map<String, String>?>(null) }
-
+    val currentFcba = remember(fcba) {
+        val sfFcba = sharedPref.getString("fcba", "")
+        (if (sfFcba.isNullOrEmpty()) fcba else sfFcba).uppercase().trim()
+    }
     var showMenu by remember { mutableStateOf(false) }
     var selectedItem by remember { mutableStateOf<Any?>(null) } // Sesuaikan tipe datanya
     // State untuk data list
@@ -96,12 +107,21 @@ fun ProgressMenuScreen(
 
     LaunchedEffect(currentStep, selectedCategory) {
         if (currentStep == "LIST") {
-            // Memastikan data terbaru diambil dari DB
-            progressData = dbHelper.getAllProgress().filter {
-                it["category"]?.uppercase() == selectedCategory.uppercase()
+            // Ambil data mentah dari DB berdasarkan FCBA (KML)
+            val rawData = dbHelper.getAllProgress(currentFcba)
+
+            // Log untuk debug: Cek apakah rawData sebenarnya ada isinya
+            android.util.Log.d("DEBUG_LIST", "Total data KML di DB: ${rawData.size}")
+
+            // Filter dengan mengabaikan huruf besar/kecil
+            progressData = rawData.filter {
+                it["category"]?.equals(selectedCategory, ignoreCase = true) == true
             }
+
+            android.util.Log.d("DEBUG_LIST", "Data setelah filter ($selectedCategory): ${progressData.size}")
         }
     }
+
 
     when (currentStep) {
         "CHOOSER" -> {
@@ -117,20 +137,21 @@ fun ProgressMenuScreen(
             ProgressListScreen(
                 category = selectedCategory,
                 progressData = progressData,
-                dbHelper = dbHelper, // Kirim dbHelper
+                dbHelper = dbHelper,
                 onBack = { currentStep = "CHOOSER" },
                 onAddClick = {
-                    itemToEdit = null // Reset agar form kosong (Input Baru)
+                    itemToEdit = null
                     currentStep = "FORM"
                 },
                 onEditClick = { item ->
-                    itemToEdit = item  // Simpan data item yang diklik ke state
-                    currentStep = "FORM" // Pindah ke layar form
+                    itemToEdit = item
+                    currentStep = "FORM"
                 },
                 onRefresh = {
-                    // Trigger LaunchedEffect untuk ambil data ulang
-                    progressData = dbHelper.getAllProgress().filter {
-                        it["category"]?.uppercase() == selectedCategory.uppercase()
+                    // Gunakan logika filter yang sama
+                    val raw = dbHelper.getAllProgress(currentFcba)
+                    progressData = raw.filter {
+                        it["category"]?.trim()?.equals(selectedCategory.trim(), ignoreCase = true) == true
                     }
                 }
             )
@@ -175,7 +196,9 @@ fun ProgressCategoryChooser(onBack: () -> Unit, onSelect: (String) -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(20.dp),
+                .padding(20.dp)
+                // Menggunakan verticalScroll agar jika layar kecil, menu bisa di-scroll
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(10.dp))
@@ -213,23 +236,48 @@ fun ProgressCategoryChooser(onBack: () -> Unit, onSelect: (String) -> Unit) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Baris 2: UMUM (Ukurannya akan sama karena menggunakan weight(1f) dan Spacer)
+            // Baris 2: UMUM dan TRAKSI
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 SimpleCategoryButton(
                     title = "UMUM",
-                    icon = Icons.Default.Assignment, // Ikon daftar tugas
-                    color = Color(0xFF1A3A8F),      // Warna biru identitas app
+                    icon = Icons.Default.Assignment,
+                    color = Color(0xFF1A3A8F),
                     modifier = Modifier.weight(1f),
                     onClick = { onSelect("UMUM") }
                 )
 
-                // Spacer ini penting agar tombol UMUM tidak melebar memenuhi layar
-                // dan tetap berukuran sama dengan tombol di atasnya.
+                SimpleCategoryButton(
+                    title = "TRAKSI",
+                    icon = Icons.Default.LocalShipping, // Icon Truk/Alat Berat
+                    color = Color(0xFFD32F2F), // Warna Merah
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSelect("TRAKSI") }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Baris 3: WORKSHOP
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                SimpleCategoryButton(
+                    title = "WORKSHOP",
+                    icon = Icons.Default.Settings, // Icon Roda Gigi/Bengkel
+                    color = Color(0xFF607D8B), // Warna Abu-abu/Steel
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSelect("WORKSHOP") }
+                )
+
+                // Spacer agar tombol WORKSHOP tetap di kiri dan ukurannya konsisten
                 Spacer(modifier = Modifier.weight(1f))
             }
+
+            Spacer(modifier = Modifier.height(20.dp))
         }
     }
 }
@@ -515,38 +563,55 @@ fun ProgressFormScreen(
     var selectedRKH by remember { mutableStateOf<Map<String, String>?>(null) }
     var selectedBlock by remember { mutableStateOf("") }
     var selectedJobType by remember { mutableStateOf("") }
-    var supervisi1 by remember { mutableStateOf("") }
-    var supervisi2 by remember { mutableStateOf("") }
-    var supervisi3 by remember { mutableStateOf("") }
-    var supervisi4 by remember { mutableStateOf("") }
+    var supervisi1 by remember { mutableStateOf(initialData?.get("supervisor1") ?: "") }
+    var supervisi2 by remember { mutableStateOf(initialData?.get("supervisor2") ?: "") }
+    var supervisi3 by remember { mutableStateOf(initialData?.get("supervisor3") ?: "") }
+    var supervisi4 by remember { mutableStateOf(initialData?.get("supervisor4") ?: "") }
+
+    var supervisi1Name by remember { mutableStateOf("") }
+    var supervisi2Name by remember { mutableStateOf("") }
+    var supervisi3Name by remember { mutableStateOf("") }
+    var supervisi4Name by remember { mutableStateOf("") }
 
     var unit by remember { mutableStateOf("") }
     var output by remember { mutableStateOf("") }
 
-// Setiap kali selectedRKH berubah (saat user memilih dari dialog)
-    // --- LOGIKA AUTO-FILL ---
+    // --- LOGIKA AUTO-FILL SAAT PILIH RKH ---
+
     LaunchedEffect(selectedRKH) {
-        selectedRKH?.get("no_rkh")?.let { noRkh ->
-            // Ambil detail lengkap dari DB
+        val noRkh = selectedRKH?.get("no_rkh")
+
+        // Kita hanya jalankan ini jika kita baru saja memilih RKH dari dialog
+        // (cirinya: data detail seperti supervisor1_name belum ada)
+        val needsDetail = selectedRKH?.containsKey("supervisor1_name") == false
+
+        if (noRkh != null && needsDetail) {
             val detail = dbHelper.getRKHDetail(noRkh)
 
             if (detail != null) {
-                // 1. PENTING: Update selectedRKH dengan detail lengkap dari DB
-                // Ini agar key "location_code" tersedia saat dialog SELECT_LOCATION dibuka
+                // 1. Update state RKH agar LaunchedEffect tidak lari terus (infinite loop)
                 selectedRKH = detail
 
-                // 2. Isi otomatis field lainnya (kecuali Lokasi/selectedLocationCode)
+                // 2. Isi field header
                 selectedJobType = detail["job_code"] ?: ""
+
+
+                // 3. Isi cODE supervisi
                 supervisi1 = detail["supervisor1"] ?: ""
                 supervisi2 = detail["supervisor2"] ?: ""
                 supervisi3 = detail["supervisor3"] ?: ""
                 supervisi4 = detail["supervisor4"] ?: ""
 
-                unit = detail["unit"] ?: ""
-                output = detail["output"] ?: ""
+                // 4. Isi NAMA supervisi (Inilah yang tampil di form)
+                // Jika nama kosong, gunakan kode sebagai cadangan
+                supervisi1Name = detail["supervisor1_name"].takeIf { !it.isNullOrBlank() } ?: supervisi1
+                supervisi2Name = detail["supervisor2_name"].takeIf { !it.isNullOrBlank() } ?: supervisi2
+                supervisi3Name = detail["supervisor3_name"].takeIf { !it.isNullOrBlank() } ?: supervisi3
+                supervisi4Name = detail["supervisor4_name"].takeIf { !it.isNullOrBlank() } ?: supervisi4
 
-                // 3. JANGAN isi selectedLocationCode di sini agar form tetap kosong (User pilih manual)
-                // selectedLocationCode tetap "" karena sudah di-reset di onSelect RKH
+                // 5. Reset Unit & Output (Wajib Isi Manual)
+                unit = ""
+                output = ""
 
                 Toast.makeText(context, "Data RKH Berhasil Dimuat", Toast.LENGTH_SHORT).show()
             }
@@ -570,6 +635,8 @@ fun ProgressFormScreen(
     var selectedLocationCode by remember { mutableStateOf(initialData?.get("location_code") ?: "") }
     var showSmartCamera by remember { mutableStateOf(false) }
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    val focusManager = LocalFocusManager.current
 
 // Launcher Kamera
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) {
@@ -595,7 +662,7 @@ fun ProgressFormScreen(
             "RKH" -> SearchableMapDialog(
                 title = "Cari No RKH",
                 options = rkhList,
-                displayProvider = { "RKH:${it["no_rkh"]} " },
+                displayProvider = { "${it["no_rkh"]} " },
                 onDismiss = { activeDialog = null },
                 onSelect = {
                     selectedRKH = it
@@ -740,10 +807,70 @@ fun ProgressFormScreen(
 
             // 4. Supervisi (Diubah menjadi 4 baris)
             Text("Personil Supervisi", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
-            ClickableSearchField("Supervisi 1 (Wajib)", supervisi1) { activeDialog = "SUP1" }
-            ClickableSearchField("Supervisi 2", supervisi2) { activeDialog = "SUP2" }
-            ClickableSearchField("Supervisi 3", supervisi3) { activeDialog = "SUP3" }
-            ClickableSearchField("Supervisi 4", supervisi4) { activeDialog = "SUP4" }
+
+// Supervisi 1
+            OutlinedTextField(
+                value = supervisi1Name,
+                onValueChange = {}, // Kosong karena read-only
+                label = { Text("Supervisi 1") },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                enabled = false, // Menandakan visual bahwa ini tidak bisa diinteraksi
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledContainerColor = Color(0xFFF0F0F0), // Background abu-abu muda
+                    disabledTextColor = Color.Black,
+                    disabledBorderColor = Color.LightGray,
+                    disabledLabelColor = Color.Gray
+                )
+            )
+
+// Supervisi 2
+            OutlinedTextField(
+                value = supervisi2Name,
+                onValueChange = {},
+                label = { Text("Supervisi 2") },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                enabled = false,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledContainerColor = Color(0xFFF0F0F0),
+                    disabledTextColor = Color.Black,
+                    disabledBorderColor = Color.LightGray,
+                    disabledLabelColor = Color.Gray
+                )
+            )
+
+// Supervisi 3
+            OutlinedTextField(
+                value = supervisi3Name,
+                onValueChange = {},
+                label = { Text("Supervisi 3") },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                enabled = false,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledContainerColor = Color(0xFFF0F0F0),
+                    disabledTextColor = Color.Black,
+                    disabledBorderColor = Color.LightGray,
+                    disabledLabelColor = Color.Gray
+                )
+            )
+
+// Supervisi 4
+            OutlinedTextField(
+                value = supervisi4Name,
+                onValueChange = {},
+                label = { Text("Supervisi 4") },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                enabled = false,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledContainerColor = Color(0xFFF0F0F0),
+                    disabledTextColor = Color.Black,
+                    disabledBorderColor = Color.LightGray,
+                    disabledLabelColor = Color.Gray
+                )
+            )
 
 
 
@@ -782,25 +909,42 @@ fun ProgressFormScreen(
             Text("Hasil Kerja", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
             OutlinedTextField(
                 value = unit,
-                onValueChange = { unit = it },
-                label = { Text("UNIT") },
+                onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) unit = it },
+                label = { Text("Unit") },
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                singleLine = true, // KUNCI UTAMA: Agar tidak bisa enter baris baru
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Next // Pindah ke kolom berikutnya
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                )
             )
+
 
             OutlinedTextField(
                 value = output,
-                onValueChange = { output = it },
-                label = { Text("OUTPUT") },
+                onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) output = it },
+                label = { Text("Output") },
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                singleLine = true, // KUNCI UTAMA
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done // Selesai / Tutup Keyboard
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { focusManager.clearFocus() }
+                )
             )
 
             // --- INPUT FOTO (PENGGANTI BERAS & LEMBUR) ---
             Text("Dokumentasi Foto", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
 
             if (bitmap != null) {
-                Card(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+                Card(modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)) {
                     Image(
                         bitmap = bitmap!!.asImageBitmap(),
                         contentDescription = null,
@@ -835,60 +979,83 @@ fun ProgressFormScreen(
 
             Button(
                 onClick = {
-                    if (isEditMode) {
-                        // JALANKAN UPDATE (Edit Header)
-                        val success = dbHelper.updateProgressHeader(
-                            id = initialData!!["id"]?.toIntOrNull() ?: 0,
-                            noRkh = selectedRKH?.get("no_rkh") ?: "",
-                            block = selectedBlock,
-                            jobType = selectedJobType,
-                            sup1 = supervisi1,
-                            sup2 = supervisi2,
-                            sup3 = supervisi3,
-                            sup4 = supervisi4
+                    try {
+                        if (isEditMode) {
+                            // --- JALANKAN UPDATE (Edit Header) ---
+                            // Gunakan safe call ?. dan ?: untuk menghindari crash
+                            val headerId = initialData?.get("id")?.toIntOrNull() ?: 0
+                            val rkhNo = selectedRKH?.get("no_rkh") ?: ""
 
-                        )
-                        if (success) {
-                            Toast.makeText(context, "Header Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
-                            onSaveSuccess()
-                        }
-                    } else {
-                        // JALANKAN SAVE BARU
-                        if (selectedRKH == null) {
-                            Toast.makeText(context, "Pilih RKH!", Toast.LENGTH_SHORT).show()
-                        } else if (supervisi1.isEmpty()) {
-                            Toast.makeText(context, "Supervisi 1 wajib!", Toast.LENGTH_SHORT).show()
-                        } else if (selectedEmployees.isEmpty()) {
-                            Toast.makeText(context, "Pilih karyawan!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            // 1. Simpan foto ke storage internal dan ambil alamat path-nya
-                            val savedPath = if (bitmap != null) {
-                                dbHelper.saveImageToFile(context, bitmap!!, "ProgressWork")
-                            } else null
+                            if (headerId == 0 || rkhNo.isEmpty()) {
+                                Toast.makeText(context, "Data ID atau RKH tidak valid", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
 
-
-                            dbHelper.savePlantationProgress(
-                                rkh = selectedRKH!!["no_rkh"] ?: "",
-                                category = category,
-                                employees = selectedEmployees.toList(),
-                                supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
-                                unit = unit.toDoubleOrNull() ?: 0.0,
-                                output = output.toDoubleOrNull() ?: 0.0,
-                                rate = rate.toDoubleOrNull() ?: 0.0,
-                                lembur = lembur.toIntOrNull() ?: 0,
-                                beras = if (dapatBeras) 1 else 0,
-                                locationCode = selectedLocationCode,
-                                location = selectedLocationCode,
-                                photoPath = savedPath
+                            val success = dbHelper.updateProgressHeader(
+                                id = headerId,
+                                noRkh = rkhNo,
+                                block = selectedBlock,
+                                jobType = selectedJobType,
+                                sup1 = supervisi1,
+                                sup2 = supervisi2,
+                                sup3 = supervisi3,
+                                sup4 = supervisi4
                             )
-                            onSaveSuccess()
+
+                            if (success) {
+                                Toast.makeText(context, "Header Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
+                                onSaveSuccess()
+                            }
+                        } else {
+                            // --- JALANKAN SAVE BARU ---
+                            val rkhNo = selectedRKH?.get("no_rkh")
+
+                            // Validasi Input sebelum panggil DB
+                            if (rkhNo == null) {
+                                Toast.makeText(context, "Pilih RKH terlebih dahulu!", Toast.LENGTH_SHORT).show()
+                            } else if (supervisi1.isEmpty()) {
+                                Toast.makeText(context, "Supervisi 1 wajib!", Toast.LENGTH_SHORT).show()
+                            } else if (selectedEmployees.isEmpty()) {
+                                Toast.makeText(context, "Pilih minimal 1 karyawan!", Toast.LENGTH_SHORT).show()
+                            } else if (selectedLocationCode.isEmpty()) {
+                                Toast.makeText(context, "Pilih Lokasi / Blok!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                // 1. Simpan foto ke storage internal
+                                val savedPath = if (bitmap != null) {
+                                    dbHelper.saveImageToFile(context, bitmap!!, "ProgressWork")
+                                } else null
+
+                                // 2. Eksekusi Simpan dengan Try-Catch Internal
+                                // Perhatikan: rate, lembur, beras menggunakan default 0 jika null
+                                dbHelper.savePlantationProgress(
+                                    rkh = rkhNo,
+                                    fcba = currentFcba,
+                                    category = category,
+                                    employees = selectedEmployees.toList(),
+                                    supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
+                                    unit = unit.replace(",", ".").toDoubleOrNull() ?: 0.0,
+                                    output = output.replace(",", ".").toDoubleOrNull() ?: 0.0,
+                                    rate = 0.0,
+                                    lembur = 0,
+                                    beras = 0,
+                                    locationCode = selectedLocationCode,
+                                    location = selectedLocationCode,
+                                    photoPath = savedPath
+                                )
+
+                                Toast.makeText(context, "Progress Berhasil Disimpan", Toast.LENGTH_SHORT).show()
+                                onSaveSuccess()
+                            }
                         }
+                    } catch (e: Exception) {
+                        // Mencegah Force Close dan menampilkan pesan error
+                        android.util.Log.e("SAVE_ERROR", "Crash saat simpan: ${e.message}")
+                        Toast.makeText(context, "Gagal Simpan: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(55.dp),
-                // Ganti Color.Orange dengan kode HEX di bawah ini
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isEditMode) Color(0xFFF2994A) else Color(0xFF1A3A8F)
                 )

@@ -63,7 +63,7 @@ fun AttendanceNFCScreen(
                             statusText = "✅ Data Mandor Terdeteksi"
                             statusColor = Color(0xFF2E7D32)
                             
-                            activity.runOnUiThread {
+                            activity?.runOnUiThread {
                                 onNfcVerified(
                                     Employee(
                                         fccode = scannedCode,
@@ -85,7 +85,7 @@ fun AttendanceNFCScreen(
                             if (employee != null) {
                                 statusText = "✅ Berhasil: ${employee.name}"
                                 statusColor = Color(0xFF2E7D32)
-                                activity.runOnUiThread {
+                                activity?.runOnUiThread {
                                     onNfcVerified(employee)
                                 }
                             } else {

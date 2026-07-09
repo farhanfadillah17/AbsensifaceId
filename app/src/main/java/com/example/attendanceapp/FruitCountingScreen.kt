@@ -44,7 +44,11 @@ import androidx.activity.result.launch
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
@@ -273,6 +277,7 @@ fun NfcTransferDialog(data: Map<String, String>, onDismiss: () -> Unit) {
     val activity = context as? MainActivity
     val smallData = mapOf(
         "location_code" to (data["location_code"] ?: ""),
+        "tph_code" to (data["tph_code"] ?: ""),
         "unit" to (data["unit"] ?: "0")
     )
     val jsonString = Gson().toJson(smallData)
@@ -381,6 +386,8 @@ fun FruitCountingFormContent(
         if (it != null) bitmap = it
     }
 
+    val focusManager = LocalFocusManager.current
+
 
     // Launcher Galeri (untuk dipanggil dari dalam SmartCameraView)
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -422,8 +429,7 @@ fun FruitCountingFormContent(
                 supervisi4Name = rkh["supervisi4_name"] ?: supervisi4
 
                 // Sesuaikan "unit" dan "output" dengan kolom di table_rkh
-                unit = rkh["unit"] ?: unit
-                output = rkh["output"] ?: output
+
 
                 if (activeDialog == "RKH") {
                     Toast.makeText(context, "Data RKH Panen Dimuat", Toast.LENGTH_SHORT).show()
@@ -574,11 +580,69 @@ fun FruitCountingFormContent(
 
             Text("Personil Supervisi", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
 
-            // Supervisi Rows - Tampilkan Nama
-            ClickableSearchField("Supervisi 1 (Wajib)", supervisi1Name) { activeDialog = "SUP1" }
-            ClickableSearchField("Supervisi 2", supervisi2Name) { activeDialog = "SUP2" }
-            ClickableSearchField("Supervisi 3", supervisi3Name) { activeDialog = "SUP3" }
-            ClickableSearchField("Supervisi 4", supervisi4Name) { activeDialog = "SUP4" }
+// Supervisi 1
+            OutlinedTextField(
+                value = supervisi1Name,
+                onValueChange = {}, // Kosong karena read-only
+                label = { Text("Supervisi 1") },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                enabled = false, // Menandakan visual bahwa ini tidak bisa diinteraksi
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledContainerColor = Color(0xFFF0F0F0), // Background abu-abu muda
+                    disabledTextColor = Color.Black,
+                    disabledBorderColor = Color.LightGray,
+                    disabledLabelColor = Color.Gray
+                )
+            )
+
+// Supervisi 2
+            OutlinedTextField(
+                value = supervisi2Name,
+                onValueChange = {},
+                label = { Text("Supervisi 2") },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                enabled = false,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledContainerColor = Color(0xFFF0F0F0),
+                    disabledTextColor = Color.Black,
+                    disabledBorderColor = Color.LightGray,
+                    disabledLabelColor = Color.Gray
+                )
+            )
+
+// Supervisi 3
+            OutlinedTextField(
+                value = supervisi3Name,
+                onValueChange = {},
+                label = { Text("Supervisi 3") },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                enabled = false,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledContainerColor = Color(0xFFF0F0F0),
+                    disabledTextColor = Color.Black,
+                    disabledBorderColor = Color.LightGray,
+                    disabledLabelColor = Color.Gray
+                )
+            )
+
+// Supervisi 4
+            OutlinedTextField(
+                value = supervisi4Name,
+                onValueChange = {},
+                label = { Text("Supervisi 4") },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                enabled = false,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledContainerColor = Color(0xFFF0F0F0),
+                    disabledTextColor = Color.Black,
+                    disabledBorderColor = Color.LightGray,
+                    disabledLabelColor = Color.Gray
+                )
+            )
 
 
 
@@ -615,18 +679,32 @@ fun FruitCountingFormContent(
 
             OutlinedTextField(
                 value = unit,
-                onValueChange = { unit = it },
-                label = { Text("UNIT") },
+                onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) unit = it },
+                label = { Text("Unit") },
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                singleLine = true, // KUNCI UTAMA: Agar tidak bisa enter baris baru
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Next // Pindah ke kolom berikutnya
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                )
             )
 
             OutlinedTextField(
                 value = output,
-                onValueChange = { output = it },
-                label = { Text("OUTPUT") },
+                onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) output = it },
+                label = { Text("Output") },
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                singleLine = true, // KUNCI UTAMA
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done // Selesai / Tutup Keyboard
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { focusManager.clearFocus() }
+                )
             )
 
 

@@ -70,10 +70,21 @@ fun QRScannerScreen(
 
     var isFlashOn by remember { mutableStateOf(false) }
     var camera by remember { mutableStateOf<Camera?>(null) }
+    var cameraProvider: ProcessCameraProvider? by remember { mutableStateOf(null) }
+
 
     DisposableEffect(Unit) {
         onDispose {
-            cameraExecutor.shutdown()
+            // 1. Paksa hardware kamera berhenti seketika
+            try {
+                cameraProvider?.unbindAll()
+                Log.d("QRScanner", "Kamera berhasil di-destroy")
+            } catch (e: Exception) {
+                Log.e("QRScanner", "Gagal unbind kamera", e)
+            }
+
+            // 2. Matikan executor dan scanner
+            cameraExecutor.shutdownNow() // Menggunakan shutdownNow agar thread langsung berhenti
             barcodeScanner.close()
         }
     }

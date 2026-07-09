@@ -322,72 +322,93 @@ fun SPBFormScreen(
     var unit by remember { mutableStateOf("") }
     var tph by remember { mutableStateOf("") }
     var empCode by remember { mutableStateOf("") }
+    val scannedCards = remember { mutableStateListOf<Map<String, String>>() }
+    var totalUnit by remember { mutableIntStateOf(0) }
 
     // --- STATE NFC ---
     var showScanDialog by remember { mutableStateOf(false) }
+    var isScannerStarted by remember { mutableStateOf(false) }
 
-    // --- LOGIKA NFC SCANNER ---
+    // logika ini akan aktif selama user berada di Step 2, tanpa peduli dialog muncul atau tidak
+    LaunchedEffect(currentStep) {
+        if (currentStep == 2) {
+            // Tampilkan dialog petunjuk otomatis saat pertama kali masuk ke Step 2 (opsional)
+
+            activity?.onNfcRead = { rawJson ->
+                try {
+                    val gson = com.google.gson.Gson()
+                    val dataMap = gson.fromJson(rawJson, Map::class.java) as Map<String, Any>
+
+                    val scannedLoc = dataMap["location_code"]?.toString() ?: ""
+                    val scannedUnit = dataMap["unit"]?.toString() ?: "0"
+                    val scannedTph = dataMap["tph_code"]?.toString() ?: "-"
+                    activity?.runOnUiThread {
+                        if (scannedLoc.isNotEmpty()) {
+                            val isAlreadyScanned = scannedCards.any {
+                                it["location_code"] == scannedLoc && it["tph_code"] == scannedTph
+                            }
+
+
+                            if (!isAlreadyScanned) {
+                                val newEntry = mapOf(
+                                    "location_code" to scannedLoc,
+                                    "unit" to scannedUnit,
+                                    "tph_code" to scannedTph
+                                )
+                                scannedCards.add(newEntry)
+                                totalUnit += scannedUnit.toIntOrNull() ?: 0
+
+                                Toast.makeText(context, "Terdeteksi: $scannedLoc ($scannedUnit Jjg)", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Kartu $scannedLoc sudah masuk daftar", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    activity?.runOnUiThread {
+                        Toast.makeText(context, "Data kartu tidak dikenali", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        } else {
+            // Matikan listener jika user kembali ke Step 1
+            activity?.onNfcRead = null
+        }
+    }
+
+    // Pastikan listener dimatikan saat screen ditutup (Back)
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.onNfcRead = null
+        }
+    }
+
+    // 2. DIALOG HANYA SEBAGAI PETUNJUK
     if (showScanDialog) {
         AlertDialog(
-            onDismissRequest = {
-                showScanDialog = false
-                activity?.onNfcRead = null
-            },
-            title = { Text("Siap Scan NFC") },
+            onDismissRequest = { showScanDialog = false },
+            title = { Text("Scanner Aktif") },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
                         Icons.Default.Nfc,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
-                        tint = Color(0xFF2E7D32)
+                        tint = Color(0xFF1A3A8F)
                     )
                     Spacer(Modifier.height(16.dp))
-                    Text("Tempelkan kartu NFC ke bagian belakang HP untuk membaca data lokasi.")
+                    Text("NFC Siap. Anda bisa langsung menempelkan kartu-kartu NFC ke belakang HP satu per satu tanpa menekan tombol lagi.")
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
+                Button(onClick = {
                     showScanDialog = false
-                    activity?.onNfcRead = null
-                }) { Text("Batal") }
-            }
-        )
-
-        // Daftarkan listener ke MainActivity saat dialog muncul
-        LaunchedEffect(Unit) {
-            activity?.onNfcRead = { rawJson ->
-                try {
-                    // Parsing JSON dari Kartu
-                    val gson = com.google.gson.Gson()
-                    val dataMap = gson.fromJson(rawJson, Map::class.java)
-
-                    // Ambil value berdasarkan key yang disimpan saat Fruit Counting
-                    val scannedLoc = dataMap["location_code"]?.toString() ?: ""
-                    val scannedUnit = dataMap["unit"]?.toString() ?: ""
-
-                    // Update UI di Main Thread
-                    activity?.runOnUiThread {
-                        if (scannedLoc.isNotEmpty()) {
-                            locCode = scannedLoc
-                            unit = scannedUnit
-                            showScanDialog = false // Tutup dialog jika berhasil
-                            activity.onNfcRead = null
-                            Toast.makeText(
-                                context,
-                                "Data Lokasi Berhasil Dibaca",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                } catch (e: Exception) {
-                    activity?.runOnUiThread {
-                        Toast.makeText(context, "Format kartu tidak valid!", Toast.LENGTH_SHORT)
-                            .show()
-                    }
+                    isScannerStarted = true // Set menjadi true agar tombol scan hilang
+                }) {
+                    Text("MENGERTI")
                 }
             }
-        }
+        )
     }
 
 
@@ -523,82 +544,12 @@ fun SPBFormScreen(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = "STEP 2: SCAN LOKASI NFC",
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1A3A8F),
-                    fontSize = 16.sp
-                )
+                // --- TAMPILAN DI DALAM STEP 2 ---
+                Text("STEP 2: SCAN LOKASI NFC", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+                Spacer(Modifier.height(12.dp))
 
-                // --- DI DALAM STEP 2 Card Column ---
-
-                if (locCode.isNotEmpty()) {
-                    // Tampilkan Informasi Hasil Scan agar User Yakin
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4FF)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text("Lokasi Terdeteksi:", fontSize = 12.sp, color = Color.Gray)
-                            Text("Code: $locCode", fontWeight = FontWeight.Bold)
-                            Text("Unit: $unit", fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    // TOMBOL SIMPAN / UPDATE FINAL
-                    Button(
-                        onClick = {
-                            if (editId != null) {
-                                // LOGIC UPDATE (Jika sedang edit header)
-                                val success = dbHelper.updateSPBHeader(
-                                    id = editId!!,
-                                    mill = selectedMill,
-                                    sopir = sopirName,
-                                    vehicle = selectedVehicle,
-                                    pemuat1 = pemuat1,
-                                    pemuat2 = pemuat2
-                                )
-                                if (success) {
-                                    Toast.makeText(context, "Header SPB Berhasil Diperbarui!", Toast.LENGTH_SHORT).show()
-                                    onBack()
-                                } else {
-                                    Toast.makeText(context, "Gagal memperbarui data!", Toast.LENGTH_SHORT).show()
-                                }
-                            } else {
-                                // LOGIC SIMPAN BARU
-                                val id = dbHelper.saveSPBFull(
-                                    spbNo = spbNo,
-                                    mill = selectedMill,
-                                    sopir = sopirName,
-                                    vehicle = selectedVehicle,
-                                    pemuat1 = pemuat1,
-                                    pemuat2 = pemuat2,
-                                    fcba = fcba,
-                                    locCode = locCode,
-                                    unit = unit
-                                )
-                                if (id > 0) {
-                                    Toast.makeText(context, "SPB Berhasil Disimpan!", Toast.LENGTH_SHORT).show()
-                                    onSuccess()
-                                } else {
-                                    Toast.makeText(context, "Gagal menyimpan data!", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (editId != null) Color(0xFFF57C00) else Color(0xFF2E7D32)
-                        )
-                    ) {
-                        Icon(if (editId != null) Icons.Default.Edit else Icons.Default.Save, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (editId != null) "UPDATE HEADER SPB" else "SIMPAN SPB")
-                    }
-                }
-                else {
-                    // Tombol Scan NFC (Jika belum ada locCode)
+                // Tombol Mulai Scan (Pemicu Dialog)
+                if (!isScannerStarted) {
                     Button(
                         onClick = { showScanDialog = true },
                         modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -607,6 +558,84 @@ fun SPBFormScreen(
                         Icon(Icons.Default.Nfc, null)
                         Spacer(Modifier.width(8.dp))
                         Text("MULAI SCAN NFC")
+                    }
+                } else {
+                    // Opsional: Tampilkan indikator bahwa NFC sedang standby
+                    Surface(
+                        color = Color(0xFFE8F5E9),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.RadioButtonChecked, "Active", tint = Color(0xFF2E7D32), modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Scanner Standby: Tempel kartu sekarang", color = Color(0xFF2E7D32), fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                if (scannedCards.isNotEmpty()) {
+                    // Tampilkan List Kartu yang sudah ter-scan
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4FF)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Daftar Lokasi Ter-scan:", fontSize = 12.sp, color = Color.Gray)
+
+                            scannedCards.forEach { card ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("${card["location_code"]}", fontWeight = FontWeight.Bold)
+                                    Text("TPH: ${card["tph_code"] ?: "-"}", fontSize = 11.sp, color = Color.DarkGray)
+                                    Text("${card["unit"]} Jjg", color = Color(0xFF2E7D32))
+                                }
+                                HorizontalDivider(thickness = 0.5.dp)
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("TOTAL UNIT:", fontWeight = FontWeight.ExtraBold)
+                                Text("$totalUnit Jjg", fontWeight = FontWeight.ExtraBold, color = Color.Blue)
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // TOMBOL SIMPAN
+                    Button(
+                        onClick = {
+                            val allLocs = scannedCards.mapNotNull { it["location_code"] }.distinct().joinToString(", ")
+                            val allTphs = scannedCards.mapNotNull { it["tph_code"] }.distinct().joinToString(", ")
+                            // Logic simpan ke Database
+                            val id = dbHelper.saveSPBFull(
+                                spbNo = spbNo,
+                                mill = selectedMill,
+                                sopir = sopirName,
+                                vehicle = selectedVehicle,
+                                pemuat1 = pemuat1,
+                                pemuat2 = pemuat2,
+                                fcba = fcba,
+                                locCode = allLocs,
+                                tphCode = allTphs,
+                                unit = totalUnit.toString()
+                            )
+                            if (id > 0) {
+                                Toast.makeText(context, "SPB Berhasil Disimpan!", Toast.LENGTH_SHORT).show()
+                                onSuccess()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(55.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                    ) {
+                        Icon(Icons.Default.Save, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("SIMPAN SPB")
                     }
                 }
             }

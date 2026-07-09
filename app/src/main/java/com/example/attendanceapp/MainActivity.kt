@@ -177,7 +177,6 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
 
-        // Pastikan Intent yang datang adalah Intent NFC
         val action = intent.action
         if (NfcAdapter.ACTION_TAG_DISCOVERED == action ||
             NfcAdapter.ACTION_TECH_DISCOVERED == action ||
@@ -187,29 +186,25 @@ class MainActivity : ComponentActivity() {
             val tag: Tag? = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
             tag?.let {
                 if (!dataToWrite.isNullOrEmpty()) {
-                    // --- MODE MENULIS ---
+                    // --- MODE MENULIS (Untuk Perhitungan Buah) ---
                     val success = writeNdefMessage(it, dataToWrite!!)
                     if (success) {
-                        Toast.makeText(this, "Data Berhasil Disimpan ke Kartu!", Toast.LENGTH_LONG)
-                            .show()
-                        dataToWrite = null // Reset agar tidak menulis ulang secara tidak sengaja
-                        onNfcWriteSuccess?.invoke() // Reset UI di Screen
-                        onNfcWriteSuccess = null
-                    } else {
-                        Toast.makeText(
-                            this,
-                            "Gagal Menulis! Pastikan kartu tidak terkunci.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        Toast.makeText(this, "Data Berhasil Disimpan ke Kartu!", Toast.LENGTH_SHORT).show()
+                        // dataToWrite = null // HAPUS INI jika ingin tulis banyak kartu dengan data yang sama
+                        onNfcWriteSuccess?.invoke()
                     }
                 } else if (onNfcRead != null) {
-                    // --- MODE MEMBACA (Untuk SPB Form) ---
+                    // --- MODE MEMBACA (Untuk SPB: Bisa banyak kartu berturut-turut) ---
                     val data = readNdefMessage(it)
                     if (data != null) {
-                        onNfcRead?.invoke(data) // Kirim data ke SPBFormScreen
+                        // Kirim data ke UI SPB.
+                        // UI akan bertanggung jawab memasukkan data ini ke dalam LIST.
+                        onNfcRead?.invoke(data)
+
+                        // Beri feedback suara/getar atau toast kecil
+                        Toast.makeText(this, "Kartu Terbaca!", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(this, "Kartu Kosong atau Format Salah", Toast.LENGTH_SHORT)
-                            .show()
+                        Toast.makeText(this, "Kartu Kosong", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -226,23 +221,40 @@ class MainActivity : ComponentActivity() {
             val record = msg.records[0]
             val payload = record.payload
 
-            // Standar NDEF Text Record: byte pertama berisi panjang kode bahasa
+            if (payload.isEmpty()) return null
+
+            // 1. Tentukan Encoding (UTF-8 atau UTF-16)
+            // Bit ke-7 dari byte pertama menentukan encoding (0 = UTF-8, 1 = UTF-16)
+            val textEncoding = if ((payload[0].toInt() and 128) == 0) Charsets.UTF_8 else Charsets.UTF_16
+
+            // 2. Dapatkan panjang kode bahasa (misal "en" atau "id")
+            // Bit 0-5 berisi panjang kode bahasa
             val languageCodeLength = payload[0].toInt() and 63
 
-            // Ambil string setelah prefix bahasa
-            String(
+            // 3. Ambil data setelah prefix bahasa
+            // Data dimulai dari: 1 (status byte) + languageCodeLength
+            val dataStartPos = 1 + languageCodeLength
+            val dataLength = payload.size - dataStartPos
+
+            if (dataLength <= 0) return ""
+
+            val result = String(
                 payload,
-                languageCodeLength + 1,
-                payload.size - languageCodeLength - 1,
-                Charsets.UTF_8
+                dataStartPos,
+                dataLength,
+                textEncoding
             )
+
+            Log.d("NFC_READ", "Berhasil baca: $result")
+            result
         } catch (e: Exception) {
-            Log.e("NFC_READ", "Error: ${e.message}")
+            Log.e("NFC_READ", "Gagal baca: ${e.message}")
             null
         } finally {
             try {
                 ndef.close()
             } catch (e: Exception) {
+                Log.e("NFC_READ", "Gagal tutup koneksi: ${e.message}")
             }
         }
     }
@@ -820,13 +832,13 @@ fun DashboardScreen(
     val allMenus = listOf(
         // Sesuaikan angka route dengan urutan menu di database/API Anda
         MenuConfig("ABSENSI", Icons.Default.PersonSearch, listOf(), true, route = "1"),
-//        MenuConfig("PROGRESS KERJA", Icons.Default.TrendingUp, listOf(), true, route = "2"),
-//        MenuConfig("PERHITUNGAN BUAH", Icons.Default.Analytics, listOf(), route = "3"),
-//        MenuConfig("PEMBUATAN SPB", Icons.Default.LocalShipping, listOf(), true, route = "4"),
-//        MenuConfig("ANCAK PANEN", Icons.Default.Agriculture, listOf(), route = "5"),
-//        MenuConfig("AKP", Icons.Default.Assessment, listOf(), route = "6"),
+        MenuConfig("PROGRESS KERJA", Icons.Default.TrendingUp, listOf(), true, route = "2"),
+        MenuConfig("PERHITUNGAN BUAH", Icons.Default.Analytics, listOf(), route = "3"),
+        MenuConfig("PEMBUATAN SPB", Icons.Default.LocalShipping, listOf(), true, route = "4"),
+        MenuConfig("ANCAK PANEN", Icons.Default.Agriculture, listOf(), route = "5"),
+        MenuConfig("AKP", Icons.Default.Assessment, listOf(), route = "6"),
         MenuConfig("MASTER DATA", Icons.Default.Storage, listOf(), color = Color(0xFF1A3A8F), route = "7"),
-//        MenuConfig("RENCANA KERJA", Icons.Default.EditNote, listOf(), route = "8"),
+        MenuConfig("RENCANA KERJA", Icons.Default.EditNote, listOf(), route = "8"),
         MenuConfig("SINKRON DATA", Icons.Default.Sync, listOf(), route = "9")
     )
 

@@ -43,21 +43,40 @@ fun SmartCameraView(
     val imageCapture = remember { ImageCapture.Builder().build() }
     val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
+    var cameraProvider: ProcessCameraProvider? by remember { mutableStateOf(null) }
+
+    // 2. DisposableEffect: Mematikan kamera saat Composable keluar dari komposisi (tidak tampil)
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                // Ini akan mematikan hardware kamera dan mematikan indikator lampu seketika
+                cameraProvider?.unbindAll()
+                Log.d("SmartCameraView", "Kamera Berhasil Dimatikan")
+            } catch (e: Exception) {
+                Log.e("SmartCameraView", "Gagal mematikan kamera: ${e.message}")
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
+            // 3. Simpan instance provider ke dalam state
+            val provider = cameraProviderFuture.get()
+            cameraProvider = provider
+
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
             try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageCapture)
+                provider.unbindAll()
+                provider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageCapture)
             } catch (e: Exception) {
                 Log.e("CameraX", "Binding failed", e)
             }
         }, ContextCompat.getMainExecutor(context))
     }
+
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
