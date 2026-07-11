@@ -540,9 +540,17 @@ fun ProgressFormScreen(
                 // Ambil hanya yang tipenya Bibitan
                 dbHelper.getRKHListByTypeMap(currentFcba, "RKH Bibitan (bibitan)")
             }
+            "TRAKSI" -> {
+                // Ambil hanya RKH yang dibuat dengan tipe Traksi
+                dbHelper.getRKHListByTypeMap(currentFcba, "RKH Traksi (TRAKSI)")
+            }
+            "WORKSHOP" -> {
+                // Ambil hanya RKH yang dibuat dengan tipe Workshop
+                dbHelper.getRKHListByTypeMap(currentFcba, "RKH Workshop (WORKSHOP)")
+            }
             else -> {
-                // Fallback default
-                dbHelper.getRKHList(currentFcba)
+                // Fallback jika kategori tidak dikenal, ambil semua RKH
+                dbHelper.getAllRKHListMap(currentFcba)
             }
         }
     }

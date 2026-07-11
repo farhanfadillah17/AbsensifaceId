@@ -370,6 +370,14 @@ fun FruitCountingFormContent(
     // PERBAIKAN: Ambil rate dari initialData
     var rate by remember { mutableStateOf(initialData?.get("rate") ?: "") }
 
+    val pValues = remember { mutableStateListOf(*Array(11) { "" }) }
+
+    val calculatedTotal = remember {
+        derivedStateOf {
+            pValues.sumOf { it.toIntOrNull() ?: 0 }
+        }
+    }
+
     var selectedTPH by remember(initialData) { mutableStateOf(initialData?.get("tph_code") ?: "") }
 //    var lembur by remember { mutableStateOf(initialData?.get("lembur") ?: "0") }
 
@@ -677,19 +685,50 @@ fun FruitCountingFormContent(
 
             ClickableSearchField("Pilih TPH", selectedTPH) { activeDialog = "TPH" }
 
-            OutlinedTextField(
-                value = unit,
-                onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) unit = it },
-                label = { Text("Unit") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true, // KUNCI UTAMA: Agar tidak bisa enter baris baru
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Next // Pindah ke kolom berikutnya
-                ),
-                keyboardActions = KeyboardActions(
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
+            Text(
+                "Penalty Quality (P1 - P11)",
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF1A3A8F),
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+            )
+
+// Looping untuk membuat 11 TextField Penalty ke bawah
+            pValues.forEachIndexed { index, value ->
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { newValue ->
+                        // Hanya terima input angka
+                        if (newValue.all { it.isDigit() }) {
+                            pValues[index] = newValue
+                        }
+                    },
+                    label = { Text("Penalty ${index + 1}") },
+                    placeholder = { Text("0") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+
                 )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+// Form UNIT (Sekarang otomatis mengambil hasil total penalty)
+            OutlinedTextField(
+                value = calculatedTotal.value.toString(),
+                onValueChange = { /* Tidak perlu karena ReadOnly */ },
+                label = { Text("Total Unit (Hasil Penalty)") },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = false, // Disable agar tidak bisa diinput manual
+                readOnly = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledTextColor = Color.Black,
+                    disabledBorderColor = Color(0xFF1A3A8F),
+                    disabledContainerColor = Color(0xFFF1F4FF), // Beri warna background berbeda
+                    disabledLabelColor = Color.DarkGray
+                ),
+
             )
 
             OutlinedTextField(
@@ -768,29 +807,40 @@ fun FruitCountingFormContent(
                             onSaveSuccess()
                         }
                     } else {
-                        // LOGIKA SIMPAN BARU (Lama)
+                        // LOGIKA SIMPAN BARU
                         if (selectedRKH == null || supervisi1.isEmpty() || selectedWorkers.isEmpty() || selectedTPH.isEmpty()) {
                             Toast.makeText(context, "Lengkapi data wajib!", Toast.LENGTH_SHORT).show()
                         } else {
                             val savedPhotoPath = if (bitmap != null) {
                                 dbHelper.saveImageToFile(context, bitmap!!, "FruitCounting")
                             } else null
-                            // Isi parameter sesuai dengan variabel yang ada di State Form Anda
+
+                            // 1. Ambil Total Penalty untuk dijadikan UNIT
+                            val finalUnit = calculatedTotal.value.toDouble()
+
+                            // 2. Map P1-P11 ke List Integer agar mudah dikirim
+                            val p = pValues.map { it.toIntOrNull() ?: 0 }
+
+                            // 3. Simpan ke Database
                             dbHelper.saveFruitCalculation(
                                 fcba = fcba,
                                 rkh = selectedRKH!!["no_rkh"] ?: "",
-                                gang = selectedRKH!!["gang_code"] ?: "",
+                                gang = selectedRKH!!["gangcode"] ?: selectedRKH!!["gang_code"] ?: "",
                                 supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
                                 employees = selectedWorkers.toList(),
-                                location = selectedRKH!!["location_code"] ?: "",
+                                location = selectedLocationCode,
                                 tph = selectedTPH,
-                                unit = unit.toDoubleOrNull() ?: 0.0,
+                                unit = finalUnit, // UNIT sekarang adalah hasil TOTAL PENALTY
                                 output = output.toDoubleOrNull() ?: 0.0,
-                                rate = rate.toDoubleOrNull() ?: 0.0, // Tambahkan rate jika ada field-nya
-                                beras =  0,
-                                lembur =  0.0,
-                                photoPath = savedPhotoPath
+                                rate = rate.toDoubleOrNull() ?: 0.0,
+                                beras = 0,
+                                lembur = 0.0,
+                                photoPath = savedPhotoPath,
+                                // Kirim Penalty secara individu (Pastikan signature function di DatabaseHelper sudah diupdate)
+                                p1 = p[0], p2 = p[1], p3 = p[2], p4 = p[3], p5 = p[4],
+                                p6 = p[5], p7 = p[6], p8 = p[7], p9 = p[8], p10 = p[9], p11 = p[10]
                             )
+
                             Toast.makeText(context, "Data Berhasil Disimpan", Toast.LENGTH_SHORT).show()
                             onSaveSuccess()
                         }

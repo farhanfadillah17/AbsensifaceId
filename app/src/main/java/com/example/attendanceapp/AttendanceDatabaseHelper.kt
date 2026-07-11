@@ -49,8 +49,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     companion object {
         // Ganti nama ke v11 untuk reset total terakhir kali
-        const val DATABASE_NAME = "attendance_reset_final_v316.db"
-        const val DATABASE_VERSION = 316
+        const val DATABASE_NAME = "attendance_reset_final_v318.db"
+        const val DATABASE_VERSION = 318
 
         const val T_EMP = "EMPLOYEE"
         const val E_FCCODE = "FCCODE"
@@ -168,6 +168,9 @@ class AttendanceDatabaseHelper(private val context: Context) :
         const val T_TPH = "TPH"
 
         const val T_NURSERY = "NURSERY"
+
+        const val T_GCMASTER = "GCMASTER"
+        const val T_WORKSHOP_MASTER = "WORKSHOP"
 
         const val T_MILL = "CUSTOMER"
         const val T_VEHICLE = "VEHICLE"
@@ -371,10 +374,36 @@ class AttendanceDatabaseHelper(private val context: Context) :
             db.execSQL(
                 """
                 CREATE TABLE IF NOT EXISTS $T_FRUIT_COUNTING (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT, fcba TEXT, tanggal TEXT, no_rkh TEXT,
-                    gang_code TEXT, supervisi1 TEXT, supervisi2 TEXT, supervisi3 TEXT, supervisi4 TEXT,
-                    karyawan_ids TEXT, location_code TEXT, unit REAL, output REAL, tph_code TEXT,
-                    is_beras INTEGER, lembur REAL, $COLUMN_PHOTO_PATH, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fcba TEXT,
+                    tanggal TEXT,
+                    no_rkh TEXT,
+                    gang_code TEXT,
+                    supervisi1 TEXT,
+                    supervisi2 TEXT,
+                    supervisi3 TEXT,
+                    supervisi4 TEXT,
+                    karyawan_ids TEXT,
+                    location_code TEXT,
+                    p1 INTEGER DEFAULT 0,
+                    p2 INTEGER DEFAULT 0,
+                    p3 INTEGER DEFAULT 0,
+                    p4 INTEGER DEFAULT 0,
+                    p5 INTEGER DEFAULT 0,
+                    p6 INTEGER DEFAULT 0,
+                    p7 INTEGER DEFAULT 0,
+                    p8 INTEGER DEFAULT 0,
+                    p9 INTEGER DEFAULT 0,
+                    p10 INTEGER DEFAULT 0,
+                    p11 INTEGER DEFAULT 0,
+                    total_penalty INTEGER DEFAULT 0,
+                    unit REAL,
+                    output REAL,
+                    tph_code TEXT,
+                    is_beras INTEGER,
+                    lembur REAL,
+                    $COLUMN_PHOTO_PATH TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """.trimIndent()
             )
@@ -651,6 +680,44 @@ class AttendanceDatabaseHelper(private val context: Context) :
         REFERENCES STOCK (FCCODE, FCBA)
 )
     """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS $T_GCMASTER (
+                    ITEM TEXT,
+                    FCCODE TEXT NOT NULL,
+                    FCNAME TEXT NOT NULL,
+                    GCGROUP TEXT,
+                    ACTIVATION TEXT,
+                    FCENTRY TEXT,
+                    FCEDIT TEXT,
+                    FCIP TEXT,
+                    FCBA TEXT NOT NULL,
+                    LASTUPDATE TEXT,
+                    LASTTIME TEXT,
+                    SHOW_GC TEXT,
+                    DIVISION TEXT, 
+                    OWNERSHIP TEXT,
+                    TYPE TEXT,
+                    PRIMARY KEY (FCCODE, FCBA)
+                )
+            """.trimIndent())
+
+            db.execSQL("""
+    CREATE TABLE IF NOT EXISTS $T_WORKSHOP_MASTER (
+        FCCODE TEXT NOT NULL,
+        FCNAME TEXT NOT NULL,
+        REMARKS TEXT,
+        ACTIVATION TEXT,
+        FCENTRY TEXT,
+        FCEDIT TEXT,
+        FCIP TEXT,
+        FCBA TEXT NOT NULL,
+        LASTUPDATE TEXT,
+        LASTTIME TEXT,
+        TYPE TEXT,
+        PRIMARY KEY (FCCODE, FCBA)
+    )
+""".trimIndent())
 
 
             db.execSQL("""
@@ -1249,57 +1316,50 @@ class AttendanceDatabaseHelper(private val context: Context) :
         val db = writableDatabase
         try {
             val inputStream = context.assets.open(fileName)
-            val content = inputStream.bufferedReader().use { it.readText() }
-
-            // 1. Bersihkan sintaks Oracle secara menyeluruh
-            // Hapus "TIMESTAMP'" dan kata "TIMESTAMP" saja agar SQLite tidak bingung
-            val cleanSql = content.replace("TIMESTAMP'", "'", ignoreCase = true)
-                .replace("TIMESTAMP", "", ignoreCase = true)
-
-            // 2. Pecah per perintah SQL berdasarkan titik koma
-            val statements = cleanSql.split(";")
-            val totalStatements = statements.size
+            // Menggunakan useLines agar lebih hemat memori daripada readText()
+            val allLines = inputStream.bufferedReader().readLines()
+            val totalStatements = allLines.size
             var processedCount = 0
+            var insertCount = 0
 
             db.beginTransaction()
             try {
-                statements.forEach { statement ->
-                    val sql = statement.trim()
-                    if (sql.isNotEmpty()) {
-                        // Gunakan REPLACE agar data SRE yang sudah ada tertimpa yang baru (tidak duplikat/error)
-                        val finalSql = if (sql.uppercase().startsWith("INSERT INTO")) {
-                            sql.replaceFirst(
-                                "INSERT INTO",
-                                "INSERT OR REPLACE INTO",
-                                ignoreCase = true
-                            )
-                        } else {
-                            sql
+                allLines.forEach { line ->
+                    var sql = line.trim()
+
+                    if (sql.isNotEmpty() && sql.uppercase().startsWith("INSERT")) {
+                        // 1. Membersihkan sintaks TIMESTAMP (Menangani "TIMESTAMP '..." atau "TIMESTAMP  '...")
+                        // Regex ini menghapus kata TIMESTAMP dan spasi sebelum tanda kutip
+                        sql = sql.replace("TIMESTAMP\\s+'".toRegex(), "'")
+                            .replace("TIMESTAMP", "", ignoreCase = true)
+
+                        // 2. Bersihkan tanda kutip ganda pada nama kolom seperti "TYPE" -> TYPE
+                        sql = sql.replace("\"", "")
+
+                        // 3. Gunakan REPLACE agar data lama tertimpa (mencegah error Duplicate PK)
+                        sql = sql.replaceFirst("INSERT INTO", "INSERT OR REPLACE INTO", ignoreCase = true)
+
+                        // 4. Hapus titik koma di akhir baris jika ada
+                        if (sql.endsWith(";")) {
+                            sql = sql.substring(0, sql.length - 1)
                         }
 
                         try {
-                            db.execSQL(finalSql)
-                            processedCount++
-
-                            // Kirim progress ke UI dalam persentase (0-100)
-                            if (totalStatements > 0) {
-                                val progress = (processedCount * 100) / totalStatements
-                                onProgress(progress)
-                            }
+                            db.execSQL(sql)
+                            insertCount++
                         } catch (e: Exception) {
-                            // Log error baris tertentu tapi lanjut ke baris berikutnya
-                            Log.e(
-                                "IMPORT_ERROR",
-                                "Gagal di $fileName (baris $processedCount): ${e.message}"
-                            )
+                            Log.e("IMPORT_ERROR", "Gagal di $fileName baris $processedCount: ${e.message}")
                         }
+                    }
+
+                    processedCount++
+                    // Kirim progress ke UI
+                    if (totalStatements > 0) {
+                        onProgress((processedCount * 100) / totalStatements)
                     }
                 }
                 db.setTransactionSuccessful()
-                Log.d(
-                    "DB_CHECK",
-                    "IMPORT BERHASIL: $fileName ($processedCount data SRE dimasukkan)"
-                )
+                Log.d("DB_CHECK", "IMPORT SELESAI: $fileName ($insertCount data berhasil masuk)")
             } finally {
                 db.endTransaction()
             }
@@ -2738,13 +2798,15 @@ fun generateNoSPB(fcba: String): String {
         employees: List<String>,
         location: String,
         tph: String,
-        unit: Double,
+        unit: Double, // Ini akan berisi total penalty dari UI
         output: Double,
         rate: Double,
         beras: Int,
         lembur: Double,
         photoPath: String? = null,
-        category: String = "PERHITUNGAN_BUAH"
+        // Parameter Penalty Baru
+        p1: Int = 0, p2: Int = 0, p3: Int = 0, p4: Int = 0, p5: Int = 0,
+        p6: Int = 0, p7: Int = 0, p8: Int = 0, p9: Int = 0, p10: Int = 0, p11: Int = 0
     ): Long {
         val db = this.writableDatabase
         db.beginTransaction()
@@ -2753,7 +2815,6 @@ fun generateNoSPB(fcba: String): String {
                 put("fcba", fcba)
                 put("no_rkh", rkh)
                 put("gang_code", gang)
-                // Mengambil dari list supervisors yang dikirim dari UI
                 put("supervisi1", supervisors.getOrNull(0) ?: "")
                 put("supervisi2", supervisors.getOrNull(1) ?: "")
                 put("supervisi3", supervisors.getOrNull(2) ?: "")
@@ -2761,21 +2822,38 @@ fun generateNoSPB(fcba: String): String {
                 put("karyawan_ids", employees.joinToString(","))
                 put("location_code", location)
                 put("tph_code", tph)
+
+                // Penalty Detail
+                put("p1", p1)
+                put("p2", p2)
+                put("p3", p3)
+                put("p4", p4)
+                put("p5", p5)
+                put("p6", p6)
+                put("p7", p7)
+                put("p8", p8)
+                put("p9", p9)
+                put("p10", p10)
+                put("p11", p11)
+
+                // Unit diisi dengan total penalty (sudah dihitung di UI)
                 put("unit", unit)
+                put("total_penalty", unit.toInt())
+
                 put("output", output)
-                // put("rate", rate) // Aktifkan jika kolom 'rate' sudah Anda buat di DB
                 put("is_beras", beras)
                 put("lembur", lembur)
                 put("photo_path", photoPath)
                 put("tanggal", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
             }
+
             val rowId = db.insert("fruit_counting", null, values)
 
             // JIKA ADA FOTO, CATAT KE TABEL HISTORY UPLOAD
             if (rowId != -1L && !photoPath.isNullOrEmpty()) {
                 val historyValues = ContentValues().apply {
                     put(PH_LOCAL_PATH, photoPath)
-                    put(PH_STATUS, 0) // Status 0 = Belum terupload ke server
+                    put(PH_STATUS, 0)
                 }
                 db.insert(T_PHOTO_HISTORY, null, historyValues)
             }
@@ -2783,7 +2861,7 @@ fun generateNoSPB(fcba: String): String {
             db.setTransactionSuccessful()
             rowId
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal simpan dengan Path: ${e.message}")
+            Log.e("DB_ERROR", "Gagal simpan Fruit Calculation: ${e.message}")
             -1L
         } finally {
             db.endTransaction()
@@ -3293,6 +3371,113 @@ fun generateNoSPB(fcba: String): String {
         }
         cursor.close()
         return list
+    }
+
+    fun getTraksiMaster(fcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        // Tambahkan DIVISION karena di SQL Anda data Afdeling ada di kolom DIVISION
+        val query = "SELECT FCCODE, FCNAME, DIVISION FROM $T_GCMASTER " +
+                "WHERE UPPER(TRIM(FCBA)) = UPPER(TRIM(?)) " +
+                "AND ACTIVATION = 'Y' ORDER BY FCNAME ASC"
+
+        try {
+            db.rawQuery(query, arrayOf(fcba)).use { c ->
+                while (c.moveToNext()) {
+                    list.add(mapOf(
+                        "code" to (c.getString(0) ?: ""),
+                        "name" to (c.getString(1) ?: ""),
+                        "division" to (c.getString(2) ?: "")
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil Traksi: ${e.message}")
+        }
+        return list
+    }
+
+    fun getWorkshopMaster(fcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        val query = "SELECT FCCODE, FCNAME FROM $T_WORKSHOP_MASTER " +
+                "WHERE UPPER(TRIM(FCBA)) = UPPER(TRIM(?)) " +
+                "AND ACTIVATION = 'Y' ORDER BY FCNAME ASC"
+
+        try {
+            db.rawQuery(query, arrayOf(fcba)).use { c ->
+                while (c.moveToNext()) {
+                    list.add(mapOf(
+                        "code" to (c.getString(0) ?: ""),
+                        "name" to (c.getString(1) ?: "")
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil Workshop: ${e.message}")
+        }
+        return list
+    }
+
+    // Fungsi untuk mengambil satu data RKH
+    fun getRKHByNo(noRkh: String): Map<String, String>? {
+        val db = readableDatabase
+        // Kita ambil 1 baris saja karena header (Type, Job, Afd, dll) biasanya sama untuk 1 no_rkh
+        val query = "SELECT * FROM $T_RKH WHERE no_rkh = ? LIMIT 1"
+
+        return try {
+            db.rawQuery(query, arrayOf(noRkh)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val map = mutableMapOf<String, String>()
+                    cursor.columnNames.forEach { col ->
+                        map[col] = cursor.getString(cursor.getColumnIndexOrThrow(col)) ?: ""
+                    }
+                    map
+                } else {
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "getRKHByNo Error: ${e.message}")
+            null
+        }
+    }
+
+    // Fungsi untuk update header saja
+    fun updateRKHHeaderByNo(
+        noRkh: String,
+        type: String,
+        afd: String,
+        gang: String,
+        jobCode: String,
+        hk: String,
+        sup1: String,
+        sup2: String,
+        sup3: String,
+        sup4: String
+    ): Boolean {
+        val db = this.writableDatabase
+        val values = ContentValues().apply {
+            put("type_rkh", type) // Sesuaikan nama kolom dengan tabel Anda (misal: type_rkh atau type)
+            put("afdeling", afd)
+            put("gangcode", gang)
+            put("job_code", jobCode)
+            put("jumlah_hk", hk)
+            put("supervisi1_code", sup1)
+            put("supervisi2_code", sup2)
+            put("supervisi3_code", sup3)
+            put("supervisi4_code", sup4)
+        }
+
+        return try {
+            // Update SEMUA baris yang memiliki no_rkh tersebut
+            val result = db.update(T_RKH, values, "no_rkh = ?", arrayOf(noRkh))
+            Log.d("DB_UPDATE", "Update RKH $noRkh. Baris terpengaruh: $result")
+            result > 0
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal update RKH: ${e.message}")
+            false
+        }
     }
 
 

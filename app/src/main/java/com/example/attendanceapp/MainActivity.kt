@@ -144,6 +144,18 @@ class MainActivity : ComponentActivity() {
                         if (db.isTableEmpty("VEHICLE")) {
                             db.importSqlFromAssets("vehicle.sql")
                         }
+
+                        if (db.isTableEmpty("GCMASTER")) {
+                            Log.d("DB_INIT", "Mengimport data Traksi...")
+                            db.importSqlFromAssets("gcmaster.sql")
+                        }
+
+                        // 5. TAMBAHKAN: Cek Tabel Workshop (WORKSHOP)
+                        // Catatan: Pastikan nama tabel di isTableEmpty sesuai dengan konstanta Anda
+                        if (db.isTableEmpty("WORKSHOP")) {
+                            Log.d("DB_INIT", "Mengimport data Workshop...")
+                            db.importSqlFromAssets("workshop.sql")
+                        }
                     }
                 }
 
@@ -308,7 +320,7 @@ fun AppNavigation(
     var selectedCategory by remember { mutableStateOf("") }
     var selectedSpbCategory by remember { mutableStateOf("") }
     var nfcAction by remember { mutableStateOf("READ") } // "READ" or "WRITE"
-
+    var selectedRkhId by remember { mutableStateOf<String?>(null) }
 
 
     fun navigateTo(screen: Screen) {
@@ -520,11 +532,12 @@ fun AppNavigation(
             onBack = { navigateBack() },
             onAddClick = {
                 // Navigasi ke Form untuk tambah data baru
+                selectedRkhId = null
                 navigateTo(Screen.RKH_FORM)
             },
             onEditClick = { rkhId ->
-                // Navigasi ke Form untuk edit data (opsional)
-                // Sementara bisa dikosongkan atau arahkan ke rute edit jika sudah ada
+                selectedRkhId = rkhId
+                navigateTo(Screen.RKH_FORM)
             }
         )
 
@@ -532,6 +545,7 @@ fun AppNavigation(
             dbHelper = db,
             empId = sessionManager.getFccode() ?: "",
             fcba = sessionManager.getFcba() ?: "",
+            editId = selectedRkhId,
             onBack = { navigateBack() },
             onSuccess = {
                 // Setelah sukses simpan RKH, kembali ke list data RKH (bukan ke dashboard)

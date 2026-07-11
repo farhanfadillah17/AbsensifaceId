@@ -30,6 +30,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.text.style.TextAlign
 import java.util.*
 import kotlin.text.split
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 
 @Composable
 fun SPBMainScreen(
@@ -103,12 +106,16 @@ fun SPBListScreen(
         }
     ) { padding ->
         if (spbListData.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            Box(Modifier
+                .fillMaxSize()
+                .padding(padding), contentAlignment = Alignment.Center) {
                 Text("Belum ada data SPB", color = Color.Gray)
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -128,7 +135,9 @@ fun SPBListScreen(
         // --- 1. MODAL BOTTOM SHEET (MENU) ---
         if (showMenu && selectedItemForMenu != null) {
             ModalBottomSheet(onDismissRequest = { showMenu = false }, sheetState = sheetState) {
-                Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 40.dp)) {
+                Column(Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 40.dp)) {
                     Text("Opsi SPB: ${selectedItemForMenu!!["no_spb"]}", fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
                     ListItem(
                         headlineContent = { Text("Lihat Detail") },
@@ -332,8 +341,6 @@ fun SPBFormScreen(
     // logika ini akan aktif selama user berada di Step 2, tanpa peduli dialog muncul atau tidak
     LaunchedEffect(currentStep) {
         if (currentStep == 2) {
-            // Tampilkan dialog petunjuk otomatis saat pertama kali masuk ke Step 2 (opsional)
-
             activity?.onNfcRead = { rawJson ->
                 try {
                     val gson = com.google.gson.Gson()
@@ -342,12 +349,13 @@ fun SPBFormScreen(
                     val scannedLoc = dataMap["location_code"]?.toString() ?: ""
                     val scannedUnit = dataMap["unit"]?.toString() ?: "0"
                     val scannedTph = dataMap["tph_code"]?.toString() ?: "-"
+
                     activity?.runOnUiThread {
-                        if (scannedLoc.isNotEmpty()) {
+                        // Dialog harus terbuka agar scan diproses
+                        if (showScanDialog && scannedLoc.isNotEmpty()) {
                             val isAlreadyScanned = scannedCards.any {
                                 it["location_code"] == scannedLoc && it["tph_code"] == scannedTph
                             }
-
 
                             if (!isAlreadyScanned) {
                                 val newEntry = mapOf(
@@ -358,9 +366,12 @@ fun SPBFormScreen(
                                 scannedCards.add(newEntry)
                                 totalUnit += scannedUnit.toIntOrNull() ?: 0
 
-                                Toast.makeText(context, "Terdeteksi: $scannedLoc ($scannedUnit Jjg)", Toast.LENGTH_SHORT).show()
+                                // --- KUNCI: DIALOG OTOMATIS TUTUP ---
+                                showScanDialog = false
+
+                                Toast.makeText(context, "Berhasil: $scannedLoc", Toast.LENGTH_SHORT).show()
                             } else {
-                                Toast.makeText(context, "Kartu $scannedLoc sudah masuk daftar", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Kartu sudah ada di daftar", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
@@ -371,7 +382,6 @@ fun SPBFormScreen(
                 }
             }
         } else {
-            // Matikan listener jika user kembali ke Step 1
             activity?.onNfcRead = null
         }
     }
@@ -387,25 +397,25 @@ fun SPBFormScreen(
     if (showScanDialog) {
         AlertDialog(
             onDismissRequest = { showScanDialog = false },
-            title = { Text("Scanner Aktif") },
+            title = { Text("Siap Scan Kartu", fontWeight = FontWeight.Bold) },
             text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Icon(
                         Icons.Default.Nfc,
                         contentDescription = null,
-                        modifier = Modifier.size(64.dp),
+                        modifier = Modifier.size(70.dp),
                         tint = Color(0xFF1A3A8F)
                     )
                     Spacer(Modifier.height(16.dp))
-                    Text("NFC Siap. Anda bisa langsung menempelkan kartu-kartu NFC ke belakang HP satu per satu tanpa menekan tombol lagi.")
+                    Text("Silahkan tempelkan kartu NFC ke belakang HP Anda...", textAlign = TextAlign.Center)
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    showScanDialog = false
-                    isScannerStarted = true // Set menjadi true agar tombol scan hilang
-                }) {
-                    Text("MENGERTI")
+                TextButton(onClick = { showScanDialog = false }) {
+                    Text("BATAL", color = Color.Red)
                 }
             }
         )
@@ -532,78 +542,129 @@ fun SPBFormScreen(
                 }
             }
 
-         else {
-        // --- TAMPILAN STEP 2: SCAN LOKASI DENGAN NFC (MENYAMPING RAPI SEPERTI RKH) ---
-        Card(
-            elevation = CardDefaults.cardElevation(4.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth() // Memaksa card memenuhi lebar layar
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // --- TAMPILAN DI DALAM STEP 2 ---
-                Text("STEP 2: SCAN LOKASI NFC", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
-                Spacer(Modifier.height(12.dp))
+            else {
+                // --- TAMPILAN STEP 2: SCAN LOKASI DENGAN NFC ---
+                Card(
+                    elevation = CardDefaults.cardElevation(4.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text("STEP 2: SCAN LOKASI NFC", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
 
-                // Tombol Mulai Scan (Pemicu Dialog)
-                if (!isScannerStarted) {
-                    Button(
-                        onClick = { showScanDialog = true },
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3A8F))
-                    ) {
-                        Icon(Icons.Default.Nfc, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("MULAI SCAN NFC")
-                    }
-                } else {
-                    // Opsional: Tampilkan indikator bahwa NFC sedang standby
-                    Surface(
-                        color = Color(0xFFE8F5E9),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.RadioButtonChecked, "Active", tint = Color(0xFF2E7D32), modifier = Modifier.size(16.dp))
+                        // Tombol Tambah Data - Memicu Dialog Scan
+                        Button(
+                            onClick = {
+                                showScanDialog = true
+                                isScannerStarted = true
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                        ) {
+                            Icon(Icons.Default.Nfc, null)
                             Spacer(Modifier.width(8.dp))
-                            Text("Scanner Standby: Tempel kartu sekarang", color = Color(0xFF2E7D32), fontSize = 12.sp)
+                            Text("TAMBAH DATA (SCAN NFC)")
                         }
-                    }
-                }
 
-                Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(8.dp))
 
-                if (scannedCards.isNotEmpty()) {
-                    // Tampilkan List Kartu yang sudah ter-scan
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4FF)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text("Daftar Lokasi Ter-scan:", fontSize = 12.sp, color = Color.Gray)
+                        if (scannedCards.isNotEmpty()) {
+                            Text("Daftar Lokasi Ter-scan:", fontSize = 14.sp, fontWeight = FontWeight.Bold)
 
-                            scannedCards.forEach { card ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                            // List Kartu yang sudah ter-scan
+                            scannedCards.forEachIndexed { index, card ->
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4FF)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
                                 ) {
-                                    Text("${card["location_code"]}", fontWeight = FontWeight.Bold)
-                                    Text("TPH: ${card["tph_code"] ?: "-"}", fontSize = 11.sp, color = Color.DarkGray)
-                                    Text("${card["unit"]} Jjg", color = Color(0xFF2E7D32))
+                                    Row(
+                                        modifier = Modifier
+                                            .padding(12.dp)
+                                            .fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "${card["location_code"]}",
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                "TPH: ${card["tph_code"] ?: "-"}",
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                        Text(
+                                            "${card["unit"]} Jjg",
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF2E7D32)
+                                        )
+
+                                        IconButton(onClick = {
+                                            // 1. Ambil unit untuk update total
+                                            val unitToSubtract = card["unit"]?.toIntOrNull() ?: 0
+
+                                            // 2. Hapus langsung dari list (TIDAK pakai '=' )
+                                            if (index < scannedCards.size) {
+                                                scannedCards.removeAt(index)
+
+                                                // 3. Update Total
+                                                totalUnit -= unitToSubtract
+                                            }
+                                        }) {
+                                            Icon(Icons.Default.Delete, "Hapus", tint = Color.Red, modifier = Modifier.size(20.dp))
+                                        }
+                                    }
                                 }
-                                HorizontalDivider(thickness = 0.5.dp)
                             }
 
                             Spacer(Modifier.height(8.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("TOTAL UNIT:", fontWeight = FontWeight.ExtraBold)
-                                Text("$totalUnit Jjg", fontWeight = FontWeight.ExtraBold, color = Color.Blue)
+
+                            // Total Unit
+                            Surface(
+                                color = Color(0xFF1A3A8F),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    Modifier.padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("TOTAL UNIT", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("$totalUnit Jjg", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        } else {
+                            // Tampilan jika belum ada data
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                // PERBAIKAN: Gunakan modifier untuk mengatur size
+                                Icon(
+                                    imageVector = Icons.Default.Nfc,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp),
+                                    tint = Color.LightGray
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Belum ada data. Klik tombol di atas untuk scan.",
+                                    color = Color.Gray,
+                                    fontSize = 12.sp
+                                )
                             }
                         }
-                    }
 
                     Spacer(Modifier.height(16.dp))
 
@@ -630,7 +691,9 @@ fun SPBFormScreen(
                                 onSuccess()
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().height(55.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(55.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
                     ) {
                         Icon(Icons.Default.Save, null)
@@ -643,7 +706,7 @@ fun SPBFormScreen(
     }
         }
     }
-}
+
 
 @Composable
 fun MasterSearchDialog(

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,6 +40,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -335,12 +337,13 @@ fun RKHFormScreen(
     dbHelper: AttendanceDatabaseHelper,
     empId: String,
     fcba: String,
+    editId: String? = null,
     onBack: () -> Unit,
     onSuccess: () -> Unit,
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-
+    val isEditMode = editId != null && editId.isNotEmpty()
     // --- 1. STATE NAVIGATION ---
     var currentStep by remember { mutableStateOf(1) }
 
@@ -350,7 +353,8 @@ fun RKHFormScreen(
             "RKH Panen (Perhitungan buah)",
             "RKH Perawatan (perawatan)",
             "RKH Bibitan (bibitan)",
-            "RKH Traksi (umum)",
+            "RKH Traksi (TRAKSI)",   // Pastikan ada kata TRAKSI untuk filter
+            "RKH Workshop (WORKSHOP)",
             "RKH Umum (umum)"
         )
     }
@@ -385,8 +389,42 @@ fun RKHFormScreen(
 
     var activeDialog by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(fcba) {
-        noRkh = dbHelper.generateNoRKH(fcba)
+    LaunchedEffect(editId) {
+        if (editId != null) {
+            android.util.Log.d("RKH_EDIT", "Memuat data untuk No RKH: $editId")
+
+            // 1. Ambil Data Header (Type, Afd, Job, HK, Supervisor)
+            val headerData = dbHelper.getRKHByNo(editId)
+            headerData?.let {
+                noRkh = it["no_rkh"] ?: editId
+                selectedType = it["type_rkh"] ?: it["type"] ?: ""
+                selectedAfd = it["afdeling"] ?: ""
+                selectedGang = it["gangcode"] ?: ""
+                selectedJob = it["job_code"] ?: ""
+                hk = it["jumlah_hk"] ?: ""
+                unit = it["unit"] ?: ""
+                output = it["output"] ?: ""
+
+                // Supervisor
+                sup1Code = it["supervisi1_code"] ?: ""
+                sup1Name = it["supervisi1_name"] ?: ""
+                sup2Code = it["supervisi2_code"] ?: ""
+                sup2Name = it["supervisi2_name"] ?: ""
+                sup3Code = it["supervisi3_code"] ?: ""
+                sup3Name = it["supervisi3_name"] ?: ""
+                sup4Code = it["supervisi4_code"] ?: ""
+                sup4Name = it["supervisi4_name"] ?: ""
+            }
+
+        } else {
+            // --- MODE BARU ---
+            Log.d("RKH_DEBUG", "Mode Baru, Generating No RKH...")
+            // Pastikan fcba tidak kosong sebelum generate
+            if (fcba.isNotEmpty()) {
+                val generated = dbHelper.generateNoRKH(fcba)
+                noRkh = generated // Ini akan mengubah "Generating..." menjadi nomor asli
+            }
+        }
     }
 
 
@@ -399,22 +437,53 @@ fun RKHFormScreen(
     }
     val jobList = remember(fcba) { dbHelper.getJobList(fcba) }
     val locationList = remember(fcba, selectedAfd, selectedType) {
-        if (selectedType.contains("bibitan", ignoreCase = true)) {
-            // JALUR PEMBIBITAN: Ambil data dari tabel Master Nursery
-            dbHelper.getNurseryLocations(fcba)
-        } else if (selectedAfd.isNotEmpty()) {
-            // JALUR BLOK: Ambil blok berdasarkan Afdeling
-            val filtered = dbHelper.getBlocksByLocation(selectedAfd)
+        val type = selectedType.uppercase()
+        val cleanFcba = fcba.trim()
+        val cleanAfd = selectedAfd.trim()
 
-            // Jika filter afdeling tidak menghasilkan data, tampilkan semua blok (fallback)
-            if (filtered.isEmpty()) {
-                dbHelper.getBlockList(fcba)
-            } else {
-                filtered
+        when {
+            // 1. JALUR TRAKSI
+            type.contains("TRAKSI") -> {
+                val data = dbHelper.getTraksiMaster(cleanFcba)
+                if (data.isEmpty()) {
+                    Log.d("RKH_FLOW", "Data Traksi Kosong di DB")
+                    emptyList()
+                } else {
+                    data.map { "${it["code"]} - ${it["name"]}" }
+                }
             }
-        } else {
-            // Default: Tampilkan semua blok jika afdeling belum dipilih
-            dbHelper.getBlockList(fcba)
+
+            // 2. JALUR WORKSHOP
+            type.contains("WORKSHOP") -> {
+                val data = dbHelper.getWorkshopMaster(cleanFcba)
+                data.map { "${it["code"]} - ${it["name"]}" }
+            }
+
+            // 3. JALUR BIBITAN
+            type.contains("BIBITAN") -> {
+                dbHelper.getNurseryLocations(cleanFcba)
+            }
+
+            // 4. JALUR PERAWATAN / UMUM / PANEN / PERHITUNGAN BUAH
+            // Jika Afdeling dipilih, gunakan filter Afdeling
+            cleanAfd.isNotEmpty() -> {
+                val blocksByAfd = dbHelper.getBlocksByLocation(cleanAfd)
+                if (blocksByAfd.isEmpty()) {
+                    // Fallback: Jika blok per afdeling tidak ditemukan, coba ambil semua blok di FCBA tersebut
+                    dbHelper.getBlockList(cleanFcba)
+                } else {
+                    blocksByAfd
+                }
+            }
+
+            // 5. JALUR DEFAULT (Fallback jika Afdeling belum dipilih atau tipe lainnya)
+            else -> {
+                val allBlocks = dbHelper.getBlockList(cleanFcba)
+                if (allBlocks.isEmpty()) {
+                    Log.d("RKH_FLOW", "Semua jalur lokasi kosong untuk FCBA: $cleanFcba")
+                }
+                allBlocks
+            }
         }
     }
     val supervisorOptions = remember(fcba) { dbHelper.getSupervisorsMap(fcba) }
@@ -670,37 +739,62 @@ fun RKHFormScreen(
                             } else addedBlocks
 
                             if (finalBlocks.isEmpty()) {
-                                Toast.makeText(context, "Belum ada blok yang dipilih!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Pilih lokasi dulu!", Toast.LENGTH_SHORT).show()
                             } else {
+                                if (isEditMode) {
+                                    // --- LOGIKA UPDATE ---
+                                    // Cara paling aman: Hapus data lama dengan No RKH ini, lalu Insert ulang yang baru
+                                    dbHelper.deleteRKH(noRkh)
 
-                                android.util.Log.d("SIMPAN_RKH", "Menyimpan RKH: $noRkh | HK: $hk | Unit: $unit | Output: $output")
-                                // Loop untuk simpan setiap blok ke Database dengan No RKH yang sama
-                                finalBlocks.forEach { block ->
-                                    dbHelper.insertRKHFull(
-                                        noRkh = noRkh,
-                                        tanggal = rkhDate,
-                                        type = selectedType,
-                                        fcba = fcba,
-                                        afd = selectedAfd,
-                                        gang = selectedGang,
-                                        s1 = sup1Code, s2 = sup2Code, s3 = sup3Code, s4 = sup4Code,
-                                        job = selectedJob,
-                                        loc = block["loc"] ?: "",
-                                        hk = block["hk"]?.toDoubleOrNull() ?: 0.0,
-                                        unit = unit.toDoubleOrNull() ?: 0.0,
-                                        out = output.toDoubleOrNull() ?: 0.0
-                                    )
+                                    finalBlocks.forEach { block ->
+                                        dbHelper.insertRKHFull(
+                                            noRkh = noRkh,
+                                            tanggal = rkhDate,
+                                            type = selectedType,
+                                            fcba = fcba,
+                                            afd = selectedAfd,
+                                            gang = selectedGang,
+                                            s1 = sup1Code, s2 = sup2Code, s3 = sup3Code, s4 = sup4Code,
+                                            job = selectedJob,
+                                            loc = block["loc"] ?: "",
+                                            hk = block["hk"]?.toDoubleOrNull() ?: 0.0,
+                                            unit = unit.toDoubleOrNull() ?: 0.0,
+                                            out = output.toDoubleOrNull() ?: 0.0
+                                        )
+                                    }
+                                    Toast.makeText(context, "RKH Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
+                                    onSuccess()
+                                } else {
+                                    // --- LOGIKA SIMPAN BARU ---
+                                    finalBlocks.forEach { block ->
+                                        dbHelper.insertRKHFull(
+                                            noRkh = noRkh,
+                                            tanggal = rkhDate,
+                                            type = selectedType,
+                                            fcba = fcba,
+                                            afd = selectedAfd,
+                                            gang = selectedGang,
+                                            s1 = sup1Code, s2 = sup2Code, s3 = sup3Code, s4 = sup4Code,
+                                            job = selectedJob,
+                                            loc = block["loc"] ?: "",
+                                            hk = block["hk"]?.toDoubleOrNull() ?: 0.0,
+                                            unit = unit.toDoubleOrNull() ?: 0.0,
+                                            out = output.toDoubleOrNull() ?: 0.0
+                                        )
+                                    }
+                                    Toast.makeText(context, "Data Berhasil Disimpan", Toast.LENGTH_SHORT).show()
+                                    onSuccess()
                                 }
-                                Toast.makeText(context, "Berhasil simpan ${finalBlocks.size} blok", Toast.LENGTH_SHORT).show()
-                                onSuccess()
                             }
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(55.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                        modifier = Modifier.fillMaxWidth().height(55.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isEditMode) Color(0xFFF2994A) else Color(0xFF2E7D32)
+                        )
                     ) {
-                        Text("SIMPAN RKH SEKARANG", fontWeight = FontWeight.Bold)
+                        Icon(if (isEditMode) Icons.Default.Edit else Icons.Default.Save, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (isEditMode) "PERBARUI RKH" else "SIMPAN RKH SEKARANG")
                     }
                 }
             }
