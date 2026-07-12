@@ -25,6 +25,7 @@ fun HomeScreen(
     onRegisterFace: () -> Unit,
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit,
+    onBack: () -> Unit,
     onHistory: () -> Unit,
     // onLogout dihapus dari parameter karena tombol ditiadakan
     onFeature2: () -> Unit, // Untuk Transfer Data
@@ -73,83 +74,100 @@ fun HomeScreen(
                     )
                 }
 
-                // Menu Titik Tiga menggantikan Tombol Logout
-                Box {
-                    IconButton(
-                        onClick = { showMenu = true },
-                        modifier = Modifier.background(secondaryColor, RoundedCornerShape(12.dp))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "Menu",
-                            tint = primaryColor
-                        )
-                    }
-
-                    // Di dalam HomeScreen.kt pada bagian DropdownMenu
-
-                    // Di dalam HomeScreen.kt pada bagian DropdownMenu
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Kirim Data") },
-                            leadingIcon = { Icon(Icons.Default.Upload, contentDescription = null) },
-                            onClick = {
-                                showMenu = false
-                                onFeature2() // Ini akan memicu navigasi ke layar Transfer Data
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Terima Data") }, // Ubah label
-                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
-                            onClick = {
-                                showMenu = false
-                                onFeature3() // Menjalankan Screen.QR_SCAN dengan action RECEIVE
-                            }
-                        )
-                    }
-
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.background(secondaryColor, RoundedCornerShape(12.dp))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack, // Gunakan Icon Back
+                        contentDescription = "Kembali",
+                        tint = primaryColor
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(40.dp))
 
-            // TOMBOL UTAMA: Absen Masuk
-            MainActionButton(
-                title = "ABSEN MASUK",
-                subtitle = "Klik saat memulai jam kerja",
-                icon = Icons.Default.Login,
-                color = primaryColor,
-                contentColor = Color.White,
-                onClick = onCheckIn
-            )
+                // Menu Titik Tiga menggantikan Tombol Logout
 
-            Spacer(modifier = Modifier.height(16.dp))
 
-            // TOMBOL UTAMA: Absen Keluar
-            MainActionButton(
-                title = "ABSEN KELUAR",
-                subtitle = "Klik saat pulang kerja",
-                icon = Icons.Default.Logout,
-                color = Color.White,
-                contentColor = primaryColor,
-                isOutline = true,
-                onClick = onCheckOut
-            )
+                Spacer(modifier = Modifier.height(40.dp))
 
-            Spacer(modifier = Modifier.height(16.dp))
+                // TOMBOL UTAMA: Absen Masuk
+                MainActionButton(
+                    title = "ABSEN MASUK",
+                    subtitle = "Klik saat memulai jam kerja",
+                    icon = Icons.Default.Login,
+                    color = primaryColor,
+                    contentColor = Color.White,
+                    onClick = onCheckIn
+                )
 
-            // TOMBOL UTAMA: Absen Masuk
-            MainActionButton(
-                title = "RIWAYAT ABSENSI",
-                subtitle = "Klik untuk lihat data absensi",
-                icon = Icons.Default.History,
-                color = primaryColor,
-                contentColor = Color.White,
-                onClick = onHistory
-            )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // TOMBOL UTAMA: Absen Keluar
+                MainActionButton(
+                    title = "ABSEN KELUAR",
+                    subtitle = "Klik saat pulang kerja",
+                    icon = Icons.Default.Logout,
+                    color = Color.White,
+                    contentColor = primaryColor,
+                    isOutline = true,
+                    onClick = onCheckOut
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // TOMBOL UTAMA: Absen Masuk
+                MainActionButton(
+                    title = "RIWAYAT ABSENSI",
+                    subtitle = "Klik untuk lihat data absensi",
+                    icon = Icons.Default.History,
+                    color = primaryColor,
+                    contentColor = Color.White,
+                    onClick = onHistory
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd) // Posisi ke pojok kanan bawah
+                    .padding(24.dp)
+            ) {
+                FloatingActionButton(
+                    onClick = { showMenu = true },
+                    containerColor = primaryColor,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Menu"
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Kirim Data") },
+                        leadingIcon = { Icon(Icons.Default.Upload, contentDescription = null) },
+                        onClick = {
+                            showMenu = false
+                            onFeature2()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Terima Data") },
+                        leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
+                        onClick = {
+                            showMenu = false
+                            onFeature3()
+                        }
+                    )
+                }
+            }
+
 
 //            Spacer(modifier = Modifier.weight(1f))
 //
@@ -175,7 +193,7 @@ fun HomeScreen(
 //            }
         }
     }
-}
+
 
 @Composable
 fun MainActionButton(

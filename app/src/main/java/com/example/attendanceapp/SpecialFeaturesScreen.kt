@@ -67,9 +67,14 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.intl.Locale
 import com.google.accompanist.permissions.isGranted
 import java.io.ByteArrayOutputStream
 import com.google.accompanist.permissions.rememberPermissionState
+import kotlin.text.format
+import java.text.SimpleDateFormat
+
+import java.util.Date
 
 // ... (bagian import tetap sama)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -95,6 +100,9 @@ fun ProgressMenuScreen(
     var selectedItem by remember { mutableStateOf<Any?>(null) } // Sesuaikan tipe datanya
     // State untuk data list
     var progressData by remember { mutableStateOf(emptyList<Map<String, String>>()) }
+    val availableStaff = remember(currentFcba) {
+        dbHelper.getEmployeesAlreadyCheckedIn(currentFcba)
+    }
 
     // --- FIX NAVIGASI: Menangani tombol Back fisik/gestur HP ---
     BackHandler(enabled = true) {
@@ -137,6 +145,7 @@ fun ProgressMenuScreen(
             ProgressListScreen(
                 category = selectedCategory,
                 progressData = progressData,
+                staffList = availableStaff,
                 dbHelper = dbHelper,
                 onBack = { currentStep = "CHOOSER" },
                 onAddClick = {
@@ -381,6 +390,7 @@ fun ProgressListContent(padding: PaddingValues, data: List<Map<String, String>>)
 fun ProgressListScreen(
     category: String,
     progressData: List<Map<String, String>>,
+    staffList: List<Map<String, String>>,
     dbHelper: AttendanceDatabaseHelper, // Tambahkan dbHelper
     onBack: () -> Unit,
     onAddClick: () -> Unit,
@@ -388,9 +398,12 @@ fun ProgressListScreen(
     onEditClick: (Map<String, String>) -> Unit
 ) {
     var showSheet by remember { mutableStateOf(false) }
+    var showDetailDialog by remember { mutableStateOf(false) } // State untuk kontrol dialog detail
     var selectedItem by remember { mutableStateOf<Map<String, String>?>(null) }
     val sheetState = rememberModalBottomSheetState()
     val context = LocalContext.current
+
+
 
     Scaffold(
         topBar = {
@@ -471,8 +484,8 @@ fun ProgressListScreen(
                         headlineContent = { Text("Lihat Detail") },
                         leadingContent = { Icon(Icons.Default.Visibility, contentDescription = null) },
                         modifier = Modifier.clickable {
-                            showSheet = false
-                            Toast.makeText(context, "Fitur Detail Belum Tersedia", Toast.LENGTH_SHORT).show()
+                            showSheet = false // Tutup menu pilihan
+                            showDetailDialog = true // Buka dialog detail
                         }
                     )
                     ListItem(
@@ -502,6 +515,14 @@ fun ProgressListScreen(
                 }
             }
         }
+    }
+
+    if (showDetailDialog && selectedItem != null) {
+        ProgressDetailDialog(
+            item = selectedItem!!,
+            staffList = staffList,
+            onDismiss = { showDetailDialog = false }
+        )
     }
 }
 
@@ -576,13 +597,14 @@ fun ProgressFormScreen(
     var supervisi3 by remember { mutableStateOf(initialData?.get("supervisor3") ?: "") }
     var supervisi4 by remember { mutableStateOf(initialData?.get("supervisor4") ?: "") }
 
-    var supervisi1Name by remember { mutableStateOf("") }
-    var supervisi2Name by remember { mutableStateOf("") }
-    var supervisi3Name by remember { mutableStateOf("") }
-    var supervisi4Name by remember { mutableStateOf("") }
+    var supervisi1Name by remember { mutableStateOf(initialData?.get("supervisor1") ?: "") }
+    var supervisi2Name by remember { mutableStateOf(initialData?.get("supervisor2") ?: "") }
+    var supervisi3Name by remember { mutableStateOf(initialData?.get("supervisor3") ?: "") }
+    var supervisi4Name by remember { mutableStateOf(initialData?.get("supervisor4") ?: "") }
 
-    var unit by remember { mutableStateOf("") }
-    var output by remember { mutableStateOf("") }
+// State Unit & Output (Ambil dari initialData saat Edit)
+    var unit by remember { mutableStateOf(initialData?.get("unit") ?: "") }
+    var output by remember { mutableStateOf(initialData?.get("output") ?: "") }
 
     // --- LOGIKA AUTO-FILL SAAT PILIH RKH ---
 
@@ -593,35 +615,27 @@ fun ProgressFormScreen(
         // (cirinya: data detail seperti supervisor1_name belum ada)
         val needsDetail = selectedRKH?.containsKey("supervisor1_name") == false
 
-        if (noRkh != null && needsDetail) {
+        if (noRkh != null && needsDetail && !isEditMode) {
             val detail = dbHelper.getRKHDetail(noRkh)
-
             if (detail != null) {
-                // 1. Update state RKH agar LaunchedEffect tidak lari terus (infinite loop)
                 selectedRKH = detail
-
-                // 2. Isi field header
                 selectedJobType = detail["job_code"] ?: ""
 
-
-                // 3. Isi cODE supervisi
+                // Isi kode supervisi
                 supervisi1 = detail["supervisor1"] ?: ""
                 supervisi2 = detail["supervisor2"] ?: ""
                 supervisi3 = detail["supervisor3"] ?: ""
                 supervisi4 = detail["supervisor4"] ?: ""
 
-                // 4. Isi NAMA supervisi (Inilah yang tampil di form)
-                // Jika nama kosong, gunakan kode sebagai cadangan
+                // Isi nama supervisi untuk tampilan UI
                 supervisi1Name = detail["supervisor1_name"].takeIf { !it.isNullOrBlank() } ?: supervisi1
                 supervisi2Name = detail["supervisor2_name"].takeIf { !it.isNullOrBlank() } ?: supervisi2
                 supervisi3Name = detail["supervisor3_name"].takeIf { !it.isNullOrBlank() } ?: supervisi3
                 supervisi4Name = detail["supervisor4_name"].takeIf { !it.isNullOrBlank() } ?: supervisi4
 
-                // 5. Reset Unit & Output (Wajib Isi Manual)
+                // HANYA reset jika tambah baru
                 unit = ""
                 output = ""
-
-                Toast.makeText(context, "Data RKH Berhasil Dimuat", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -990,35 +1004,48 @@ fun ProgressFormScreen(
                     try {
                         if (isEditMode) {
                             // --- JALANKAN UPDATE (Edit Header) ---
-                            // Gunakan safe call ?. dan ?: untuk menghindari crash
                             val headerId = initialData?.get("id")?.toIntOrNull() ?: 0
-                            val rkhNo = selectedRKH?.get("no_rkh") ?: ""
 
-                            if (headerId == 0 || rkhNo.isEmpty()) {
-                                Toast.makeText(context, "Data ID atau RKH tidak valid", Toast.LENGTH_SHORT).show()
+                            // Ambil nilai terbaru dari state UI, jika tidak berubah ambil dari data awal
+                            val rkhNo = selectedRKH?.get("no_rkh") ?: initialData?.get("no_rkh") ?: ""
+
+                            // Ambil job_code asli (misal: POTONG RUMPUT), bukan category (PERAWATAN)
+                            val jobCode = selectedRKH?.get("job_code") ?: initialData?.get("job_code") ?: ""
+
+                            val block = if (selectedLocationCode.isNotEmpty()) selectedLocationCode else initialData?.get("location_code") ?: ""
+
+                            if (headerId == 0) {
+                                Toast.makeText(context, "Data ID tidak valid", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
 
                             val success = dbHelper.updateProgressHeader(
                                 id = headerId,
                                 noRkh = rkhNo,
-                                block = selectedBlock,
-                                jobType = selectedJobType,
+                                block = block,
+                                category = category, // Mengirim "PERAWATAN" / "UMUM"
+                                jobType = jobCode,    // Mengirim "POTONG RUMPUT"
                                 sup1 = supervisi1,
                                 sup2 = supervisi2,
                                 sup3 = supervisi3,
-                                sup4 = supervisi4
+                                sup4 = supervisi4,
+                                unit = unit.replace(",", ".").toDoubleOrNull() ?: 0.0,
+                                output = output.replace(",", ".").toDoubleOrNull() ?: 0.0
                             )
 
                             if (success) {
                                 Toast.makeText(context, "Header Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
                                 onSaveSuccess()
+                            } else {
+                                Toast.makeText(context, "Gagal memperbarui database", Toast.LENGTH_SHORT).show()
                             }
                         } else {
                             // --- JALANKAN SAVE BARU ---
                             val rkhNo = selectedRKH?.get("no_rkh")
 
-                            // Validasi Input sebelum panggil DB
+                            // FIX: Ambil Job Code asli dari RKH yang dipilih
+                            val jobCodeNew = selectedRKH?.get("job_code") ?: ""
+
                             if (rkhNo == null) {
                                 Toast.makeText(context, "Pilih RKH terlebih dahulu!", Toast.LENGTH_SHORT).show()
                             } else if (supervisi1.isEmpty()) {
@@ -1028,17 +1055,16 @@ fun ProgressFormScreen(
                             } else if (selectedLocationCode.isEmpty()) {
                                 Toast.makeText(context, "Pilih Lokasi / Blok!", Toast.LENGTH_SHORT).show()
                             } else {
-                                // 1. Simpan foto ke storage internal
                                 val savedPath = if (bitmap != null) {
                                     dbHelper.saveImageToFile(context, bitmap!!, "ProgressWork")
                                 } else null
 
-                                // 2. Eksekusi Simpan dengan Try-Catch Internal
-                                // Perhatikan: rate, lembur, beras menggunakan default 0 jika null
+                                // FIX: Tambahkan parameter jobCode ke fungsi save
                                 dbHelper.savePlantationProgress(
                                     rkh = rkhNo,
                                     fcba = currentFcba,
                                     category = category,
+                                    jobCode = jobCodeNew,
                                     employees = selectedEmployees.toList(),
                                     supervisors = listOf(supervisi1, supervisi2, supervisi3, supervisi4),
                                     unit = unit.replace(",", ".").toDoubleOrNull() ?: 0.0,
@@ -1056,7 +1082,6 @@ fun ProgressFormScreen(
                             }
                         }
                     } catch (e: Exception) {
-                        // Mencegah Force Close dan menampilkan pesan error
                         android.util.Log.e("SAVE_ERROR", "Crash saat simpan: ${e.message}")
                         Toast.makeText(context, "Gagal Simpan: ${e.message}", Toast.LENGTH_LONG).show()
                     }
@@ -1075,6 +1100,74 @@ fun ProgressFormScreen(
         }
     }
 }
+
+@Composable
+fun ProgressDetailDialog(
+    item: Map<String, String>,
+    staffList: List<Map<String, String>>, // Tambahkan parameter daftar staff
+    onDismiss: () -> Unit
+) {
+    // Fungsi bantuan untuk mencari nama berdasarkan ID/NIK
+    fun getStaffName(id: String?): String {
+        if (id.isNullOrBlank()) return "-"
+
+        val cleanId = id.trim().uppercase() // Bersihkan input dari spasi dan samakan case
+
+        // Cari di list dengan membandingkan 'id' atau 'nik' (antisipasi perbedaan key)
+        val staff = staffList.find {
+            val staffId = it["id"]?.trim()?.uppercase()
+            val staffNik = it["nik"]?.trim()?.uppercase()
+            staffId == cleanId || staffNik == cleanId
+        }
+
+        return staff?.get("name") ?: id // Jika tetap tidak ketemu, tampilkan ID aslinya
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Detail Progress Kerja", style = MaterialTheme.typography.titleLarge) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                DetailRow("No. RKH", item["no_rkh"] ?: "-")
+                DetailRow("Lokasi/Blok", item["location_code"] ?: "-")
+                DetailRow("Pekerjaan", item["job_code"] ?: "-")
+                DetailRow("Kategori", item["category"] ?: "-")
+                Divider()
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Unit", style = MaterialTheme.typography.labelMedium)
+                        Text(item["unit"] ?: "0", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Output", style = MaterialTheme.typography.labelMedium)
+                        Text(item["output"] ?: "0", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Divider()
+                Text("Daftar Supervisi/Mandor:", style = MaterialTheme.typography.labelLarge)
+
+                // Menampilkan NAMA hasil pencarian
+                val s1 = item["supervisor1"]
+                val s2 = item["supervisor2"]
+                val s3 = item["supervisor3"]
+                val s4 = item["supervisor4"]
+
+                if (!s1.isNullOrBlank()) Text("• ${getStaffName(s1)}")
+                if (!s2.isNullOrBlank()) Text("• ${getStaffName(s2)}")
+                if (!s3.isNullOrBlank()) Text("• ${getStaffName(s3)}")
+                if (!s4.isNullOrBlank()) Text("• ${getStaffName(s4)}")
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Dibuat pada: ${item["created_at"]}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("TUTUP") }
+        }
+    )
+}
+
+
 
 
 

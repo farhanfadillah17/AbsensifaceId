@@ -143,6 +143,16 @@ fun RKHMainScreen(
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
 
+    val todayLabel = remember {
+        SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID")).format(Date())
+    }
+
+    // 2. REFRESH DATA OTOMATIS SAAT SCREEN DIBUKA
+    LaunchedEffect(Unit) {
+        // Memanggil fungsi yang sudah kita modifikasi dengan filter TODAY sebelumnya
+        rkhDataList = dbHelper.getAllRKHListMap(fcba)
+    }
+
     // State untuk mengontrol visibilitas menu/dialog
     var showMenu by remember { mutableStateOf(false) }
     var selectedItemForMenu by remember { mutableStateOf<Map<String, String>?>(null) }
@@ -172,7 +182,7 @@ fun RKHMainScreen(
             Box(Modifier
                 .fillMaxSize()
                 .padding(padding), contentAlignment = Alignment.Center) {
-                Text("Belum ada data RKH tersimpan", color = Color.Gray)
+                Text("Belum ada data RKH tersimpan hari ini", color = Color.Gray)
             }
         } else {
             LazyColumn(
@@ -444,7 +454,7 @@ fun RKHFormScreen(
         when {
             // 1. JALUR TRAKSI
             type.contains("TRAKSI") -> {
-                val data = dbHelper.getTraksiMaster(cleanFcba)
+                val data = dbHelper.getTraksiVehicleMaster(cleanFcba)
                 if (data.isEmpty()) {
                     Log.d("RKH_FLOW", "Data Traksi Kosong di DB")
                     emptyList()
@@ -457,6 +467,16 @@ fun RKHFormScreen(
             type.contains("WORKSHOP") -> {
                 val data = dbHelper.getWorkshopMaster(cleanFcba)
                 data.map { "${it["code"]} - ${it["name"]}" }
+            }
+
+            type.contains("UMUM") -> {
+                val data = dbHelper.getGcMaster(cleanFcba)
+                if (data.isEmpty()) {
+                    emptyList()
+                } else {
+                    // Menampilkan format: KODE - NAMA
+                    data.map { "${it["code"]} - ${it["name"]}" }
+                }
             }
 
             // 3. JALUR BIBITAN

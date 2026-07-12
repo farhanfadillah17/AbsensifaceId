@@ -49,9 +49,11 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -69,13 +71,27 @@ fun FruitCountingScreen(
     var selectedItemForEdit by remember { mutableStateOf<Map<String, String>?>(null) }
     // State untuk Menu Tekan Lama
     var selectedItemForMenu by remember { mutableStateOf<Map<String, String>?>(null) }
+    var showDetailDialog by remember { mutableStateOf(false) }
+    var itemToDetail by remember { mutableStateOf<Map<String, String>?>(null) }
     val sheetState = rememberModalBottomSheetState()
     val context = LocalContext.current
-
+    val focusManager = LocalFocusManager.current
     var showMenu by remember { mutableStateOf(false) }
     var selectedItem by remember { mutableStateOf<Any?>(null) } // Sesuaikan tipe datanya
     // Refresh list data
-    var fruitDataList by remember { mutableStateOf(dbHelper.getAllFruitCounting()) }
+    var fruitDataList by remember { mutableStateOf(dbHelper.getAllFruitCounting(fcba)) }
+    val supervisorOptions = remember(fcba) { dbHelper.getSupervisorsMap(fcba) }
+
+    val todayLabel = remember {
+        java.text.SimpleDateFormat("dd MMMM yyyy", java.util.Locale("id", "ID")).format(java.util.Date())
+    }
+
+    // 2. REFRESH DATA OTOMATIS (Hanya ambil data hari ini)
+    LaunchedEffect(fcba, isFormVisible) {
+        // Memanggil fungsi yang sudah kita tambahkan filter TODAY & FCBA sebelumnya
+        fruitDataList = dbHelper.getAllFruitCounting(fcba)
+    }
+
 
     // Dialog NFC
     if (selectedDataForNfc != null) {
@@ -95,7 +111,7 @@ fun FruitCountingScreen(
                 selectedItemForEdit = null // PENTING: Reset agar form bersih saat buka lagi
             },
             onSaveSuccess = {
-                fruitDataList = dbHelper.getAllFruitCounting()
+                fruitDataList = dbHelper.getAllFruitCounting(fcba)
                 isFormVisible = false
                 selectedItemForEdit = null // PENTING: Reset setelah sukses edit
             }
@@ -175,11 +191,11 @@ fun FruitCountingScreen(
 
                 ListItem(
                     headlineContent = { Text("Lihat Detail") },
-                    leadingContent = { Icon(Icons.Default.Visibility, contentDescription = null) },
+                    leadingContent = { Icon(Icons.Default.Visibility, contentDescription = "Lihat Detail") },
                     modifier = Modifier.clickable {
-                        // Ganti showSheet menjadi showMenu
                         showMenu = false
-                        Toast.makeText(context, "Fitur Detail Belum Tersedia", Toast.LENGTH_SHORT).show()
+                        itemToDetail = selectedItemForMenu // Ambil data yang dipilih
+                        showDetailDialog = true // Tampilkan dialog detail
                     }
                 )
 
@@ -210,7 +226,7 @@ fun FruitCountingScreen(
                             val deletedRows = dbHelper.deleteFruitCounting(idStr.toIntOrNull() ?: -1)
                             if (deletedRows > 0) {
                                 Toast.makeText(context, "Data Berhasil Dihapus", Toast.LENGTH_SHORT).show()
-                                fruitDataList = dbHelper.getAllFruitCounting() // Refresh list data otomatis
+                                fruitDataList = dbHelper.getAllFruitCounting(fcba) // Refresh list data otomatis
                             } else {
                                 Toast.makeText(context, "Gagal menghapus data", Toast.LENGTH_SHORT).show()
                             }
@@ -221,6 +237,13 @@ fun FruitCountingScreen(
                 )
             }
         }
+    }
+    if (showDetailDialog && itemToDetail != null) {
+        FruitCountingDetailDialog(
+            data = itemToDetail!!,
+            supervisorOptions = supervisorOptions, // Kirim daftar mandor untuk mapping nama
+            onDismiss = { showDetailDialog = false }
+        )
     }
 }
 
@@ -342,20 +365,20 @@ fun FruitCountingFormContent(
     onSaveSuccess: () -> Unit
 ) {
     val context = LocalContext.current
-
     val isEditMode = initialData != null
+    var selectedRKH by remember { mutableStateOf<Map<String, String>?>(null) }
 
     // Form States
-    var selectedRKH by remember { mutableStateOf<Map<String, String>?>(null) }
-    var supervisi1 by remember { mutableStateOf(initialData?.get("supervisor1") ?: "") }
-    var supervisi2 by remember { mutableStateOf(initialData?.get("supervisor2") ?: "") }
-    var supervisi3 by remember { mutableStateOf(initialData?.get("supervisor3") ?: "") }
-    var supervisi4 by remember { mutableStateOf(initialData?.get("supervisor4") ?: "") }
+    var supervisi1 by remember { mutableStateOf(initialData?.get("supervisi1") ?: "") }
+    var supervisi2 by remember { mutableStateOf(initialData?.get("supervisi2") ?: "") }
+    var supervisi3 by remember { mutableStateOf(initialData?.get("supervisi3") ?: "") }
+    var supervisi4 by remember { mutableStateOf(initialData?.get("supervisi4") ?: "") }
 
-    var supervisi1Name by remember { mutableStateOf("") }
-    var supervisi2Name by remember { mutableStateOf("") }
-    var supervisi3Name by remember { mutableStateOf("") }
-    var supervisi4Name by remember { mutableStateOf("") }
+    // Inisialisasi Name dengan nilai awal dari data (jika ada) agar tidak blank saat pertama buka edit
+    var supervisi1Name by remember { mutableStateOf(initialData?.get("supervisi1") ?: "") }
+    var supervisi2Name by remember { mutableStateOf(initialData?.get("supervisi2") ?: "") }
+    var supervisi3Name by remember { mutableStateOf(initialData?.get("supervisi3") ?: "") }
+    var supervisi4Name by remember { mutableStateOf(initialData?.get("supervisi4") ?: "") }
 
     // PERBAIKAN: Ambil data karyawan dari initialData dan pecah string menjadi Set
     var selectedWorkers by remember {
@@ -423,24 +446,25 @@ fun FruitCountingFormContent(
 
     LaunchedEffect(selectedRKH) {
         selectedRKH?.let { rkh ->
+            // LOGIKA: Hanya update otomatis jika BUKAN mode edit,
+            // ATAU jika user sedang membuka dialog RKH untuk menggantinya secara manual.
             if (!isEditMode || activeDialog == "RKH") {
-                // Simpan Code ke variabel untuk DB
-                supervisi1 = rkh["supervisi1"] ?: supervisi1
-                supervisi2 = rkh["supervisi2"] ?: supervisi2
-                supervisi3 = rkh["supervisi3"] ?: supervisi3
-                supervisi4 = rkh["supervisi4"] ?: supervisi4
+                // Simpan Kode ke variabel untuk DB
+                supervisi1 = rkh["supervisi1"] ?: ""
+                supervisi2 = rkh["supervisi2"] ?: ""
+                supervisi3 = rkh["supervisi3"] ?: ""
+                supervisi4 = rkh["supervisi4"] ?: ""
 
                 // Simpan Name ke variabel untuk UI
-                supervisi1Name = rkh["supervisi1_name"] ?: supervisi1
-                supervisi2Name = rkh["supervisi2_name"] ?: supervisi2
-                supervisi3Name = rkh["supervisi3_name"] ?: supervisi3
-                supervisi4Name = rkh["supervisi4_name"] ?: supervisi4
+                supervisi1Name = rkh["supervisi1_name"] ?: rkh["supervisi1"] ?: ""
+                supervisi2Name = rkh["supervisi2_name"] ?: rkh["supervisi2"] ?: ""
+                supervisi3Name = rkh["supervisi3_name"] ?: rkh["supervisi3"] ?: ""
+                supervisi4Name = rkh["supervisi4_name"] ?: rkh["supervisi4"] ?: ""
 
-                // Sesuaikan "unit" dan "output" dengan kolom di table_rkh
 
 
                 if (activeDialog == "RKH") {
-                    Toast.makeText(context, "Data RKH Panen Dimuat", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Data RKH & Supervisi Dimuat", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -448,7 +472,37 @@ fun FruitCountingFormContent(
 
     var selectedLocationCode by remember { mutableStateOf(initialData?.get("location_code") ?: "") }
     val supervisorOptions = remember { dbHelper.getSupervisorsMap(fcba) }
-    val presentWorkers = remember { dbHelper.getEmployeesAlreadyCheckedIn(fcba) }
+
+    // Efek untuk memuat data dari Database ke Form saat Mode Edit
+    LaunchedEffect(initialData, supervisorOptions) {
+        if (isEditMode && initialData != null) {
+            // 1. Pastikan Kode Supervisi diambil dengan benar dari initialData
+            supervisi1 = initialData["supervisi1"] ?: ""
+            supervisi2 = initialData["supervisi2"] ?: ""
+            supervisi3 = initialData["supervisi3"] ?: ""
+            supervisi4 = initialData["supervisi4"] ?: ""
+
+            // 2. Jika Master Data tersedia, cari Nama untuk tampilan UI
+            if (supervisorOptions.isNotEmpty()) {
+                supervisi1Name =
+                    supervisorOptions.find { it["code"] == supervisi1 }?.get("name") ?: supervisi1
+                supervisi2Name =
+                    supervisorOptions.find { it["code"] == supervisi2 }?.get("name") ?: supervisi2
+                supervisi3Name =
+                    supervisorOptions.find { it["code"] == supervisi3 }?.get("name") ?: supervisi3
+                supervisi4Name =
+                    supervisorOptions.find { it["code"] == supervisi4 }?.get("name") ?: supervisi4
+            }
+
+            // 4. Isi nilai Penalty P1-P11
+            for (i in 0 until 11) {
+                val key = "p${i + 1}"
+                pValues[i] = initialData[key] ?: ""
+            }
+        }
+    }
+
+        val presentWorkers = remember { dbHelper.getEmployeesAlreadyCheckedIn(fcba) }
     val locationCodeFromRKH = selectedRKH?.get("location_code") ?: ""
     val tphList = remember(selectedLocationCode) {
         if (selectedLocationCode.isNotEmpty()) {
@@ -686,14 +740,28 @@ fun FruitCountingFormContent(
             ClickableSearchField("Pilih TPH", selectedTPH) { activeDialog = "TPH" }
 
             Text(
-                "Penalty Quality (P1 - P11)",
+                "Penalty Quality",
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF1A3A8F),
                 modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
             )
 
-// Looping untuk membuat 11 TextField Penalty ke bawah
+            val penaltyLabels = listOf(
+                " Buah Mentah",
+                " Masak tidak panen",
+                " TBS tidak dibawa ke TPH ",
+                " Buah Matahari",
+                " Brondolan tidak di kutip",
+                " Pelepah Sengkleh",
+                " Buah tidak disusun di TPH",
+                " Pelepah tidak di susun di gawangan",
+                " Tangkai Panjang",
+                " Buah di peram",
+                " Brondolan di buang di gawangan "
+            )
+
             pValues.forEachIndexed { index, value ->
+                val currentLabel = penaltyLabels.getOrElse(index) { "Penalty ${index + 1}" }
                 OutlinedTextField(
                     value = value,
                     onValueChange = { newValue ->
@@ -702,13 +770,22 @@ fun FruitCountingFormContent(
                             pValues[index] = newValue
                         }
                     },
-                    label = { Text("Penalty ${index + 1}") },
+                    label = { Text(currentLabel) },
                     placeholder = { Text("0") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next // Mengubah tombol Enter jadi "Next"
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = {
+                            // Berpindah ke form di bawahnya
+                            focusManager.moveFocus(FocusDirection.Down)
+                        }
+                    ),
+                    singleLine = true
                 )
             }
 
@@ -718,7 +795,7 @@ fun FruitCountingFormContent(
             OutlinedTextField(
                 value = calculatedTotal.value.toString(),
                 onValueChange = { /* Tidak perlu karena ReadOnly */ },
-                label = { Text("Total Unit (Hasil Penalty)") },
+                label = { Text("Total Janjang (Hasil Penalty)") },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = false, // Disable agar tidak bisa diinput manual
                 readOnly = true,
@@ -734,7 +811,7 @@ fun FruitCountingFormContent(
             OutlinedTextField(
                 value = output,
                 onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) output = it },
-                label = { Text("Output") },
+                label = { Text("Ha Panen") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true, // KUNCI UTAMA
                 keyboardOptions = KeyboardOptions(
@@ -792,19 +869,36 @@ fun FruitCountingFormContent(
                     .height(55.dp),
                 onClick = {
                     if (isEditMode) {
-                        // JALANKAN UPDATE HEADER
-                        val success = dbHelper.updateFruitHeader(
-                            id = initialData!!["id"]?.toIntOrNull() ?: 0,
-                            noRkh = selectedRKH?.get("no_rkh") ?: "",
-                            tphCode = selectedTPH,
-                            sup1 = supervisi1,
-                            sup2 = supervisi2,
-                            sup3 = supervisi3,
-                            sup4 = supervisi4
-                        )
-                        if (success) {
-                            Toast.makeText(context, "Header Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
-                            onSaveSuccess()
+                        // Ambil ID dengan aman
+                        val editId = initialData?.get("id")?.toIntOrNull() ?: 0
+
+                        if (editId > 0) {
+                            // JALANKAN UPDATE HEADER
+                            val success = dbHelper.updateFruitHeader(
+                                id = editId,
+                                noRkh = selectedRKH?.get("no_rkh") ?: initialData?.get("no_rkh") ?: "",
+                                tphCode = selectedTPH,
+                                sup1 = supervisi1,
+                                sup2 = supervisi2,
+                                sup3 = supervisi3,
+                                sup4 = supervisi4,
+                                output = output.toDoubleOrNull() ?: 0.0,
+                                unit = calculatedTotal.value.toDouble(),
+                                pValues = pValues.map { it.toIntOrNull() ?: 0 },
+                                location = selectedLocationCode, // KIRIM LOKASI TERBARU
+                                employees = selectedWorkers.toList()
+
+
+
+                            )
+                            if (success) {
+                                Toast.makeText(context, "Data Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
+                                onSaveSuccess()
+                            } else {
+                                Toast.makeText(context, "Gagal memperbarui database", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(context, "ID Data tidak ditemukan", Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         // LOGIKA SIMPAN BARU
@@ -855,5 +949,115 @@ fun FruitCountingFormContent(
                 Text(if (isEditMode) "PERBARUI HEADER" else "SIMPAN DATA")
             }
         }
+    }
+}
+
+@Composable
+fun FruitCountingDetailDialog(
+    data: Map<String, String>,
+    supervisorOptions: List<Map<String, String>>, // Tambahkan parameter ini
+    onDismiss: () -> Unit
+) {
+    // Daftar Label Penalty sesuai urutan P1 - P11
+    val penaltyLabels = listOf(
+        "Buah Mentah",          // P1
+        "Buah Matahari",        // P2
+        "Buah Lewat Matang",    // P3
+        "Janjang Kosong",       // P4
+        "Tidak Standar",        // P5
+        "Brondolan Piringan",   // P6
+        "Brondolan TPH",        // P7
+        "Tangkai Panjang",      // P8
+        "Buah Tdk Diangkut",    // P9
+        "Penumpukan TPH",       // P10
+        "Kebersihan TPH"        // P11
+    )
+
+    // Fungsi helper untuk mencari nama supervisor berdasarkan kode
+    fun getSupervisorName(code: String?): String {
+        if (code.isNullOrEmpty()) return "-"
+        return supervisorOptions.find { it["code"] == code }?.get("name") ?: code
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Tutup", color = Color(0xFF1A3A8F)) }
+        },
+        title = {
+            Column {
+                Text("Detail Perhitungan Buah", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("TPH: ${data["tph_code"] ?: "-"}", color = Color(0xFF1A3A8F), fontSize = 16.sp)
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // --- INFO UMUM ---
+                DetailRow("Tanggal", data["tanggal"] ?: data["created_at"] ?: "-")
+                DetailRow("Lokasi / Block", data["location_code"] ?: "-")
+                DetailRow("No RKH", data["no_rkh"] ?: "-")
+
+                HorizontalDivider(thickness = 0.5.dp)
+
+                // --- PERSONEL SUPERVISI (NAMA, BUKAN CODE) ---
+                Text("Personel Supervisi", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.DarkGray)
+                DetailRow("Mandor 1", getSupervisorName(data["supervisi1"]))
+                DetailRow("Mandor 2", getSupervisorName(data["supervisi2"]))
+                DetailRow("Mandor 3", getSupervisorName(data["supervisi3"]))
+                DetailRow("Mandor 4", getSupervisorName(data["supervisi4"]))
+
+                HorizontalDivider(thickness = 0.5.dp)
+
+                // --- HASIL ---
+
+                // --- RINCIAN PENALTY (NAMA PENALTY, BUKAN P1) ---
+                Text("Rincian Penalty", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.DarkGray)
+
+                penaltyLabels.forEachIndexed { index, label ->
+                    val pKey = "p${index + 1}"
+                    val pValue = data[pKey] ?: "0"
+
+                    // Hanya tampilkan jika nilainya lebih dari 0 agar ringkas (opsional)
+                    if (pValue != "0" && pValue.isNotEmpty()) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(label, fontSize = 13.sp, color = Color.Black)
+                            Text(pValue, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    DetailColumn("Output", data["output"] ?: "0")
+                    DetailColumn("Total Unit", data["unit"] ?: "0")
+                }
+
+                HorizontalDivider(thickness = 0.5.dp)
+            }
+        }
+    )
+}
+
+@Composable
+fun DetailRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = Color.Gray, fontSize = 13.sp)
+        Text(value, fontWeight = FontWeight.Medium, fontSize = 13.sp, textAlign = TextAlign.End, modifier = Modifier
+            .weight(1f)
+            .padding(start = 8.dp))
+    }
+}
+
+@Composable
+fun DetailColumn(label: String, value: String) {
+    Column {
+        Text(label, color = Color.Gray, fontSize = 12.sp)
+        Text(value, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF1A3A8F))
     }
 }

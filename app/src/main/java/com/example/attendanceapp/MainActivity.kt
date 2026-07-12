@@ -323,6 +323,8 @@ fun AppNavigation(
     var selectedRkhId by remember { mutableStateOf<String?>(null) }
 
 
+
+
     fun navigateTo(screen: Screen) {
         backStack.add(screen)
     }
@@ -340,6 +342,30 @@ fun AppNavigation(
         sessionManager.logout()
         backStack.clear()
         backStack.add(Screen.LOGIN)
+    }
+
+    LaunchedEffect(currentScreen) {
+        // Hanya jalankan pengecekan jika user TIDAK di layar LOGIN
+        if (currentScreen != Screen.LOGIN) {
+            while (true) {
+                // Periksa apakah session masih valid (isLoggedIn juga mengecek durasi 1 jam)
+                if (!sessionManager.isLoggedIn()) {
+                    // Jika session habis, munculkan pesan dan paksa logout
+                    android.widget.Toast.makeText(
+                        context,
+                        "Sesi Anda telah berakhir. Silakan login kembali.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+
+                    // Fungsi logout akan menghapus backstack dan pindah ke Screen.LOGIN
+                    logout()
+                    break // Hentikan loop
+                }
+
+                // Cek setiap 30 detik agar tidak terlalu membebani sistem
+                kotlinx.coroutines.delay(30000)
+            }
+        }
     }
 
     val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
@@ -377,6 +403,7 @@ fun AppNavigation(
             onCheckIn = { currentAction = AttendanceAction.CHECK_IN; navigateTo(Screen.NFC_ATTENDANCE) },
             onCheckOut = { currentAction = AttendanceAction.CHECK_OUT; navigateTo(Screen.NFC_ATTENDANCE) },
             onHistory = { navigateTo(Screen.HISTORY) },
+            onBack = { navigateBack() },
             onFeature2 = { navigateTo(Screen.TRANSFER_DATA) },
             onFeature3 = {
                 currentAction = AttendanceAction.RECEIVE

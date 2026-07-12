@@ -49,8 +49,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     companion object {
         // Ganti nama ke v11 untuk reset total terakhir kali
-        const val DATABASE_NAME = "attendance_reset_final_v318.db"
-        const val DATABASE_VERSION = 318
+        const val DATABASE_NAME = "attendance_reset_final_v320.db"
+        const val DATABASE_VERSION = 320
 
         const val T_EMP = "EMPLOYEE"
         const val E_FCCODE = "FCCODE"
@@ -104,7 +104,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
         const val P_RKH = "no_rkh"
         const val P_EMP_ID = "emp_id"
         const val P_CATEGORY = "category"
-        const val P_BLOCK = "block_code"
+        const val P_BLOCK = "location_code"
         const val P_RESULT = "work_result"
         const val P_EMP_IDS = "emp_ids"
         const val P_UNIT = "unit"
@@ -118,20 +118,25 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
         // ...
 
-        const val T_SPB = "T_SPB"
-        const val S_ID = "id"
-        const val S_SPB_NO = "spb_no"
-        const val S_FCBA = "fcba"
-        const val S_RKH_NO = "no_rkh"
-        const val S_LOC_CODE = "location_code"
-        const val S_TPH_CODE = "tph_code" // Kolom baru untuk TPH
-        const val S_MILL = "mill_name"
-        const val S_DRIVER = "driver_name"
-        const val S_VEHICLE = "vehicle_no"
-        const val S_LOADER1 = "loader_1"
-        const val S_LOADER2 = "loader_2"
-        const val S_TOTAL_JANJANG = "total_janjang"
-        const val S_CREATED_AT = "created_at"
+        const val T_SPB_HEADER = "T_SPB_HEADER"
+        const val SH_SPB_NO = "spb_no"
+        const val SH_TANGGAL = "tanggal"
+        const val SH_MILL = "mill_code"
+        const val SH_SOPIR = "sopir_name"
+        const val SH_VEHICLE = "vehicle_code"
+        const val SH_PEMUAT1 = "pemuat_1"
+        const val SH_PEMUAT2 = "pemuat_2"
+        const val SH_FCBA = "fcba"
+
+        // --- KONSTANTA SPB DETAIL ---
+        const val T_SPB_DETAIL = "T_SPB_DETAIL"
+        const val SD_ID = "id"
+        const val SD_SPB_NO = "spb_no"
+        const val SD_LOC = "location_code"
+        const val SD_UNIT = "unit"
+        const val SD_TPH = "tph_code"
+        const val SD_FCBA = "fcba"
+        const val SD_EMP = "employee_code"
 
 
         // Di dalam companion object
@@ -155,8 +160,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
         const val T_MENU = "T_MENU"
         const val T_MENU_ACCESS = "T_MENU_ACCESS"
-        val T_SPB_HEADER = "T_SPB_HEADER"
-        val T_SPB_DETAIL = "T_SPB_DETAIL"
+
 
         const val T_RKH = "table_rkh"
         const val T_AFDELING = "afdeling"
@@ -362,13 +366,31 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
             db.execSQL(
                 """
-                CREATE TABLE IF NOT EXISTS $T_PROGRESS (
-                    $P_ID INTEGER PRIMARY KEY AUTOINCREMENT,$P_FCBA TEXT, $P_RKH TEXT, $P_CATEGORY TEXT,
-                    $P_EMP_ID TEXT, $P_EMP_IDS TEXT, $P_BLOCK TEXT, $P_UNIT REAL,
-                    $P_OUTPUT REAL, $P_RATE REAL, $P_LEMBUR REAL, $P_BERAS INTEGER,
-                    $P_RESULT TEXT, $P_NOTES TEXT, $P_STATUS TEXT, $COLUMN_PHOTO_PATH TEXT, $P_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """.trimIndent()
+    CREATE TABLE IF NOT EXISTS $T_PROGRESS (
+        $P_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+        $P_FCBA TEXT, 
+        $P_RKH TEXT, 
+        $P_CATEGORY TEXT,
+        job_code TEXT,        
+        supervisor1 TEXT,     
+        supervisor2 TEXT,     
+        supervisor3 TEXT,     
+        supervisor4 TEXT,     
+        $P_EMP_ID TEXT, 
+        $P_EMP_IDS TEXT, 
+        $P_BLOCK TEXT, 
+        $P_UNIT REAL,
+        $P_OUTPUT REAL, 
+        $P_RATE REAL, 
+        $P_LEMBUR REAL, 
+        $P_BERAS INTEGER,
+        $P_RESULT TEXT, 
+        $P_NOTES TEXT, 
+        $P_STATUS TEXT, 
+        $COLUMN_PHOTO_PATH TEXT, 
+        $P_TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """.trimIndent()
             )
 
             db.execSQL(
@@ -1158,7 +1180,14 @@ class AttendanceDatabaseHelper(private val context: Context) :
         val recordList = mutableListOf<AttendanceRecord>()
         try {
             val db = this.readableDatabase
-            db.rawQuery("SELECT * FROM $T_ATT ORDER BY $A_TIMESTAMP DESC", null).use { c ->
+
+            // 1. Dapatkan tanggal hari ini dalam format yyyy-MM-dd
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+            // 2. Tambahkan filter LIKE untuk mengambil data yang diawali tanggal hari ini saja
+            val query = "SELECT * FROM $T_ATT WHERE $A_TIMESTAMP LIKE ? ORDER BY $A_TIMESTAMP DESC"
+
+            db.rawQuery(query, arrayOf("$today%")).use { c ->
                 while (c.moveToNext()) {
                     recordList.add(
                         AttendanceRecord(
@@ -1173,6 +1202,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 }
             }
         } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil riwayat: ${e.message}")
         }
         return recordList
     }
@@ -2139,6 +2169,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
     fun savePlantationProgress(
         rkh: String,
         category: String,
+        jobCode: String,
         employees: List<String>,
         supervisors: List<String>,
         unit: Double,
@@ -2162,6 +2193,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 put(P_RKH, rkh)
                 put(P_FCBA, fcba)
                 put(P_CATEGORY, category)
+                put("job_code", jobCode)
                 // Menggabungkan list ID karyawan menjadi satu string dipisahkan koma
                 put(P_EMP_IDS, employees.joinToString(","))
                 put(P_BLOCK, locationCode)
@@ -2171,9 +2203,14 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 put(P_LEMBUR, lembur)
                 put(P_BERAS, beras)
                 put(P_STATUS, "COMPLETED")
+                put("supervisor1", supervisors.getOrNull(0) ?: "")
+                put("supervisor2", supervisors.getOrNull(1) ?: "")
+                put("supervisor3", supervisors.getOrNull(2) ?: "")
+                put("supervisor4", supervisors.getOrNull(3) ?: "")
                 put("photo_path", photoPath)
                 // Tambahkan timestamp jika diperlukan
-                put(P_TIMESTAMP, System.currentTimeMillis().toString()) //
+                val currentTimestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                put(P_TIMESTAMP, currentTimestamp)
             }
 
             rowId = db.insert(T_PROGRESS, null, values)
@@ -2320,14 +2357,14 @@ fun generateNoSPB(fcba: String): String {
     val prefix = "$fcba/SPB/$today/"
     var seq = 1
 
-    // 1. PASTIKAN NAMA TABEL BENAR (Gunakan T_SPB, bukan T_SPB_HEADER jika itu tabel simpan Anda)
-    // 2. Gunakan parameter '?' untuk keamanan query
-    val query = "SELECT spb_no FROM T_SPB WHERE spb_no LIKE ? ORDER BY id DESC LIMIT 1"
+    // 1. PERBAIKAN: Gunakan T_SPB_HEADER (Tabel baru Anda)
+    // 2. PERBAIKAN: Urutkan berdasarkan spb_no DESC untuk mendapatkan nomor terbaru
+    val query = "SELECT $SH_SPB_NO FROM $T_SPB_HEADER WHERE $SH_SPB_NO LIKE ? ORDER BY $SH_SPB_NO DESC LIMIT 1"
 
     try {
         db.rawQuery(query, arrayOf("$prefix%")).use { cursor ->
             if (cursor.moveToFirst()) {
-                val lastNo = cursor.getString(0) // Contoh: "SRE/SPB/20260626/001"
+                val lastNo = cursor.getString(0) // Contoh: "KML/SPB/20260711/001"
 
                 // Mengambil bagian setelah '/' terakhir (yaitu "001")
                 val lastPart = lastNo.substringAfterLast("/")
@@ -2387,6 +2424,7 @@ fun generateNoSPB(fcba: String): String {
     fun getAllRKHListMap(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
         // PERBAIKAN: Gunakan GROUP BY dan GROUP_CONCAT
         val query = """
@@ -2404,13 +2442,13 @@ fun generateNoSPB(fcba: String): String {
             MAX(j.fcname) as job_name
         FROM $T_RKH r
         LEFT JOIN $T_JOB j ON r.job_code = j.fccode
-        WHERE r.fcba = ? COLLATE NOCASE
+        WHERE r.fcba = ? AND r.created_at LIKE ? COLLATE NOCASE
         GROUP BY r.no_rkh 
         ORDER BY id DESC
     """.trimIndent()
 
         try {
-            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
+            db.rawQuery(query, arrayOf(fcba, "$today%")).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
                     cursor.columnNames.forEach { col ->
@@ -2648,6 +2686,7 @@ fun generateNoSPB(fcba: String): String {
     fun getRKHPanenList(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
         val query = """
         SELECT 
@@ -2663,13 +2702,13 @@ fun generateNoSPB(fcba: String): String {
         LEFT JOIN $T_EMP e2 ON r.supervisi2 = e2.fccode AND r.fcba = e2.fcba
         LEFT JOIN $T_EMP e3 ON r.supervisi3 = e3.fccode AND r.fcba = e3.fcba
         LEFT JOIN $T_EMP e4 ON r.supervisi4 = e4.fccode AND r.fcba = e4.fcba
-        WHERE r.fcba = ? AND r.type LIKE '%Panen%'
+        WHERE r.fcba = ? AND r.type LIKE '%Panen%' AND r.created_at LIKE ?
         GROUP BY r.no_rkh
         ORDER BY id DESC
     """.trimIndent()
 
         try {
-            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
+            db.rawQuery(query, arrayOf(fcba, "$today%")).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
                     map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id"))
@@ -2791,6 +2830,7 @@ fun generateNoSPB(fcba: String): String {
 
 
     fun saveFruitCalculation(
+        id: Int? = null,
         fcba: String,
         rkh: String,
         gang: String,
@@ -2847,10 +2887,19 @@ fun generateNoSPB(fcba: String): String {
                 put("tanggal", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
             }
 
-            val rowId = db.insert("fruit_counting", null, values)
+            // PENTING: Gunakan logika Update jika ID tersedia, atau Insert jika ID null
+            val rowId: Long = if (id != null && id > 0) {
+                // MODE EDIT: Gunakan update
+                val affectedRows = db.update("fruit_counting", values, "id = ?", arrayOf(id.toString()))
+                if (affectedRows > 0) id.toLong() else -1L
+            } else {
+                // MODE BARU: Gunakan insert
+                db.insert("fruit_counting", null, values)
+            }
 
-            // JIKA ADA FOTO, CATAT KE TABEL HISTORY UPLOAD
+            // JIKA BERHASIL (INSERT/UPDATE), CATAT FOTO KE HISTORY JIKA ADA PATH BARU
             if (rowId != -1L && !photoPath.isNullOrEmpty()) {
+                // Cek apakah path foto ini sudah ada di history untuk menghindari duplikat
                 val historyValues = ContentValues().apply {
                     put(PH_LOCAL_PATH, photoPath)
                     put(PH_STATUS, 0)
@@ -2859,12 +2908,14 @@ fun generateNoSPB(fcba: String): String {
             }
 
             db.setTransactionSuccessful()
-            rowId
+            rowId // Mengembalikan ID yang diedit atau yang baru dibuat
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal simpan Fruit Calculation: ${e.message}")
+            android.util.Log.e("DB_ERROR", "Gagal simpan/update Fruit Calculation: ${e.message}")
             -1L
         } finally {
-            db.endTransaction()
+            if (db.inTransaction()) {
+                db.endTransaction()
+            }
         }
     }
 
@@ -3031,12 +3082,17 @@ fun generateNoSPB(fcba: String): String {
     fun getAllProgress(currentFcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+
 
         // Gunakan TRIM dan UPPER agar pencarian 'KML' tetap ketemu meskipun di DB tertulis 'kml' atau 'KML '
-        val query = "SELECT * FROM $T_PROGRESS WHERE UPPER(TRIM($P_FCBA)) = UPPER(TRIM(?)) ORDER BY $P_ID DESC"
+        val query = "SELECT * FROM $T_PROGRESS " +
+                "WHERE UPPER(TRIM($P_FCBA)) = UPPER(TRIM(?)) " +
+                "AND $P_TIMESTAMP LIKE ? " +
+                "ORDER BY $P_ID DESC"
 
         try {
-            db.rawQuery(query, arrayOf(currentFcba.trim())).use { cursor ->
+            db.rawQuery(query, arrayOf(currentFcba.trim(), "$today%")).use { cursor ->
                 if (cursor.moveToFirst()) {
                     val idIdx = cursor.getColumnIndex(P_ID)
                     val rkhIdx = cursor.getColumnIndex(P_RKH)
@@ -3044,6 +3100,13 @@ fun generateNoSPB(fcba: String): String {
                     val blockIdx = cursor.getColumnIndex(P_BLOCK)
                     val timeIdx = cursor.getColumnIndex(P_TIMESTAMP)
                     val pathIdx = cursor.getColumnIndex("photo_path")
+                    val jobIdx = cursor.getColumnIndex("job_code")
+                    val unitIdx = cursor.getColumnIndex(P_UNIT)
+                    val outIdx = cursor.getColumnIndex(P_OUTPUT)
+                    val sup1Idx = cursor.getColumnIndex("supervisor1")
+                    val sup2Idx = cursor.getColumnIndex("supervisor2")
+                    val sup3Idx = cursor.getColumnIndex("supervisor3")
+                    val sup4Idx = cursor.getColumnIndex("supervisor4")
 
                     do {
                         val map = mutableMapOf<String, String>()
@@ -3056,6 +3119,15 @@ fun generateNoSPB(fcba: String): String {
                         map["location_code"] = if (blockIdx != -1) cursor.getString(blockIdx) ?: "" else ""
                         map["created_at"] = if (timeIdx != -1) cursor.getString(timeIdx) ?: "" else ""
                         map["photo_path"] = if (pathIdx != -1) cursor.getString(pathIdx) ?: "" else ""
+                        map["job_code"] = if (jobIdx != -1) cursor.getString(jobIdx) ?: "" else ""
+                        map["unit"] = if (unitIdx != -1) cursor.getString(unitIdx) ?: "" else ""
+                        map["output"] = if (outIdx != -1) cursor.getString(outIdx) ?: "" else ""
+
+                        // Supervisor
+                        map["supervisor1"] = if (sup1Idx != -1) cursor.getString(sup1Idx) ?: "" else ""
+                        map["supervisor2"] = if (sup2Idx != -1) cursor.getString(sup2Idx) ?: "" else ""
+                        map["supervisor3"] = if (sup3Idx != -1) cursor.getString(sup3Idx) ?: "" else ""
+                        map["supervisor4"] = if (sup4Idx != -1) cursor.getString(sup4Idx) ?: "" else ""
 
                         list.add(map)
                     } while (cursor.moveToNext())
@@ -3124,6 +3196,39 @@ fun generateNoSPB(fcba: String): String {
             }
         } catch (e: Exception) {
             Log.e("DB_ERROR", "getAllSPB Error: ${e.message}")
+        }
+        return list
+    }
+
+    fun getAllSPBHeader(fcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        try {
+            // Query untuk mengambil Header + Total Unit (SUM) + Lokasi Pertama (MIN)
+            val query = """
+            SELECT 
+                h.*, 
+                IFNULL(SUM(d.$SD_UNIT), 0) as total_unit,
+                IFNULL(MIN(d.$SD_LOC), '-') as first_loc
+            FROM $T_SPB_HEADER h
+            LEFT JOIN $T_SPB_DETAIL d ON h.$SH_SPB_NO = d.$SD_SPB_NO
+            WHERE h.$SH_FCBA = ?
+            GROUP BY h.$SH_SPB_NO
+            ORDER BY h.created_at DESC
+        """.trimIndent()
+
+            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val map = mutableMapOf<String, String>()
+                    cursor.columnNames.forEach { col ->
+                        val idx = cursor.getColumnIndex(col)
+                        map[col] = cursor.getString(idx) ?: ""
+                    }
+                    list.add(map)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal load list SPB: ${e.message}")
         }
         return list
     }
@@ -3218,17 +3323,19 @@ fun generateNoSPB(fcba: String): String {
     }
 
     // Tambahkan di dalam class AttendanceDatabaseHelper
-    fun getAllFruitCounting(): List<Map<String, String>> {
+    fun getAllFruitCounting(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
         // Gunakan 'fruit_counting' dan urutkan berdasarkan 'id' atau 'created_at'
-        val query = "SELECT * FROM fruit_counting ORDER BY id DESC"
+        val query = "SELECT * FROM fruit_counting WHERE fcba = ? AND tanggal LIKE ? ORDER BY id DESC"
         try {
-            db.rawQuery(query, null).use { cursor ->
+            db.rawQuery(query, arrayOf(fcba, "$today%")).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
                     cursor.columnNames.forEach { col ->
-                        map[col] = cursor.getString(cursor.getColumnIndexOrThrow(col)) ?: ""
+                        val key = col.lowercase()
+                        map[key] = cursor.getString(cursor.getColumnIndexOrThrow(col)) ?: ""
                     }
                     list.add(map)
                 }
@@ -3285,25 +3392,41 @@ fun generateNoSPB(fcba: String): String {
         id: Int,
         noRkh: String,
         block: String,
+        category: String,
         jobType: String,
         sup1: String,
         sup2: String,
         sup3: String,
-        sup4: String
+        sup4: String,
+        unit: Double,
+        output: Double
     ): Boolean {
         val db = writableDatabase
-        val values = ContentValues().apply {
-            put("no_rkh", noRkh)
-            put("location_code", block)
-            put("job_code", jobType)
-            put("supervisor1", sup1)
-            put("supervisor2", sup2)
-            put("supervisor3", sup3)
-            put("supervisor4", sup4)
+        db.beginTransaction() // MULAI TRANSAKSI
+        return try {
+            val values = ContentValues().apply {
+                // Pastikan key String ini sesuai dengan kolom di onCreate
+                put("no_rkh", noRkh)
+                put("location_code", block)
+                put("category", category)
+                put("job_code", jobType)
+                put("supervisor1", sup1)
+                put("supervisor2", sup2)
+                put("supervisor3", sup3)
+                put("supervisor4", sup4)
+                put("unit", unit)         // Kolom unit
+                put("output", output)
+            }
+
+            // Gunakan variabel T_PROGRESS dan P_ID
+            val result = db.update("work_progress", values, "id = ?", arrayOf(id.toString()))
+            if (result > 0) {
+                db.setTransactionSuccessful()
+                true
+            } else false
+        } finally {
+            db.endTransaction()
         }
-        // Update berdasarkan ID primary key
-        val result = db.update("T_PROGRESS", values, "id = ?", arrayOf(id.toString()))
-        return result > 0
     }
 
     fun updateFruitHeader(
@@ -3313,20 +3436,49 @@ fun generateNoSPB(fcba: String): String {
         sup1: String,
         sup2: String,
         sup3: String,
-        sup4: String
+        sup4: String,
+        output: Double,
+        unit: Double,
+        pValues: List<Int>,
+        location: String,        // TAMBAHKAN PARAMETER INI
+        employees: List<String>
     ): Boolean {
         val db = writableDatabase
-        val values = ContentValues().apply {
-            put("no_rkh", noRkh)
-            put("tph_code", tphCode)
-            put("supervisor1", sup1)
-            put("supervisor2", sup2)
-            put("supervisor3", sup3)
-            put("supervisor4", sup4)
+        db.beginTransaction()
+        return try {
+            val values = ContentValues().apply {
+                put("no_rkh", noRkh)
+                put("tph_code", tphCode)
+                // PERBAIKAN: Nama kolom harus 'supervisi' (akhiran i) sesuai fungsi save
+                put("supervisi1", sup1)
+                put("supervisi2", sup2)
+                put("supervisi3", sup3)
+                put("supervisi4", sup4)
+                put("output", output)
+                put("unit", unit)
+                put("total_penalty", unit.toInt())
+                put("location_code", location)
+                put("karyawan_ids", employees.joinToString(","))
+                pValues.forEachIndexed { index, valInt ->
+                    put("p${index + 1}", valInt)
+                }
+            }
+
+            // PERBAIKAN: Gunakan nama tabel yang benar "fruit_counting"
+            // (atau variabel konstanta T_FRUIT_COUNTING jika nilainya "fruit_counting")
+            val result = db.update("fruit_counting", values, "id = ?", arrayOf(id.toString()))
+            if (result > 0) {
+                db.setTransactionSuccessful() // WAJIB ADA AGAR PERMANEN DI APP INSPECTION
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal Update: ${e.message}")
+            false
+        } finally {
+            db.endTransaction() // MENGAKHIRI TRANSAKSI
         }
-        // Update berdasarkan ID primary key
-        val result = db.update("T_FRUIT_COUNT", values, "id = ?", arrayOf(id.toString()))
-        return result > 0
     }
 
     // --- FUNGSI UNTUK MENGAMBIL DATA MILL (PABRIK) ---
@@ -3373,11 +3525,11 @@ fun generateNoSPB(fcba: String): String {
         return list
     }
 
-    fun getTraksiMaster(fcba: String): List<Map<String, String>> {
+    fun getGcMaster(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        // Tambahkan DIVISION karena di SQL Anda data Afdeling ada di kolom DIVISION
-        val query = "SELECT FCCODE, FCNAME, DIVISION FROM $T_GCMASTER " +
+        // Query mengambil Kode, Nama, dan Divisi (Afdeling)
+        val query = "SELECT FCCODE, FCNAME FROM $T_GCMASTER " +
                 "WHERE UPPER(TRIM(FCBA)) = UPPER(TRIM(?)) " +
                 "AND ACTIVATION = 'Y' ORDER BY FCNAME ASC"
 
@@ -3387,12 +3539,13 @@ fun generateNoSPB(fcba: String): String {
                     list.add(mapOf(
                         "code" to (c.getString(0) ?: ""),
                         "name" to (c.getString(1) ?: ""),
-                        "division" to (c.getString(2) ?: "")
+
                     ))
                 }
             }
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal ambil Traksi: ${e.message}")
+            // Perbaikan pesan Log agar tidak tertukar dengan Traksi
+            Log.e("DB_ERROR", "Gagal ambil GC Master: ${e.message}")
         }
         return list
     }
@@ -3477,6 +3630,95 @@ fun generateNoSPB(fcba: String): String {
         } catch (e: Exception) {
             Log.e("DB_ERROR", "Gagal update RKH: ${e.message}")
             false
+        }
+    }
+
+    fun getTraksiVehicleMaster(fcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        // Tabel VEHICLE memiliki kolom FCCODE, FCNAME, FCBA, dan ACTIVATION
+        val query = "SELECT FCCODE, FCNAME FROM $T_VEHICLE " +
+                "WHERE UPPER(TRIM(FCBA)) = UPPER(TRIM(?)) " +
+                "AND ACTIVATION = 'Y' ORDER BY FCNAME ASC"
+
+        try {
+            db.rawQuery(query, arrayOf(fcba)).use { c ->
+                while (c.moveToNext()) {
+                    list.add(mapOf(
+                        "code" to (c.getString(0) ?: ""),
+                        "name" to (c.getString(1) ?: "")
+                    ))
+                }
+            }
+            android.util.Log.d("DB_CHECK", "Traksi ditemukan: ${list.size} kendaraan untuk FCBA: $fcba")
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil Vehicle (Traksi): ${e.message}")
+        }
+        return list
+    }
+
+
+
+    fun getSPBDetailsByNo(spbNo: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        val query = "SELECT * FROM T_SPB_DETAIL WHERE spb_no = ?"
+
+        try {
+            db.rawQuery(query, arrayOf(spbNo)).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val map = mutableMapOf<String, String>()
+                    cursor.columnNames.forEach { col ->
+                        val idx = cursor.getColumnIndex(col)
+                        map[col] = cursor.getString(idx) ?: ""
+                    }
+                    list.add(map)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal ambil detail SPB: ${e.message}")
+        }
+        return list
+    }
+
+
+    fun insertSPBFull(header: Map<String, String>, details: List<Map<String, String>>): Boolean {
+        val db = writableDatabase
+        db.beginTransaction()
+        return try {
+            // 1. Simpan ke Header
+            val hValues = ContentValues().apply {
+                put(SH_SPB_NO, header["spb_no"])
+                put(SH_TANGGAL, header["tanggal"])
+                put(SH_MILL, header["mill_code"])
+                put(SH_SOPIR, header["sopir_name"])
+                put(SH_VEHICLE, header["vehicle_code"])
+                put(SH_PEMUAT1, header["pemuat_1"])
+                put(SH_PEMUAT2, header["pemuat_2"])
+                put(SH_FCBA, header["fcba"])
+            }
+            db.insertOrThrow(T_SPB_HEADER, null, hValues)
+
+            // 2. Simpan semua baris Detail
+            details.forEach { item ->
+                val dValues = ContentValues().apply {
+                    put(SD_SPB_NO, header["spb_no"]) // Relasi ke header
+                    put(SD_LOC, item["location_code"])
+                    put(SD_UNIT, item["unit"]?.toDoubleOrNull() ?: 0.0)
+                    put(SD_TPH, item["tph_code"])
+                    put(SD_FCBA, header["fcba"])
+                    put(SD_EMP, item["employee_code"])
+                }
+                db.insertOrThrow(T_SPB_DETAIL, null, dValues)
+            }
+
+            db.setTransactionSuccessful()
+            true
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal Simpan SPB Header-Detail: ${e.message}")
+            false
+        } finally {
+            db.endTransaction()
         }
     }
 

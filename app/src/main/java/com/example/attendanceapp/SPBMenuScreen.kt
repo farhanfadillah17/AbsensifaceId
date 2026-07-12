@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 
+
 @Composable
 fun SPBMainScreen(
     dbHelper: AttendanceDatabaseHelper,
@@ -80,15 +81,24 @@ fun SPBListScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var spbListData by remember { mutableStateOf(dbHelper.getAllSPBListMap(fcba)) }
+    var spbListData by remember { mutableStateOf(dbHelper.getAllSPBHeader(fcba)) }
 
     LaunchedEffect(Unit) {
-        spbListData = dbHelper.getAllSPBListMap(fcba)
+        spbListData = dbHelper.getAllSPBHeader(fcba)
     }
     // State Menu & Dialog
     var showMenu by remember { mutableStateOf(false) }
     var selectedItemForMenu by remember { mutableStateOf<Map<String, String>?>(null) }
     var selectedDetailItem by remember { mutableStateOf<Map<String, String>?>(null) }
+    // Ambil detail secara otomatis saat selectedDetailItem berubah
+    val detailsList = remember(selectedDetailItem) {
+        val spbNo = selectedDetailItem?.get("spb_no") ?: ""
+        if (spbNo.isNotEmpty()) {
+            dbHelper.getSPBDetailsByNo(spbNo)
+        } else {
+            emptyList()
+        }
+    }
     var itemToDelete by remember { mutableStateOf<Map<String, String>?>(null) }
     val sheetState = rememberModalBottomSheetState()
 
@@ -169,15 +179,33 @@ fun SPBListScreen(
                 title = { Text("Detail SPB", fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        DetailRow("No SPB", selectedDetailItem!!["no_spb"])
-                        DetailRow("Pabrik", selectedDetailItem!!["mill_name"])
-                        DetailRow("Sopir", selectedDetailItem!!["driver_name"])
+                        // Gunakan key sesuai konstanta SH_... di DatabaseHelper
+                        DetailRow("No SPB", selectedDetailItem!!["spb_no"])
+                        DetailRow("Pabrik", selectedDetailItem!!["mill_code"])
+                        DetailRow("Sopir", selectedDetailItem!!["sopir_name"])
                         DetailRow("Kendaraan", selectedDetailItem!!["vehicle_code"])
-                        DetailRow("Pemuat", "${selectedDetailItem!!["loader_1"]}, ${selectedDetailItem!!["loader_2"]}")
-                        DetailRow("Lokasi/Unit", "${selectedDetailItem!!["location_code"]} / ${selectedDetailItem!!["unit"]}")
+                        DetailRow("Pemuat 1", selectedDetailItem!!["pemuat_1"])
+                        DetailRow("Pemuat 2", selectedDetailItem!!["pemuat_2"])
+
+                        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+
+                        Text("Daftar Lokasi & Unit:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+
+                        // Tampilkan semua lokasi yang ada di tabel DETAIL
+                        detailsList.forEach { detail ->
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("• ${detail["location_code"]}", fontSize = 13.sp)
+                                Text("${detail["unit"]} Jjg", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 },
-                confirmButton = { TextButton(onClick = { selectedDetailItem = null }) { Text("Tutup") } }
+                confirmButton = {
+                    TextButton(onClick = { selectedDetailItem = null }) { Text("Tutup") }
+                }
             )
         }
 
@@ -223,22 +251,25 @@ fun SPBItemCard(
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(item["no_spb"] ?: "", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
+                Text(item["spb_no"] ?: "", fontWeight = FontWeight.Bold, color = Color(0xFF1A3A8F))
                 Text(item["created_at"] ?: "", fontSize = 12.sp, color = Color.Gray)
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Row(Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1.1f)) {
                     Text("Lokasi", fontSize = 10.sp, color = Color.Gray)
-                    Text(item["location_code"] ?: "-", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                    // Ambil first_loc (lokasi pertama) dari hasil query header
+                    Text(item["first_loc"] ?: "-", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                 }
                 Column(Modifier.weight(0.9f)) {
-                    Text("Unit", fontSize = 10.sp, color = Color.Gray)
-                    Text("${item["unit"]} Jjg", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                    Text("Total Janjang", fontSize = 10.sp, color = Color.Gray)
+                    // Ambil total_unit (sum dari detail)
+                    Text("${item["total_unit"] ?: "0"} Jjg", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                 }
                 Column(Modifier.weight(1f)) {
                     Text("Sopir", fontSize = 10.sp, color = Color.Gray)
-                    Text(item["driver_name"] ?: "-", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                    // Gunakan "sopir_name" sesuai konstanta SH_SOPIR
+                    Text(item["sopir_name"] ?: "-", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                 }
             }
         }
@@ -281,6 +312,10 @@ fun SPBFormScreen(
 
         vehicles.clear()
         vehicles.addAll(dbHelper.getAllVehicles())
+
+        if (editId == null) {
+            spbNo = dbHelper.generateNoSPB(fcba)
+        }
     }
 
     // --- STATE DIALOG PENCARIAN ---
@@ -565,7 +600,7 @@ fun SPBFormScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3A8F))
                         ) {
                             Icon(Icons.Default.Nfc, null)
                             Spacer(Modifier.width(8.dp))
@@ -638,7 +673,7 @@ fun SPBFormScreen(
                                     Modifier.padding(12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("TOTAL UNIT", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("TOTAL JANJANG", color = Color.White, fontWeight = FontWeight.Bold)
                                     Text("$totalUnit Jjg", color = Color.White, fontWeight = FontWeight.Bold)
                                 }
                             }
@@ -669,37 +704,54 @@ fun SPBFormScreen(
                     Spacer(Modifier.height(16.dp))
 
                     // TOMBOL SIMPAN
-                    Button(
-                        onClick = {
-                            val allLocs = scannedCards.mapNotNull { it["location_code"] }.distinct().joinToString(", ")
-                            val allTphs = scannedCards.mapNotNull { it["tph_code"] }.distinct().joinToString(", ")
-                            // Logic simpan ke Database
-                            val id = dbHelper.saveSPBFull(
-                                spbNo = spbNo,
-                                mill = selectedMill,
-                                sopir = sopirName,
-                                vehicle = selectedVehicle,
-                                pemuat1 = pemuat1,
-                                pemuat2 = pemuat2,
-                                fcba = fcba,
-                                locCode = allLocs,
-                                tphCode = allTphs,
-                                unit = totalUnit.toString()
-                            )
-                            if (id > 0) {
-                                Toast.makeText(context, "SPB Berhasil Disimpan!", Toast.LENGTH_SHORT).show()
-                                onSuccess()
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(55.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-                    ) {
-                        Icon(Icons.Default.Save, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("SIMPAN SPB")
-                    }
+                        Button(
+                            onClick = {
+                                if (scannedCards.isEmpty()) {
+                                    Toast.makeText(context, "Belum ada data lokasi yang di-scan!", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                val currentDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                                // 1. Siapkan Data Header
+                                val headerMap = mapOf(
+                                    "spb_no" to spbNo,
+                                    "tanggal" to currentDate,
+                                    "mill_code" to selectedMill,
+                                    "sopir_name" to sopirName,
+                                    "vehicle_code" to selectedVehicle,
+                                    "pemuat_1" to pemuat1,
+                                    "pemuat_2" to pemuat2,
+                                    "fcba" to fcba
+                                )
+
+                                // 2. Siapkan Data Detail (Konversi dari scannedCards)
+                                val detailsList = scannedCards.map { card ->
+                                    mapOf(
+                                        "location_code" to (card["location_code"] ?: ""),
+                                        "unit" to (card["unit"] ?: "0"),
+                                        "tph_code" to (card["tph_code"] ?: ""),
+                                        "employee_code" to (card["employee_code"] ?: "")
+                                    )
+                                }
+
+                                // 3. Panggil fungsi insertSPBFull yang baru dibuat di DatabaseHelper
+                                val isSuccess = dbHelper.insertSPBFull(headerMap, detailsList)
+
+                                if (isSuccess) {
+                                    Toast.makeText(context, "SPB Berhasil Disimpan!", Toast.LENGTH_SHORT).show()
+                                    onSuccess() // Kembali ke Dashboard atau Menu Utama
+                                } else {
+                                    Toast.makeText(context, "Gagal menyimpan SPB ke Database!", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(55.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3A8F))
+                        ) {
+                            Icon(Icons.Default.Save, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("SIMPAN SPB")
+                        }
                 }
             }
         }
