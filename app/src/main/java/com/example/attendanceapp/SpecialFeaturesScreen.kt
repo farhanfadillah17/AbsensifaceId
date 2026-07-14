@@ -589,9 +589,13 @@ fun ProgressFormScreen(
     }
 
     // --- FORM STATES ---
-    var selectedRKH by remember { mutableStateOf<Map<String, String>?>(null) }
-    var selectedBlock by remember { mutableStateOf("") }
-    var selectedJobType by remember { mutableStateOf("") }
+    var selectedRKH by remember {
+        mutableStateOf<Map<String, String>?>(
+            initialData?.let { mapOf("no_rkh" to (it["no_rkh"] ?: "")) }
+        )
+    }
+    var selectedLocationCode by remember { mutableStateOf(initialData?.get("location_code") ?: "") }
+    var selectedJobType by remember { mutableStateOf(initialData?.get("job_code") ?: "") }
     var supervisi1 by remember { mutableStateOf(initialData?.get("supervisor1") ?: "") }
     var supervisi2 by remember { mutableStateOf(initialData?.get("supervisor2") ?: "") }
     var supervisi3 by remember { mutableStateOf(initialData?.get("supervisor3") ?: "") }
@@ -654,7 +658,6 @@ fun ProgressFormScreen(
 
     val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
     // Logic: Blok berdasarkan lokasi RKH
-    var selectedLocationCode by remember { mutableStateOf(initialData?.get("location_code") ?: "") }
     var showSmartCamera by remember { mutableStateOf(false) }
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
 
