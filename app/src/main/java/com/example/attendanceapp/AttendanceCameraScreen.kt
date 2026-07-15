@@ -42,6 +42,7 @@ fun AttendanceCameraScreen(
     onSuccess: () -> Unit
 ) {
     val context = LocalContext.current
+    val activity = context as? MainActivity
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
 
@@ -56,6 +57,11 @@ fun AttendanceCameraScreen(
     var isDistanceVerified by remember { mutableStateOf(false) }
     var blinkStep by remember { mutableIntStateOf(0) } // 0: wait open, 1: wait closed, 2: wait open (blinked)
     var initialFaceWidth by remember { mutableFloatStateOf(0f) }
+    
+    // --- STATE BARU UNTUK TRACKING KEGAGALAN ---
+    var failCount by remember { mutableIntStateOf(0) }
+    var noFaceTimer by remember { mutableLongStateOf(0L) }
+    
     var statusText by remember { mutableStateOf("Arahkan wajah & kedipkan mata") }
     var faceDetected by remember { mutableStateOf(false) }
 
@@ -112,6 +118,7 @@ fun AttendanceCameraScreen(
                         .addOnSuccessListener { faces ->
                             faceDetected = faces.isNotEmpty()
                             if (faces.isNotEmpty()) {
+                                noFaceTimer = 0L // Reset timer jika ada wajah
                                 val face = faces[0]
 
                                 // --- 1. Passive Liveness Check (Texture/Sharpness/Skin) ---
@@ -206,12 +213,26 @@ fun AttendanceCameraScreen(
                                             onSuccess()
                                         } else {
                                             statusText = "❌ Wajah tidak cocok"
-                                            delay(2000)
-                                            // Reset liveness agar user harus berkedip lagi jika gagal
-                                            isLivenessVerified = false
-                                            blinkStep = 0
-                                            isVerifying = false
-                                            statusText = "Coba arahkan wajah & kedip kembali"
+                                            
+                                            // Increment fail count (Sementara di session ini)
+                                            failCount++
+                                            
+                                            // Jika sudah 3x gagal, baru simpan ke DB permanent
+                                            if (failCount >= 3) {
+                                                dbHelper.recordFaceFailure(verifiedEmployee.fccode)
+                                                activity?.runOnUiThread {
+                                                    android.widget.Toast.makeText(context, "Gagal 3x scan wajah", android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                                delay(1000)
+                                                onBack()
+                                            } else {
+                                                delay(2000)
+                                                // Reset liveness agar user harus berkedip lagi jika gagal
+                                                isLivenessVerified = false
+                                                blinkStep = 0
+                                                isVerifying = false
+                                                statusText = "Coba arahkan wajah & kedip kembali (${failCount}/3)"
+                                            }
                                         }
                                     }
                                 }
@@ -220,6 +241,23 @@ fun AttendanceCameraScreen(
                                 if (!isVerifying) {
                                     blinkStep = 0
                                     statusText = "Arahkan wajah ke kamera"
+
+                                    // LOGIKA: Jika wajah tidak terdeteksi selama 10 detik, catat gagal
+                                    if (verifiedEmployee != null) {
+                                        if (noFaceTimer == 0L) {
+                                            noFaceTimer = System.currentTimeMillis()
+                                        } else if (System.currentTimeMillis() - noFaceTimer > 10000) {
+                                            dbHelper.recordFaceFailure(verifiedEmployee.fccode)
+                                            noFaceTimer = System.currentTimeMillis() // Reset timer
+                                            activity?.runOnUiThread {
+                                                android.widget.Toast.makeText(context, "Wajah tidak terdeteksi 10 detik. Akses ditolak.", android.widget.Toast.LENGTH_LONG).show()
+                                            }
+                                            scope.launch {
+                                                delay(1000)
+                                                onBack()
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

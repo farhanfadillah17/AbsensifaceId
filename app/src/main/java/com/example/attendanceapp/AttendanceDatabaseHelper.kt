@@ -190,6 +190,12 @@ class AttendanceDatabaseHelper(private val context: Context) :
         // Update konstanta kolom di tabel lain (dari BLOB ke PATH)
         const val COLUMN_PHOTO_PATH = "photo_path"
 
+        // Tabel Riwayat Gagal Face Recog
+        const val T_FACE_FAIL = "face_fail_history"
+        const val FF_ID = "id"
+        const val FF_EMP_ID = "fccode"
+        const val FF_CREATED_AT = "created_at"
+
     }
 
 
@@ -202,6 +208,9 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
             // 2. Tabel Menu
             db.execSQL("CREATE TABLE IF NOT EXISTS $T_MENU (CODE INTEGER PRIMARY KEY, NAME TEXT, ROUTE TEXT)")
+
+            // Tabel History Gagal Face Recog
+            db.execSQL("CREATE TABLE IF NOT EXISTS $T_FACE_FAIL ($FF_ID INTEGER PRIMARY KEY AUTOINCREMENT, $FF_EMP_ID TEXT, $FF_CREATED_AT DATETIME DEFAULT CURRENT_TIMESTAMP)")
 
             // 3. Tabel Akses Menu
             // Di dalam onCreate AttendanceDatabaseHelper.kt
@@ -906,6 +915,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
         db.execSQL("DROP TABLE IF EXISTS table_ancak_panen")
         db.execSQL("DROP TABLE IF EXISTS T_MENU")
         db.execSQL("DROP TABLE IF EXISTS T_MENU_ACCESS")
+        db.execSQL("DROP TABLE IF EXISTS $T_FACE_FAIL")
         onCreate(db)
     }
 
@@ -3744,6 +3754,34 @@ fun generateNoSPB(fcba: String): String {
             Log.e("DB_ERROR", "Error: ${e.message}")
         }
         return list
+    }
+
+    fun recordFaceFailure(fccode: String) {
+        try {
+            val db = writableDatabase
+            val values = ContentValues().apply {
+                put(FF_EMP_ID, fccode)
+            }
+            db.insert(T_FACE_FAIL, null, values)
+            Log.d("DB_CHECK", "Berhasil mencatat kegagalan wajah: $fccode")
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal recordFaceFailure: ${e.message}")
+        }
+    }
+
+    fun getFaceFailureCountToday(fccode: String): Int {
+        val db = readableDatabase
+        val query = "SELECT COUNT(*) FROM $T_FACE_FAIL WHERE $FF_EMP_ID = ? AND date($FF_CREATED_AT) = date('now')"
+        return try {
+            db.rawQuery(query, arrayOf(fccode)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    cursor.getInt(0)
+                } else 0
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error getFaceFailureCountToday: ${e.message}")
+            0
+        }
     }
 
 } // Penutup kelas AttendanceDatabaseHelper

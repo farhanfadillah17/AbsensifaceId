@@ -83,10 +83,18 @@ fun AttendanceNFCScreen(
                         } else {
                             val employee = dbHelper.getEmployeeByCodeBa(scannedCode, scannedBa)
                             if (employee != null) {
-                                statusText = "✅ Berhasil: ${employee.name}"
-                                statusColor = Color(0xFF2E7D32)
-                                activity?.runOnUiThread {
-                                    onNfcVerified(employee)
+                                // --- CEK APAKAH ADA HISTORY KEGAGALAN HARI INI ---
+                                val hasFailedToday = dbHelper.getFaceFailureCountToday(employee.fccode) > 0
+                                if (hasFailedToday) {
+                                    statusText = "❌ Akses Ditolak (Gagal Wajah Hari Ini)"
+                                    statusColor = Color(0xFFD32F2F)
+                                    isProcessing = false
+                                } else {
+                                    statusText = "✅ Berhasil: ${employee.name}"
+                                    statusColor = Color(0xFF2E7D32)
+                                    activity?.runOnUiThread {
+                                        onNfcVerified(employee)
+                                    }
                                 }
                             } else {
                                 isProcessing = false

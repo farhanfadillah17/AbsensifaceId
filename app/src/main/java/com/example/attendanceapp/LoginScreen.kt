@@ -51,6 +51,14 @@ fun LoginScreen(
     var isImporting by remember { mutableStateOf(false) }
     var importStatus by remember { mutableStateOf("") }
 
+    val listPinalty = mutableListOf<String>("Pinalty 1", "Pinalty 2", "Pinalty 3")
+
+    listPinalty.forEachIndexed { index, string ->
+
+        Log.d("list string", "p"+(index+1))
+
+    }
+
     // Logic untuk impor data otomatis saat aplikasi dibuka
     LaunchedEffect(Unit) {
 
