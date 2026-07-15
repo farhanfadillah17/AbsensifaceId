@@ -2487,7 +2487,7 @@ fun generateNoSPB(fcba: String): String {
     fun getRKHListByTypeMap(fcba: String, type: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
         // Tambahkan GROUP BY no_rkh dan GROUP_CONCAT agar blok digabung
         val query = """
         SELECT 
@@ -2507,7 +2507,7 @@ fun generateNoSPB(fcba: String): String {
     """.trimIndent()
 
         try {
-            db.rawQuery(query, arrayOf(fcba, type)).use { cursor ->
+            db.rawQuery(query, arrayOf(fcba, type, "$today%")).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
                     map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id")) ?: ""
