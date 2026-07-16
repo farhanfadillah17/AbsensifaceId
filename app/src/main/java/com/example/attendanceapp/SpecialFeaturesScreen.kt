@@ -620,7 +620,7 @@ fun ProgressFormScreen(
         val needsDetail = selectedRKH?.containsKey("supervisor1_name") == false
 
         if (noRkh != null && needsDetail && !isEditMode) {
-            val detail = dbHelper.getRKHDetail(noRkh)
+            val detail = dbHelper.getRKHDetail(noRkh, currentFcba)
             if (detail != null) {
                 selectedRKH = detail
                 selectedJobType = detail["job_code"] ?: ""

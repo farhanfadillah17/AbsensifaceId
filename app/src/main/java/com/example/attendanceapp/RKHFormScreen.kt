@@ -404,7 +404,7 @@ fun RKHFormScreen(
             android.util.Log.d("RKH_EDIT", "Memuat data untuk No RKH: $editId")
 
             // 1. Ambil Data Header (Type, Afd, Job, HK, Supervisor)
-            val headerData = dbHelper.getRKHByNo(editId)
+            val headerData = dbHelper.getRKHByNo(editId, fcba)
             headerData?.let {
                 noRkh = it["no_rkh"] ?: editId
                 selectedType = it["type_rkh"] ?: it["type"] ?: ""
@@ -487,10 +487,10 @@ fun RKHFormScreen(
             // 4. JALUR PERAWATAN / UMUM / PANEN / PERHITUNGAN BUAH
             // Jika Afdeling dipilih, gunakan filter Afdeling
             cleanAfd.isNotEmpty() -> {
-                val blocksByAfd = dbHelper.getBlocksByLocation(cleanAfd)
+                val blocksByAfd = dbHelper.getBlocksByLocation(cleanAfd, fcba)
                 if (blocksByAfd.isEmpty()) {
                     // Fallback: Jika blok per afdeling tidak ditemukan, coba ambil semua blok di FCBA tersebut
-                    dbHelper.getBlockList(cleanFcba)
+                    dbHelper.getBlockList(fcba)
                 } else {
                     blocksByAfd
                 }
@@ -617,36 +617,6 @@ fun RKHFormScreen(
                             singleLine = true, // KUNCI UTAMA: Agar tidak bisa enter baris baru
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Next // Pindah ke kolom berikutnya
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                            )
-                        )
-
-                        OutlinedTextField(
-                            value = unit,
-                            onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) unit = it },
-                            label = { Text("Unit") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true, // KUNCI UTAMA: Agar tidak bisa enter baris baru
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Next // Pindah ke kolom berikutnya
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                            )
-                        )
-
-                        OutlinedTextField(
-                            value = output,
-                            onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) output = it },
-                            label = { Text("Output") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true, // KUNCI UTAMA
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
                                 imeAction = ImeAction.Done // Selesai / Tutup Keyboard
                             ),
                             keyboardActions = KeyboardActions(
@@ -693,8 +663,23 @@ fun RKHFormScreen(
                                 activeDialog = "LOC"
                             }
 
+                            OutlinedTextField(
+                                value = unit,
+                                onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) unit = it },
+                                label = { Text("Unit") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next)
+                            )
 
-
+                            OutlinedTextField(
+                                value = output,
+                                onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) output = it },
+                                label = { Text("Output") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done)
+                            )
 
                             // TOMBOL TAMBAH KE DAFTAR (Bukan Simpan ke DB dulu)
                             Button(
@@ -703,10 +688,14 @@ fun RKHFormScreen(
                                         // Menambahkan ke list 'addedBlocks' yang sudah Anda buat di State
                                         addedBlocks = addedBlocks + mapOf(
                                             "loc" to selectedLoc,
-                                            "hk" to hk
+                                            "hk" to hk,
+                                            "unit" to unit,
+                                            "output" to output
                                         )
                                         // Reset input field saja, agar bisa pilih blok lain
                                         selectedLoc = ""
+                                        unit = ""
+                                        output = ""
 
                                     } else {
                                         Toast.makeText(context, "Pilih lokasi dulu!", Toast.LENGTH_SHORT).show()
@@ -737,7 +726,7 @@ fun RKHFormScreen(
                                     Text("${index + 1}. ", fontWeight = FontWeight.Bold)
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text("Blok: ${block["loc"]}", fontWeight = FontWeight.SemiBold)
-
+                                        Text("Unit: ${block["unit"]} | Output: ${block["output"]}", fontSize = 12.sp, color = Color.Gray)
                                     }
                                     IconButton(onClick = {
                                         addedBlocks = addedBlocks.filterIndexed { i, _ -> i != index }
@@ -755,7 +744,12 @@ fun RKHFormScreen(
                     Button(
                         onClick = {
                             val finalBlocks = if (selectedLoc.isNotEmpty()) {
-                                addedBlocks + mapOf("loc" to selectedLoc, "hk" to hk)
+                                addedBlocks + mapOf(
+                                    "loc" to selectedLoc,
+                                    "hk" to hk,
+                                    "unit" to unit,
+                                    "output" to output
+                                )
                             } else addedBlocks
 
                             if (finalBlocks.isEmpty()) {
@@ -778,8 +772,8 @@ fun RKHFormScreen(
                                             job = selectedJob,
                                             loc = block["loc"] ?: "",
                                             hk = block["hk"]?.toDoubleOrNull() ?: 0.0,
-                                            unit = unit.toDoubleOrNull() ?: 0.0,
-                                            out = output.toDoubleOrNull() ?: 0.0
+                                            unit = block["unit"]?.toDoubleOrNull() ?: 0.0,
+                                            out = block["output"]?.toDoubleOrNull() ?: 0.0
                                         )
                                     }
                                     Toast.makeText(context, "RKH Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
@@ -798,8 +792,8 @@ fun RKHFormScreen(
                                             job = selectedJob,
                                             loc = block["loc"] ?: "",
                                             hk = block["hk"]?.toDoubleOrNull() ?: 0.0,
-                                            unit = unit.toDoubleOrNull() ?: 0.0,
-                                            out = output.toDoubleOrNull() ?: 0.0
+                                            unit = block["unit"]?.toDoubleOrNull() ?: 0.0,
+                                            out = block["output"]?.toDoubleOrNull() ?: 0.0
                                         )
                                     }
                                     Toast.makeText(context, "Data Berhasil Disimpan", Toast.LENGTH_SHORT).show()

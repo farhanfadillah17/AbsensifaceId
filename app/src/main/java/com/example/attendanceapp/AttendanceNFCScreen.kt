@@ -84,7 +84,7 @@ fun AttendanceNFCScreen(
                             val employee = dbHelper.getEmployeeByCodeBa(scannedCode, scannedBa)
                             if (employee != null) {
                                 // --- CEK APAKAH ADA HISTORY KEGAGALAN HARI INI ---
-                                val hasFailedToday = dbHelper.getFaceFailureCountToday(employee.fccode) > 0
+                                val hasFailedToday = dbHelper.getFaceFailureCountToday(employee.fccode, employee.fcba) > 0
                                 if (hasFailedToday) {
                                     statusText = "❌ Akses Ditolak (Gagal Wajah Hari Ini)"
                                     statusColor = Color(0xFFD32F2F)

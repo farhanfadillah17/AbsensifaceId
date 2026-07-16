@@ -32,6 +32,7 @@ import java.util.*
 @Composable
 fun AttendanceHistoryScreen(
     dbHelper: AttendanceDatabaseHelper,
+    fcba: String, // Tambahkan parameter fcba
     onBack: () -> Unit
 ) {
     // State untuk menampung data
@@ -42,7 +43,7 @@ fun AttendanceHistoryScreen(
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             // Mengambil data di background thread
-            records = dbHelper.getAllAttendance()
+            records = dbHelper.getAllAttendance(fcba)
         }
         isLoading = false
     }

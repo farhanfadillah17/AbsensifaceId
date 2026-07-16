@@ -441,6 +441,7 @@ fun AppNavigation(
         Screen.QR_SCAN -> QRScannerScreen(
             action = currentAction,
             dbHelper = db,
+            fcba = sessionManager.getFcba() ?: "",
             onBack = { navigateBack() },
             onQRVerified = { result ->
                 if (currentAction == AttendanceAction.RECEIVE) {
@@ -499,7 +500,11 @@ fun AppNavigation(
             onBack = { navigateBack() }
         )
 
-        Screen.HISTORY -> AttendanceHistoryScreen(dbHelper = db, onBack = { navigateBack() })
+        Screen.HISTORY -> AttendanceHistoryScreen(
+            dbHelper = db,
+            fcba = sessionManager.getFcba() ?: "",
+            onBack = { navigateBack() }
+        )
 
         Screen.PROGRESS_MENU -> ProgressMenuScreen(
             dbHelper = db,
@@ -675,7 +680,7 @@ fun DashboardScreen(
             // =========================
 
             var existingData = withContext(Dispatchers.IO) {
-                dbHelper.getAllMasterEmployees().size
+                dbHelper.getAllMasterEmployees(fcba).size
             }
 
             if (existingData == 0) {

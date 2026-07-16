@@ -133,7 +133,7 @@ fun SyncScreen(
                         try {
                             // 1. Upload Transaksi Absensi
                             val pendingData = withContext(Dispatchers.IO) {
-                                dbHelper.getPendingAttendance()
+                                dbHelper.getPendingAttendance(fcba)
                             }
 
                             if (pendingData.isNotEmpty()) {

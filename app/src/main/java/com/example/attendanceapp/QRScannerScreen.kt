@@ -42,6 +42,7 @@ import java.util.concurrent.Executors
 fun QRScannerScreen(
     action: AttendanceAction,
     dbHelper: AttendanceDatabaseHelper,
+    fcba: String, // Tambahkan parameter fcba
     onBack: () -> Unit,
     onQRVerified: (Employee) -> Unit
 ) {
@@ -199,7 +200,7 @@ fun QRScannerScreen(
                                                         }
                                                         else {
                                                             // JIKA ABSEN BIASA
-                                                            val employee = dbHelper.getEmployeeByOnlyCode(scannedId.trim())
+                                                            val employee = dbHelper.getEmployeeByOnlyCode(scannedId.trim(), fcba)
                                                             if (employee != null) {
                                                                 scanned = true
                                                                 statusText = "✅ Berhasil: ${employee.name}"

@@ -219,7 +219,7 @@ fun AttendanceCameraScreen(
                                             
                                             // Jika sudah 3x gagal, baru simpan ke DB permanent
                                             if (failCount >= 3) {
-                                                dbHelper.recordFaceFailure(verifiedEmployee.fccode)
+                                                dbHelper.recordFaceFailure(verifiedEmployee.fccode, verifiedEmployee.fcba)
                                                 activity?.runOnUiThread {
                                                     android.widget.Toast.makeText(context, "Gagal 3x scan wajah", android.widget.Toast.LENGTH_SHORT).show()
                                                 }
@@ -247,7 +247,7 @@ fun AttendanceCameraScreen(
                                         if (noFaceTimer == 0L) {
                                             noFaceTimer = System.currentTimeMillis()
                                         } else if (System.currentTimeMillis() - noFaceTimer > 10000) {
-                                            dbHelper.recordFaceFailure(verifiedEmployee.fccode)
+                                            dbHelper.recordFaceFailure(verifiedEmployee.fccode, verifiedEmployee.fcba)
                                             noFaceTimer = System.currentTimeMillis() // Reset timer
                                             activity?.runOnUiThread {
                                                 android.widget.Toast.makeText(context, "Wajah tidak terdeteksi 10 detik. Akses ditolak.", android.widget.Toast.LENGTH_LONG).show()

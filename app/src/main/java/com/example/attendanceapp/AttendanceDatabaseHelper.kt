@@ -49,8 +49,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     companion object {
         // Ganti nama ke v11 untuk reset total terakhir kali
-        const val DATABASE_NAME = "attendance_reset_final_v320.db"
-        const val DATABASE_VERSION = 320
+        const val DATABASE_NAME = "attendance_reset_final_v321.db"
+        const val DATABASE_VERSION = 321
 
         const val T_EMP = "EMPLOYEE"
         const val E_FCCODE = "FCCODE"
@@ -194,6 +194,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
         const val T_FACE_FAIL = "face_fail_history"
         const val FF_ID = "id"
         const val FF_EMP_ID = "fccode"
+        const val FF_FCBA = "fcba"
         const val FF_CREATED_AT = "created_at"
 
     }
@@ -210,7 +211,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
             db.execSQL("CREATE TABLE IF NOT EXISTS $T_MENU (CODE INTEGER PRIMARY KEY, NAME TEXT, ROUTE TEXT)")
 
             // Tabel History Gagal Face Recog
-            db.execSQL("CREATE TABLE IF NOT EXISTS $T_FACE_FAIL ($FF_ID INTEGER PRIMARY KEY AUTOINCREMENT, $FF_EMP_ID TEXT, $FF_CREATED_AT DATETIME DEFAULT CURRENT_TIMESTAMP)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS $T_FACE_FAIL ($FF_ID INTEGER PRIMARY KEY AUTOINCREMENT, $FF_EMP_ID TEXT, $FF_FCBA TEXT, $FF_CREATED_AT DATETIME DEFAULT CURRENT_TIMESTAMP)")
 
             // 3. Tabel Akses Menu
             // Di dalam onCreate AttendanceDatabaseHelper.kt
@@ -987,12 +988,12 @@ class AttendanceDatabaseHelper(private val context: Context) :
     // --- FUNGSI SAVE (TANPA DB.CLOSE()) ---
 
 
-    fun getPendingAttendance(): List<Map<String, String>> {
+    fun getPendingAttendance(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        val query = "SELECT * FROM $T_ATT WHERE status = 'N'"
+        val query = "SELECT * FROM $T_ATT WHERE status = 'N' AND $A_FCBA = ?"
         try {
-            db.rawQuery(query, null).use { cursor ->
+            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
                     map["id"] = cursor.getString(cursor.getColumnIndexOrThrow(A_ID))
@@ -1036,14 +1037,19 @@ class AttendanceDatabaseHelper(private val context: Context) :
         return null
     }
 
-    fun getEmployeeByOnlyCode(code: String): Employee? {
+    fun getEmployeeByOnlyCode(code: String, fcba: String): Employee? {
         return try {
             val db = this.readableDatabase
+            
+            // Jika admin (99), lihat semua. Jika bukan, filter sesuai BA.
+            val selection = if (fcba == "99") "$E_FCCODE = ?" else "$E_FCCODE = ? AND $E_FCBA = ?"
+            val selectionArgs = if (fcba == "99") arrayOf(code) else arrayOf(code, fcba)
+
             db.query(
                 T_EMP,
                 null,
-                "$E_FCCODE = ?",
-                arrayOf(code),
+                selection,
+                selectionArgs,
                 null,
                 null,
                 null
@@ -1186,7 +1192,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
         return featuresList
     }
 
-    fun getAllAttendance(): List<AttendanceRecord> {
+    fun getAllAttendance(fcba: String): List<AttendanceRecord> {
         val recordList = mutableListOf<AttendanceRecord>()
         try {
             val db = this.readableDatabase
@@ -1195,9 +1201,16 @@ class AttendanceDatabaseHelper(private val context: Context) :
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
             // 2. Tambahkan filter LIKE untuk mengambil data yang diawali tanggal hari ini saja
-            val query = "SELECT * FROM $T_ATT WHERE $A_TIMESTAMP LIKE ? ORDER BY $A_TIMESTAMP DESC"
+            // DAN filter FCBA
+            val query = if (fcba == "99") {
+                "SELECT * FROM $T_ATT WHERE $A_TIMESTAMP LIKE ? ORDER BY $A_TIMESTAMP DESC"
+            } else {
+                "SELECT * FROM $T_ATT WHERE $A_TIMESTAMP LIKE ? AND $A_FCBA = ? ORDER BY $A_TIMESTAMP DESC"
+            }
+            
+            val args = if (fcba == "99") arrayOf("$today%") else arrayOf("$today%", fcba)
 
-            db.rawQuery(query, arrayOf("$today%")).use { c ->
+            db.rawQuery(query, args).use { c ->
                 while (c.moveToNext()) {
                     recordList.add(
                         AttendanceRecord(
@@ -1264,11 +1277,18 @@ class AttendanceDatabaseHelper(private val context: Context) :
     }
 
 
-    fun getAllMasterEmployees(): List<Employee> {
+    fun getAllMasterEmployees(fcba: String = "99"): List<Employee> {
         val list = mutableListOf<Employee>()
         try {
             val db = readableDatabase
-            db.rawQuery("SELECT * FROM $T_EMP ORDER BY $E_NAME ASC", null).use { cursor ->
+            val query = if (fcba == "99") {
+                "SELECT * FROM $T_EMP ORDER BY $E_NAME ASC"
+            } else {
+                "SELECT * FROM $T_EMP WHERE $E_FCBA = ? ORDER BY $E_NAME ASC"
+            }
+            val args = if (fcba == "99") null else arrayOf(fcba)
+            
+            db.rawQuery(query, args).use { cursor ->
                 while (cursor.moveToNext()) {
                     list.add(
                         Employee(
@@ -1292,11 +1312,18 @@ class AttendanceDatabaseHelper(private val context: Context) :
     }
 
 
-    fun getAllUser(): List<UserProfile> {
+    fun getAllUser(fcba: String = "99"): List<UserProfile> {
         val list = mutableListOf<UserProfile>()
         try {
             val db = readableDatabase
-            db.rawQuery("SELECT * FROM $T_USERS", null).use { c ->
+            val query = if (fcba == "99") {
+                "SELECT * FROM $T_USERS"
+            } else {
+                "SELECT * FROM $T_USERS WHERE $U_FCBA = ?"
+            }
+            val args = if (fcba == "99") null else arrayOf(fcba)
+
+            db.rawQuery(query, args).use { c ->
                 while (c.moveToNext()) {
                     list.add(
                         UserProfile(
@@ -1529,11 +1556,11 @@ class AttendanceDatabaseHelper(private val context: Context) :
         }
     }
 
-    fun getSPBById(id: String): Map<String, String>? {
+    fun getSPBById(id: String, fcba: String): Map<String, String>? {
         val db = readableDatabase
-        val query = "SELECT * FROM T_SPB WHERE id = ?"
+        val query = "SELECT * FROM T_SPB WHERE id = ? AND fcba = ?"
         try {
-            db.rawQuery(query, arrayOf(id)).use { cursor ->
+            db.rawQuery(query, arrayOf(id, fcba)).use { cursor ->
                 if (cursor.moveToFirst()) {
                     return mapOf(
                         "no_spb" to cursor.getString(cursor.getColumnIndexOrThrow("spb_no")),
@@ -1949,25 +1976,28 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
 
 
-    fun getAttendanceForQRCode(): String {
+    fun getAttendanceForQRCode(fcba: String = "99"): String {
         val db = readableDatabase
         val result = StringBuilder()
 
-        // Gunakan konstanta A_EMP_ID, A_FCBA, dan A_ACTION agar tidak error 'no such column'
-        // Kita filter berdasarkan tanggal hari ini menggunakan date(A_TIMESTAMP)
-        val query = "SELECT $A_EMP_ID, $A_FCBA, $A_ACTION FROM $T_ATT WHERE date($A_TIMESTAMP) = date('now')"
+        val query = if (fcba == "99") {
+            "SELECT $A_EMP_ID, $A_FCBA, $A_ACTION FROM $T_ATT WHERE date($A_TIMESTAMP) = date('now')"
+        } else {
+            "SELECT $A_EMP_ID, $A_FCBA, $A_ACTION FROM $T_ATT WHERE date($A_TIMESTAMP) = date('now') AND $A_FCBA = ?"
+        }
+        val args = if (fcba == "99") null else arrayOf(fcba)
 
         try {
-            db.rawQuery(query, null).use { cursor ->
+            db.rawQuery(query, args).use { cursor ->
                 while (cursor.moveToNext()) {
                     val empId = cursor.getString(0) ?: ""
-                    val fcba = cursor.getString(1) ?: ""
+                    val currentFcba = cursor.getString(1) ?: ""
                     val action = cursor.getString(2) ?: ""
 
                     // Format Barcode harus disesuaikan dengan fungsi receiveTransferredData:
                     // Format: "fccode,fcba,action;fccode,fcba,action"
                     if (result.isNotEmpty()) result.append(";")
-                    result.append("$empId,$fcba,$action")
+                    result.append("$empId,$currentFcba,$action")
                 }
             }
         } catch (e: Exception) {
@@ -2069,9 +2099,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 query = "SELECT DISTINCT $column FROM $tableName WHERE $column IS NOT NULL ORDER BY $column ASC"
                 args = null
             } else {
-                // Paksa menggunakan SRE jika bukan admin
                 query = "SELECT DISTINCT $column FROM $tableName WHERE FCBA = ? AND $column IS NOT NULL ORDER BY $column ASC"
-                args = null
+                args = arrayOf(userFcba)
             }
 
             db.rawQuery(query, args).use { cursor ->
@@ -2154,15 +2183,15 @@ class AttendanceDatabaseHelper(private val context: Context) :
         return db.insert(T_RKH, null, values)
     }
 
-    fun getNoRkhByType(targetType: String): List<String> {
+    fun getNoRkhByType(targetType: String, fcba: String): List<String> {
         val list = mutableListOf<String>()
         val db = readableDatabase
 
-        // Mengambil No RKH berdasarkan tipe yang dipilih (Hardcoded)
-        val query = "SELECT no_rkh FROM $T_RKH WHERE type = ? ORDER BY created_at DESC"
+        // Mengambil No RKH berdasarkan tipe yang dipilih (Hardcoded) dan FCBA
+        val query = "SELECT no_rkh FROM $T_RKH WHERE type = ? AND fcba = ? ORDER BY created_at DESC"
 
         try {
-            db.rawQuery(query, arrayOf(targetType)).use { cursor ->
+            db.rawQuery(query, arrayOf(targetType, fcba)).use { cursor ->
                 while (cursor.moveToNext()) {
                     list.add(cursor.getString(0))
                 }
@@ -2599,7 +2628,7 @@ fun generateNoSPB(fcba: String): String {
         }
     }
 
-    fun getRKHDetail(noRkh: String): Map<String, String>? {
+    fun getRKHDetail(noRkh: String, fcba: String): Map<String, String>? {
         val db = readableDatabase
         // PERBAIKAN: Lakukan LEFT JOIN ke tabel Employee ($T_EMP) untuk mendapatkan nama supervisi
         val query = """
@@ -2625,12 +2654,12 @@ fun generateNoSPB(fcba: String): String {
     LEFT JOIN $T_EMP e2 ON r.supervisi2 = e2.$E_FCCODE
     LEFT JOIN $T_EMP e3 ON r.supervisi3 = e3.$E_FCCODE
     LEFT JOIN $T_EMP e4 ON r.supervisi4 = e4.$E_FCCODE
-    WHERE r.no_rkh = ?
+    WHERE r.no_rkh = ? AND r.fcba = ?
     GROUP BY r.no_rkh
 """.trimIndent()
 
         return try {
-            db.rawQuery(query, arrayOf(noRkh)).use { cursor ->
+            db.rawQuery(query, arrayOf(noRkh, fcba)).use { cursor ->
                 if (cursor.moveToFirst()) {
                     mapOf(
                         "no_rkh" to (cursor.getString(cursor.getColumnIndexOrThrow("no_rkh")) ?: ""),
@@ -2787,12 +2816,14 @@ fun generateNoSPB(fcba: String): String {
 
 
     // Fungsi untuk mengambil daftar blok yang ada di dalam satu nomor RKH
-    fun getLocationsByRKH(noRkh: String): List<String> {
+    fun getLocationsByRKH(noRkh: String, fcba: String = "99"): List<String> {
         val list = mutableListOf<String>()
         val db = readableDatabase
-        val query = "SELECT DISTINCT location_code FROM $T_RKH WHERE no_rkh = ?"
+        val query = if (fcba == "99") "SELECT DISTINCT location_code FROM $T_RKH WHERE no_rkh = ?"
+                    else "SELECT DISTINCT location_code FROM $T_RKH WHERE no_rkh = ? AND fcba = ?"
+        val args = if (fcba == "99") arrayOf(noRkh) else arrayOf(noRkh, fcba)
         try {
-            db.rawQuery(query, arrayOf(noRkh)).use { cursor ->
+            db.rawQuery(query, args).use { cursor ->
                 while (cursor.moveToNext()) {
                     val loc = cursor.getString(0)
                     if (!loc.isNullOrEmpty()) list.add(loc)
@@ -2962,7 +2993,7 @@ fun generateNoSPB(fcba: String): String {
     }
 
     // Ambil Blok berdasarkan Location Code
-    fun getBlocksByLocation(locationCode: String): List<String> {
+    fun getBlocksByLocation(locationCode: String, fcba: String = "99"): List<String> {
         val list = mutableListOf<String>()
         val db = readableDatabase
 
@@ -2970,10 +3001,16 @@ fun generateNoSPB(fcba: String): String {
         val cleanCode = locationCode.split(" ")[0].trim()
 
         // Cari di tabel FIELD (Biasanya ini tabel master blok)
-        val query = "SELECT DISTINCT FCCODE FROM FIELD WHERE FCCODE LIKE ? COLLATE NOCASE ORDER BY FCCODE ASC"
+        // Filter berdasarkan FCBA
+        val query = if (fcba == "99") {
+            "SELECT DISTINCT FCCODE FROM FIELD WHERE FCCODE LIKE ? COLLATE NOCASE ORDER BY FCCODE ASC"
+        } else {
+            "SELECT DISTINCT FCCODE FROM FIELD WHERE FCCODE LIKE ? AND FCBA = ? COLLATE NOCASE ORDER BY FCCODE ASC"
+        }
+        val args = if (fcba == "99") arrayOf("$cleanCode%") else arrayOf("$cleanCode%", fcba)
 
         try {
-            db.rawQuery(query, arrayOf("$cleanCode%")).use { cursor ->
+            db.rawQuery(query, args).use { cursor ->
                 while (cursor.moveToNext()) {
                     list.add(cursor.getString(0))
                 }
@@ -2984,9 +3021,13 @@ fun generateNoSPB(fcba: String): String {
 
         // Jika FIELD kosong, cari di TPH (Cadangan)
         if (list.isEmpty()) {
-            val queryTph = "SELECT DISTINCT FIELDCODE FROM TPH WHERE FIELDCODE LIKE ? COLLATE NOCASE ORDER BY FIELDCODE ASC"
+            val queryTph = if (fcba == "99") {
+                "SELECT DISTINCT FIELDCODE FROM TPH WHERE FIELDCODE LIKE ? COLLATE NOCASE ORDER BY FIELDCODE ASC"
+            } else {
+                "SELECT DISTINCT FIELDCODE FROM TPH WHERE FIELDCODE LIKE ? AND FCBA = ? COLLATE NOCASE ORDER BY FIELDCODE ASC"
+            }
             try {
-                db.rawQuery(queryTph, arrayOf("$cleanCode%")).use { cursor ->
+                db.rawQuery(queryTph, args).use { cursor ->
                     while (cursor.moveToNext()) {
                         list.add(cursor.getString(0))
                     }
@@ -3172,14 +3213,15 @@ fun generateNoSPB(fcba: String): String {
     }
 
     // Di dalam class AttendanceDatabaseHelper
-    fun getAllSPB(): List<Map<String, String>> {
+    fun getAllSPB(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
         // FIX: Ubah T_SPB_HEADER menjadi T_SPB sesuai dengan tabel tempat menyimpan
-        val query = "SELECT * FROM T_SPB ORDER BY created_at DESC"
+        // Dan filter FCBA
+        val query = "SELECT * FROM T_SPB WHERE fcba = ? ORDER BY created_at DESC"
 
         try {
-            db.rawQuery(query, null).use { cursor ->
+            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
                 if (cursor.moveToFirst()) {
                     do {
                         val map = mutableMapOf<String, String>()
@@ -3279,14 +3321,15 @@ fun generateNoSPB(fcba: String): String {
         return list
     }
 
-    fun getDrivers(): List<String> {
+    fun getDrivers(fcba: String): List<String> {
         val list = mutableListOf<String>()
         val db = readableDatabase
         // Query ini mencari karyawan dengan posisi/jabatan yang mengandung kata SUPIR atau DRIVER
-        val query = "SELECT FCNAME FROM EMPLOYEE WHERE \"POSITION\" LIKE '%SUPIR%' OR \"POSITION\" LIKE '%DRIVER%'"
+        // Filter berdasarkan FCBA
+        val query = "SELECT FCNAME FROM EMPLOYEE WHERE FCBA = ? AND (\"POSITION\" LIKE '%SUPIR%' OR \"POSITION\" LIKE '%DRIVER%')"
 
         try {
-            db.rawQuery(query, null).use { cursor ->
+            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
                 while (cursor.moveToNext()) {
                     list.add(cursor.getString(0))
                 }
@@ -3297,20 +3340,25 @@ fun generateNoSPB(fcba: String): String {
         return list
     }
 
-    fun getBusinessUnits(): List<String> {
+    fun getBusinessUnits(fcba: String): List<String> {
         val list = mutableListOf<String>()
         val db = readableDatabase
-        // Ambil yang namanya mengandung SRE atau SUNGAI ROTAN
-        val query = "SELECT FCNAME FROM BUSINESSUNIT WHERE FCNAME LIKE '%SRE%' OR FCNAME LIKE '%SUNGAI ROTAN%' ORDER BY FCNAME ASC"
+        // Ambil yang namanya mengandung SRE atau SUNGAI ROTAN, filter by FCBA jika bukan 99
+        val query = if (fcba == "99") {
+            "SELECT FCNAME FROM BUSINESSUNIT WHERE (FCNAME LIKE '%SRE%' OR FCNAME LIKE '%SUNGAI ROTAN%') ORDER BY FCNAME ASC"
+        } else {
+            "SELECT FCNAME FROM BUSINESSUNIT WHERE FCCODE = ? ORDER BY FCNAME ASC"
+        }
+        val args = if (fcba == "99") null else arrayOf(fcba)
 
         try {
-            db.rawQuery(query, null).use { cursor ->
+            db.rawQuery(query, args).use { cursor ->
                 while (cursor.moveToNext()) {
                     cursor.getString(0)?.let { list.add(it) }
                 }
             }
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal ambil BusinessUnit SRE: ${e.message}")
+            Log.e("DB_ERROR", "Gagal ambil BusinessUnit: ${e.message}")
         }
         return list
     }
@@ -3319,12 +3367,13 @@ fun generateNoSPB(fcba: String): String {
 
 
 
-    fun getAllFieldCodes(): List<String> {
+    fun getAllFieldCodes(fcba: String): List<String> {
         val list = mutableListOf<String>()
         val db = readableDatabase
         // Mengambil FCCODE dari tabel FIELD (hasil import FIELD_202606011224.sql)
-        val query = "SELECT FCCODE FROM FIELD ORDER BY FCCODE ASC"
-        db.rawQuery(query, null).use { cursor ->
+        // Filter berdasarkan FCBA
+        val query = "SELECT FCCODE FROM FIELD WHERE FCBA = ? ORDER BY FCCODE ASC"
+        db.rawQuery(query, arrayOf(fcba)).use { cursor ->
             while (cursor.moveToNext()) {
                 list.add(cursor.getString(0))
             }
@@ -3492,46 +3541,60 @@ fun generateNoSPB(fcba: String): String {
     }
 
     // --- FUNGSI UNTUK MENGAMBIL DATA MILL (PABRIK) ---
-    fun getAllMills(): List<Mill> {
+    fun getAllMills(fcba: String = "99"): List<Mill> {
         val list = mutableListOf<Mill>()
         val db = this.readableDatabase
         // Gunakan CUSTOMERCODE dan DESCRIPTION sesuai CREATE TABLE di atas
-        val cursor = db.rawQuery("SELECT CUSTOMERCODE, DESCRIPTION, FCBA FROM $T_MILL", null)
-
-        if (cursor.moveToFirst()) {
-            do {
-                list.add(Mill(
-                    code = cursor.getString(0),
-                    name = cursor.getString(1),
-                    fcba = cursor.getString(2)
-                ))
-            } while (cursor.moveToNext())
+        // Filter berdasarkan FCBA
+        val query = if (fcba == "99") {
+            "SELECT CUSTOMERCODE, DESCRIPTION, FCBA FROM $T_MILL"
+        } else {
+            "SELECT CUSTOMERCODE, DESCRIPTION, FCBA FROM $T_MILL WHERE FCBA = ?"
         }
-        cursor.close()
+        val args = if (fcba == "99") null else arrayOf(fcba)
+        
+        db.rawQuery(query, args).use { cursor ->
+            if (cursor.moveToFirst()) {
+                do {
+                    list.add(Mill(
+                        code = cursor.getString(0),
+                        name = cursor.getString(1),
+                        fcba = cursor.getString(2)
+                    ))
+                } while (cursor.moveToNext())
+            }
+        }
         return list
     }
 
     // --- FUNGSI UNTUK MENGAMBIL DATA KENDARAAN ---
-    fun getAllVehicles(): List<Vehicle> {
+    fun getAllVehicles(fcba: String = "99"): List<Vehicle> {
         val list = mutableListOf<Vehicle>()
         val db = this.readableDatabase
 
         // Pastikan T_VEHICLE adalah konstanta "VEHICLE"
-        val cursor = db.rawQuery("SELECT FCCODE, FCNAME, REGISTRATIONNO, FCBA FROM $T_VEHICLE ORDER BY FCNAME ASC", null)
-
-        if (cursor.moveToFirst()) {
-            do {
-                list.add(
-                    Vehicle(
-                        code = cursor.getString(0) ?: "",
-                        name = cursor.getString(1) ?: "",
-                        regNo = cursor.getString(2) ?: "",
-                        fcba = cursor.getString(3) ?: ""
-                    )
-                )
-            } while (cursor.moveToNext())
+        // Filter berdasarkan FCBA
+        val query = if (fcba == "99") {
+            "SELECT FCCODE, FCNAME, REGISTRATIONNO, FCBA FROM $T_VEHICLE ORDER BY FCNAME ASC"
+        } else {
+            "SELECT FCCODE, FCNAME, REGISTRATIONNO, FCBA FROM $T_VEHICLE WHERE FCBA = ? ORDER BY FCNAME ASC"
         }
-        cursor.close()
+        val args = if (fcba == "99") null else arrayOf(fcba)
+
+        db.rawQuery(query, args).use { cursor ->
+            if (cursor.moveToFirst()) {
+                do {
+                    list.add(
+                        Vehicle(
+                            code = cursor.getString(0) ?: "",
+                            name = cursor.getString(1) ?: "",
+                            regNo = cursor.getString(2) ?: "",
+                            fcba = cursor.getString(3) ?: ""
+                        )
+                    )
+                } while (cursor.moveToNext())
+            }
+        }
         return list
     }
 
@@ -3583,13 +3646,16 @@ fun generateNoSPB(fcba: String): String {
     }
 
     // Fungsi untuk mengambil satu data RKH
-    fun getRKHByNo(noRkh: String): Map<String, String>? {
+    fun getRKHByNo(noRkh: String, fcba: String = "99"): Map<String, String>? {
         val db = readableDatabase
         // Kita ambil 1 baris saja karena header (Type, Job, Afd, dll) biasanya sama untuk 1 no_rkh
-        val query = "SELECT * FROM $T_RKH WHERE no_rkh = ? LIMIT 1"
+        // Filter berdasarkan FCBA
+        val query = if (fcba == "99") "SELECT * FROM $T_RKH WHERE no_rkh = ? LIMIT 1"
+                    else "SELECT * FROM $T_RKH WHERE no_rkh = ? AND fcba = ? LIMIT 1"
+        val args = if (fcba == "99") arrayOf(noRkh) else arrayOf(noRkh, fcba)
 
         return try {
-            db.rawQuery(query, arrayOf(noRkh)).use { cursor ->
+            db.rawQuery(query, args).use { cursor ->
                 if (cursor.moveToFirst()) {
                     val map = mutableMapOf<String, String>()
                     cursor.columnNames.forEach { col ->
@@ -3669,13 +3735,15 @@ fun generateNoSPB(fcba: String): String {
 
 
 
-    fun getSPBDetailsByNo(spbNo: String): List<Map<String, String>> {
+    fun getSPBDetailsByNo(spbNo: String, fcba: String = "99"): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        val query = "SELECT * FROM T_SPB_DETAIL WHERE spb_no = ?"
+        val query = if (fcba == "99") "SELECT * FROM T_SPB_DETAIL WHERE spb_no = ?"
+                    else "SELECT * FROM T_SPB_DETAIL WHERE spb_no = ? AND fcba = ?"
+        val args = if (fcba == "99") arrayOf(spbNo) else arrayOf(spbNo, fcba)
 
         try {
-            db.rawQuery(query, arrayOf(spbNo)).use { cursor ->
+            db.rawQuery(query, args).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
                     cursor.columnNames.forEach { col ->
@@ -3737,14 +3805,11 @@ fun generateNoSPB(fcba: String): String {
         val list = mutableListOf<String>()
         val db = readableDatabase
 
-        // CATATAN: Karena log menunjukkan API mengirim user 'qwe' sedangkan Anda login '22T0151',
-        // Kita gunakan query ini agar menu tetap muncul meskipun ID user berbeda (UNTUK TESTING).
-        // Jika sudah produksi, ganti ke query yang menggunakan WHERE EMP_ID = ?
-
-        val query = "SELECT DISTINCT MENU_CODE FROM $T_MENU_ACCESS WHERE IS_GRANTED = 1"
+        // Filter berdasarkan EMP_ID
+        val query = "SELECT DISTINCT MENU_CODE FROM $T_MENU_ACCESS WHERE EMP_ID = ? AND IS_GRANTED = 1"
 
         try {
-            db.rawQuery(query, null).use { cursor ->
+            db.rawQuery(query, arrayOf(empId)).use { cursor ->
                 while (cursor.moveToNext()) {
                     list.add(cursor.getString(0))
                 }
@@ -3756,24 +3821,31 @@ fun generateNoSPB(fcba: String): String {
         return list
     }
 
-    fun recordFaceFailure(fccode: String) {
+    fun recordFaceFailure(fccode: String, fcba: String) {
         try {
             val db = writableDatabase
             val values = ContentValues().apply {
                 put(FF_EMP_ID, fccode)
+                put(FF_FCBA, fcba)
             }
             db.insert(T_FACE_FAIL, null, values)
-            Log.d("DB_CHECK", "Berhasil mencatat kegagalan wajah: $fccode")
+            Log.d("DB_CHECK", "Berhasil mencatat kegagalan wajah: $fccode, BA: $fcba")
         } catch (e: Exception) {
             Log.e("DB_ERROR", "Gagal recordFaceFailure: ${e.message}")
         }
     }
 
-    fun getFaceFailureCountToday(fccode: String): Int {
+    fun getFaceFailureCountToday(fccode: String, fcba: String): Int {
         val db = readableDatabase
-        val query = "SELECT COUNT(*) FROM $T_FACE_FAIL WHERE $FF_EMP_ID = ? AND date($FF_CREATED_AT) = date('now')"
+        val query = if (fcba == "99") {
+            "SELECT COUNT(*) FROM $T_FACE_FAIL WHERE $FF_EMP_ID = ? AND date($FF_CREATED_AT) = date('now')"
+        } else {
+            "SELECT COUNT(*) FROM $T_FACE_FAIL WHERE $FF_EMP_ID = ? AND $FF_FCBA = ? AND date($FF_CREATED_AT) = date('now')"
+        }
+        val args = if (fcba == "99") arrayOf(fccode) else arrayOf(fccode, fcba)
+        
         return try {
-            db.rawQuery(query, arrayOf(fccode)).use { cursor ->
+            db.rawQuery(query, args).use { cursor ->
                 if (cursor.moveToFirst()) {
                     cursor.getInt(0)
                 } else 0

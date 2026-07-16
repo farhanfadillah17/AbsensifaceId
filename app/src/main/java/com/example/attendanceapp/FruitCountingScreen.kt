@@ -960,6 +960,7 @@ fun FruitCountingDetailDialog(
 ) {
     // Daftar Label Penalty sesuai urutan P1 - P11
     val penaltyLabels = listOf(
+        "Buah Matang",          // P1
         "Buah Mentah",          // P1
         "Buah Matahari",        // P2
         "Buah Lewat Matang",    // P3
@@ -969,8 +970,7 @@ fun FruitCountingDetailDialog(
         "Brondolan TPH",        // P7
         "Tangkai Panjang",      // P8
         "Buah Tdk Diangkut",    // P9
-        "Penumpukan TPH",       // P10
-        "Kebersihan TPH"        // P11
+        "Penumpukan TPH"       // P10
     )
 
     // Fungsi helper untuk mencari nama supervisor berdasarkan kode

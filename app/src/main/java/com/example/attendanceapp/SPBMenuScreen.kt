@@ -94,7 +94,7 @@ fun SPBListScreen(
     val detailsList = remember(selectedDetailItem) {
         val spbNo = selectedDetailItem?.get("spb_no") ?: ""
         if (spbNo.isNotEmpty()) {
-            dbHelper.getSPBDetailsByNo(spbNo)
+            dbHelper.getSPBDetailsByNo(spbNo, fcba)
         } else {
             emptyList()
         }
@@ -306,12 +306,12 @@ fun SPBFormScreen(
     val employeeOptions = remember(fcba) { dbHelper.getEmployeeList(fcba) }
     LaunchedEffect(Unit) {
         mills.clear()
-        mills.addAll(dbHelper.getAllMills())
+        mills.addAll(dbHelper.getAllMills(fcba))
 
 
 
         vehicles.clear()
-        vehicles.addAll(dbHelper.getAllVehicles())
+        vehicles.addAll(dbHelper.getAllVehicles(fcba))
 
         if (editId == null) {
             spbNo = dbHelper.generateNoSPB(fcba)
