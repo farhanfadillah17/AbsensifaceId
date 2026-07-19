@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
@@ -259,6 +260,18 @@ fun RKHMainScreen(
                         modifier = Modifier.clickable {
                             showMenu = false
                             itemToDelete = selectedItemForMenu
+                        }
+                    )
+
+                    // OPSI: PRINT (TAMBAHAN BARU)
+                    ListItem(
+                        headlineContent = { Text("Cetak RKH (Thermal)") },
+                        leadingContent = { Icon(Icons.Default.Print, contentDescription = null, tint = Color(0xFF455A64)) },
+                        modifier = Modifier.clickable {
+                            showMenu = false
+                            selectedItemForMenu?.let { rkhData ->
+                                PrintHelper.printDirect(context, rkhData)
+                            }
                         }
                     )
                 }
@@ -801,7 +814,9 @@ fun RKHFormScreen(
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().height(55.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(55.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (isEditMode) Color(0xFFF2994A) else Color(0xFF2E7D32)
                         )
