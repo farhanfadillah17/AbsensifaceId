@@ -2472,6 +2472,8 @@ fun generateNoSPB(fcba: String): String {
             r.no_rkh, 
             r.fcba, 
             r.afdeling, 
+            MAX(r.unit) as unit,         
+            MAX(r.output) as output,
             r.gangcode, 
             r.job_code, 
             r.type,
@@ -2526,7 +2528,9 @@ fun generateNoSPB(fcba: String): String {
             fcba, 
             afdeling, 
             gangcode, 
-            job_code,               
+            job_code,   
+            MAX(unit) as unit,
+            MAX(output) as output,
             GROUP_CONCAT(location_code, ', ') as combined_locations, 
             SUM(CAST(jumlah_hk AS REAL)) as total_hk 
         FROM $T_RKH 
@@ -2546,6 +2550,8 @@ fun generateNoSPB(fcba: String): String {
                     map["afdeling"] = cursor.getString(cursor.getColumnIndexOrThrow("afdeling")) ?: ""
                     map["gang_code"] = cursor.getString(cursor.getColumnIndexOrThrow("gangcode")) ?: ""
                     map["job_code"] = cursor.getString(cursor.getColumnIndexOrThrow("job_code")) ?: ""
+                    map["unit"] = cursor.getString(cursor.getColumnIndexOrThrow("unit")) ?: "-"
+                    map["output"] = cursor.getString(cursor.getColumnIndexOrThrow("output")) ?: "0"
 
                     map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("combined_locations")) ?: ""
                     map["jumlah_hk"] = cursor.getString(cursor.getColumnIndexOrThrow("total_hk")) ?: "0"

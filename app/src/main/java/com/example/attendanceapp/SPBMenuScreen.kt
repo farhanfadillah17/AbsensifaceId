@@ -168,6 +168,54 @@ fun SPBListScreen(
                             itemToDelete = selectedItemForMenu
                         }
                     )
+
+                    // Di dalam ModalBottomSheet SPBListScreen
+                    ListItem(
+                        headlineContent = { Text("Cetak SPB (Thermal)") },
+                        leadingContent = { Icon(Icons.Default.Print, contentDescription = null, tint = Color(0xFF455A64)) },
+                        modifier = Modifier.clickable {
+                            showMenu = false
+                            selectedItemForMenu?.let { header ->
+                                // 1. AMBIL DETAIL LANGSUNG DARI DB (Penting!)
+                                // Kita tidak bisa mengandalkan detailsList dari state UI karena sering null saat menu dibuka
+                                val spbNo = header["spb_no"] ?: ""
+                                val actualDetails = if (spbNo.isNotEmpty()) {
+                                    dbHelper.getSPBDetailsByNo(spbNo, fcba)
+                                } else {
+                                    emptyList()
+                                }
+
+                                val printData = header.toMutableMap()
+
+                                // 2. Agregasi Lokasi dan TPH dari actualDetails
+                                val allLocations = actualDetails.map { it["location_code"] ?: "" }
+                                    .distinct()
+                                    .filter { it.isNotEmpty() }
+                                    .joinToString(", ")
+
+                                val allTphs = actualDetails.map { it["tph_code"] ?: "" }
+                                    .distinct()
+                                    .filter { it.isNotEmpty() }
+                                    .joinToString(", ")
+
+                                val totalJanjang = actualDetails.sumOf { it["unit"]?.toIntOrNull() ?: 0 }
+
+                                // 3. Masukkan ke printData dengan Key yang sesuai dengan PrintHelper.kt
+                                printData["no_spb"] = spbNo
+                                printData["mill_code"] = header["mill_code"] ?: "-"
+                                printData["sopir_name"] = header["sopir_name"] ?: "-"
+                                printData["vehicle_code"] = header["vehicle_code"] ?: "-"
+
+                                // Data Agregasi
+                                printData["location_code"] = if (allLocations.isEmpty()) "-" else allLocations
+                                printData["tph_code"] = if (allTphs.isEmpty()) "-" else allTphs
+                                printData["unit"] = totalJanjang.toString()
+
+                                // 4. Kirim ke PrintHelper
+                                PrintHelper.printDirect(context, printData)
+                            }
+                        }
+                    )
                 }
             }
         }

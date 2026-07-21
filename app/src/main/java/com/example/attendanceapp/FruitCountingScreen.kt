@@ -235,6 +235,17 @@ fun FruitCountingScreen(
                         }
                     }
                 )
+
+                ListItem(
+                    headlineContent = { Text("Cetak Perhitungan Buah (Thermal)") },
+                    leadingContent = { Icon(Icons.Default.Print, contentDescription = null, tint = Color(0xFF455A64)) },
+                    modifier = Modifier.clickable {
+                        showMenu = false
+                        selectedItemForMenu?.let { rkhData ->
+                            PrintHelper.printDirect(context, rkhData)
+                        }
+                    }
+                )
             }
         }
     }
