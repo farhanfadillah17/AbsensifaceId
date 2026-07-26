@@ -8,8 +8,11 @@ import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
-
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
@@ -20,21 +23,22 @@ import java.util.*
 object PrintHelper {
 
     private val PRINTER_UUID = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb")
+
+    // Standar printer 58mm: 384 dots, area cetak aman 360-384
     private const val MAX_PRINTER_WIDTH = 384
+    private const val LINE_CHARS = 32 // Standar karakter per baris
 
     @SuppressLint("MissingPermission")
     fun printDirect(context: Context, item: Map<String, String>) {
         val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
             Toast.makeText(context, "Bluetooth tidak aktif!", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val pairedDevices: Set<BluetoothDevice> = bluetoothAdapter.bondedDevices
-
+        val pairedDevices = bluetoothAdapter.bondedDevices
         if (pairedDevices.isEmpty()) {
-            Toast.makeText(context, "Tidak ada printer Bluetooth terpasang. Silakan pairing terlebih dahulu.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Printer belum dipasangkan.", Toast.LENGTH_LONG).show()
             return
         }
 
@@ -44,164 +48,183 @@ object PrintHelper {
         AlertDialog.Builder(context)
             .setTitle("Pilih Printer Bluetooth")
             .setItems(deviceNames) { _, which ->
-                startPrintJob(context, deviceList[which], item)
+                Thread {
+                    executePrintLogic(context, deviceList[which], item)
+                }.start()
             }
             .setNegativeButton("Batal", null)
             .show()
     }
 
     @SuppressLint("MissingPermission")
-    private fun startPrintJob(context: Context, printer: BluetoothDevice, item: Map<String, String>) {
-        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    fun printMultiple(context: Context, items: List<Map<String, String>>) {
+        if (items.isEmpty()) return
+        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) return
 
-        Thread {
-            var socket: BluetoothSocket? = null
-            var out: OutputStream? = null
+        val pairedDevices = bluetoothAdapter.bondedDevices
+        if (pairedDevices.isEmpty()) return
 
-            try {
-                mainHandler.post { Toast.makeText(context, "Menghubungkan ke ${printer.name}...", Toast.LENGTH_SHORT).show() }
+        val deviceList = pairedDevices.toList()
+        val deviceNames = deviceList.map { "${it.name ?: "Unknown"}\n${it.address}" }.toTypedArray()
 
-                socket = printer.createRfcommSocketToServiceRecord(PRINTER_UUID)
-                socket.connect()
-                out = socket.outputStream
+        AlertDialog.Builder(context)
+            .setTitle("Cetak ${items.size} Data Massal")
+            .setItems(deviceNames) { _, which ->
+                val selectedPrinter = deviceList[which]
+                Thread {
+                    val mainHandler = Handler(Looper.getMainLooper())
+                    try {
+                        items.forEachIndexed { index, item ->
+                            mainHandler.post {
+                                Toast.makeText(context, "Mencetak (${index + 1}/${items.size})...", Toast.LENGTH_SHORT).show()
+                            }
+                            executePrintLogic(context, selectedPrinter, item)
 
-                // 1. Reset Printer
-                out.write(byteArrayOf(0x1B, 0x40))
-                Thread.sleep(200)
-
-                // 2. Judul Adaptif
-                val isFruitCounting = item.containsKey("tph_code") && !item.containsKey("spb_no")
-                val isSPB = item.containsKey("spb_no") // Deteksi apakah ini SPB
-
-                val title = when {
-                    isSPB -> "SURAT PENGANTAR BARANG"
-                    isFruitCounting -> "BUKTI HITUNG BUAH"
-                    else -> "BUKTI RENCANA KERJA"
-                }
-
-                out.write(byteArrayOf(0x1B, 0x61, 0x01)) // Center
-                out.write(byteArrayOf(0x1B, 0x21, 0x08)) // Bold
-                out.write("$title\n".toByteArray())
-                out.write(byteArrayOf(0x1B, 0x21, 0x00)) // Normal
-                out.write("--------------------------------\n".toByteArray())
-
-                // 3. Isi Data
-                out.write(byteArrayOf(0x1B, 0x61, 0x00)) // Left Align
-                val format = "%-12s: %s\n"
-
-                if (isSPB) {
-                    // --- KHUSUS DATA SPB ---
-                    out.write(String.format(format, "NO SPB", item["spb_no"] ?: "-").toByteArray())
-                    out.write(String.format(format, "MILL", item["mill_code"] ?: "-").toByteArray())
-                    out.write(String.format(format, "KENDARAAN", item["vehicle_code"] ?: "-").toByteArray())
-                    out.write(String.format(format, "LOKASI", item["location_code"] ?: "-").toByteArray())
-                    out.write(String.format(format, "KODE TPH", item["tph_code"] ?: "-").toByteArray())
-                    out.write(String.format(format, "UNIT", item["unit"] ?: "Jjg").toByteArray())
-
-
-                } else {
-                    // --- DATA RKH / TPH (Existing) ---
-                    val isTPH = item.containsKey("tph_code")
-                    val noRkh = item["no_rkh"] ?: "-"
-                    val tphCode = item["tph_code"] ?: "-"
-                    val job = item["job_code"] ?: (if (isTPH) "HITUNG BUAH" else "-")
-                    val loc = item["location_code"] ?: "-"
-                    val unit = item["unit"] ?: "-"
-                    val output = item["output"] ?: "0"
-                    val hk = item["jumlah_hk"] ?: "0"
-
-                    out.write(String.format(format, "NO RKH", noRkh).toByteArray())
-                    if (isTPH) out.write(String.format(format, "KODE TPH", tphCode).toByteArray())
-                    out.write(String.format(format, "JOB", job).toByteArray())
-                    out.write(String.format(format, "LOKASI", loc).toByteArray())
-                    out.write(String.format(format, "UNIT", unit).toByteArray())
-                    out.write(String.format(format, "HASIL/TGT", output).toByteArray())
-
-                    if (hk != "0" && !isTPH) {
-                        out.write(String.format(format, "HK", hk).toByteArray())
+                            // Jeda 7 detik antar struk agar printer benar-benar siap (Sangat Penting)
+                            Thread.sleep(7000)
+                        }
+                        mainHandler.post { Toast.makeText(context, "Selesai!", Toast.LENGTH_SHORT).show() }
+                    } catch (e: Exception) {
+                        mainHandler.post { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
                     }
-                }
-
-                out.write("--------------------------------\n".toByteArray())
-                out.flush()
-                Thread.sleep(300)
-
-                // 4. QR CODE (Adaptif)
-                val qrData = when {
-                    isSPB -> "SPB:${item["spb_no"]}|MIL:${item["mill_code"]}|VEH:${item["vehicle_code"]}|LOC:${item["location_code"]}|TPH:${item["tph_code"]}|UNIT:${item["unit"]}"
-                    isFruitCounting -> "RKH:${item["no_rkh"]}|TPH:${item["tph_code"]}|UNIT:${item["unit"]}|OUT:${item["output"]}"
-                    else -> "RKH:${item["no_rkh"]}|JOB:${item["job_code"]}|UNIT:${item["unit"]}|OUT:${item["output"]}|HK:${item["jumlah_hk"]}"
-                }
-
-                val bitmap = generateQRCodeFullWidth(qrData)
-
-                out.write(byteArrayOf(0x1B, 0x61, 0x01)) // Center
-                printBitmapRaster(out, bitmap)
-
-                Thread.sleep(500)
-                out.write("\nScan untuk Verifikasi\n".toByteArray())
-
-                // 5. Footer
-                val date = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault()).format(Date())
-                out.write("Printer: ${printer.name}\n".toByteArray())
-                out.write("Waktu  : $date\n".toByteArray())
-                out.write("\n\n\n\n\n".toByteArray()) // Feed paper
-
-                out.flush()
-                Thread.sleep(1000)
-
-                mainHandler.post { Toast.makeText(context, "Cetak Berhasil!", Toast.LENGTH_SHORT).show() }
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-                mainHandler.post { Toast.makeText(context, "Gagal: ${e.localizedMessage}", Toast.LENGTH_LONG).show() }
-            } finally {
-                try {
-                    out?.close()
-                    socket?.close()
-                } catch (e: Exception) { }
+                }.start()
             }
-        }.start()
+            .setNegativeButton("Batal", null)
+            .show()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun executePrintLogic(context: Context, printer: BluetoothDevice, item: Map<String, String>) {
+        var socket: BluetoothSocket? = null
+        var out: OutputStream? = null
+
+        try {
+            socket = printer.createRfcommSocketToServiceRecord(PRINTER_UUID)
+            socket.connect()
+            out = socket.outputStream
+
+            // 1. Inisialisasi: Jeda 1 detik agar baud rate stabil
+            Thread.sleep(1000)
+            out.write(byteArrayOf(0x1B, 0x40)) // Reset printer
+            Thread.sleep(100)
+
+            // Set Line Spacing ke 30 dots agar tidak terlalu renggang/berantakan
+            out.write(byteArrayOf(0x1B, 0x33, 0x1E))
+
+            val isSPB = item.containsKey("spb_no")
+            val title = if (isSPB) "SURAT PENGANTAR BARANG" else "BUKTI RENCANA KERJA"
+
+            // 2. Header (Center + Bold)
+            out.write(byteArrayOf(0x1B, 0x61, 0x01)) // Center
+            out.write(byteArrayOf(0x1B, 0x21, 0x08)) // Bold
+            sendText(out, "$title\n")
+
+            out.write(byteArrayOf(0x1B, 0x21, 0x00)) // Normal
+            sendText(out, "--------------------------------\n")
+
+            // 3. Body (Left Align)
+            out.write(byteArrayOf(0x1B, 0x61, 0x00))
+            if (isSPB) {
+                out.write(formatRow("NO SPB", item["spb_no"]))
+                out.write(formatRow("MILL", item["mill_code"]))
+                out.write(formatRow("UNIT", "${item["unit"]} Jjg"))
+                out.write(formatRow("LOKASI", item["location_code"]))
+            } else {
+                out.write(formatRow("NO RKH", item["no_rkh"]))
+                if (item.containsKey("tph_code")) out.write(formatRow("TPH", item["tph_code"]))
+                out.write(formatRow("JOB", item["job_code"]))
+                out.write(formatRow("HASIL", "${item["output"]} ${item["unit"]}"))
+            }
+
+            sendText(out, "--------------------------------\n")
+            out.flush()
+            Thread.sleep(500)
+
+            // 4. QR Code
+            val qrData = if (isSPB) "SPB:${item["spb_no"]}" else "RKH:${item["no_rkh"]}"
+            val bitmap = generateQRCodeFullWidth(qrData)
+            out.write(byteArrayOf(0x1B, 0x61, 0x01)) // Center
+            printBitmapRaster(out, bitmap)
+
+            // 5. Footer
+            val date = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault()).format(Date())
+            out.write(byteArrayOf(0x1B, 0x61, 0x01))
+            sendText(out, "\n$date\n")
+
+            // Feed paper
+            sendText(out, "\n\n\n\n\n")
+
+            out.flush()
+            Thread.sleep(500)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            try { out?.close(); socket?.close() } catch (e: Exception) {}
+        }
+    }
+
+    // Helper untuk mengirim teks dengan encoding GBK (Mencegah karakter aneh)
+    private fun sendText(out: OutputStream, text: String) {
+        try {
+            out.write(text.toByteArray(charset("GBK")))
+        } catch (e: Exception) {
+            out.write(text.toByteArray())
+        }
+    }
+
+    private fun formatRow(label: String, value: String?): ByteArray {
+        val valStr = value ?: "-"
+        val labelWidth = 11
+        val formattedLabel = if (label.length > labelWidth) label.substring(0, labelWidth) else label.padEnd(labelWidth)
+
+        // Sisa karakter (32 - 11 label - 2 titik dua spasi = 19 karakter sisa)
+        val maxValWidth = LINE_CHARS - labelWidth - 2
+        val formattedValue = if (valStr.length > maxValWidth) valStr.substring(0, maxValWidth) else valStr
+
+        val row = "$formattedLabel: $formattedValue\n"
+        return try { row.toByteArray(charset("GBK")) } catch (e: Exception) { row.toByteArray() }
     }
 
     private fun generateQRCodeFullWidth(content: String): Bitmap {
-        val hints = HashMap<com.google.zxing.EncodeHintType, Any>()
-        hints[com.google.zxing.EncodeHintType.ERROR_CORRECTION] = com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L
-        hints[com.google.zxing.EncodeHintType.MARGIN] = 1
-        hints[com.google.zxing.EncodeHintType.CHARACTER_SET] = "UTF-8"
+        val hints = mutableMapOf<EncodeHintType, Any>()
+        hints[EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.M
+        hints[EncodeHintType.MARGIN] = 0
 
-        val matrix: BitMatrix = MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, 0, 0, hints)
-        val rawWidth = matrix.width
-        val scale = MAX_PRINTER_WIDTH / rawWidth
-        val finalSize = rawWidth * scale
-
-        val bitmap = Bitmap.createBitmap(finalSize, finalSize, Bitmap.Config.RGB_565)
-        for (y in 0 until finalSize) {
-            for (x in 0 until finalSize) {
-                val isBlack = matrix.get(x / scale, y / scale)
-                bitmap.setPixel(x, y, if (isBlack) Color.BLACK else Color.WHITE)
+        val matrix: BitMatrix = MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, 200, 200, hints)
+        val bitmap = Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.RGB_565)
+        for (y in 0 until matrix.height) {
+            for (x in 0 until matrix.width) {
+                bitmap.setPixel(x, y, if (matrix.get(x, y)) Color.BLACK else Color.WHITE)
             }
         }
-        return bitmap
+        // Paksa ke 384 dot agar full lebar kertas
+        return Bitmap.createScaledBitmap(bitmap, MAX_PRINTER_WIDTH, MAX_PRINTER_WIDTH, false)
     }
 
     private fun printBitmapRaster(out: OutputStream, bitmap: Bitmap) {
         val width = bitmap.width
         val height = bitmap.height
         val bwWidth = (width + 7) / 8
-        val data = ByteArray(bwWidth * height)
 
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                if (Color.red(bitmap.getPixel(x, y)) < 128) {
-                    data[y * bwWidth + x / 8] = (data[y * bwWidth + x / 8].toInt() or (0x80 shr (x % 8))).toByte()
+        val rowBatch = 24
+        for (i in 0 until height step rowBatch) {
+            val currentBatchHeight = if (i + rowBatch > height) height - i else rowBatch
+            out.write(byteArrayOf(0x1D, 0x76, 0x30, 0x00))
+            out.write(byteArrayOf((bwWidth % 256).toByte(), (bwWidth / 256).toByte()))
+            out.write(byteArrayOf((currentBatchHeight % 256).toByte(), (currentBatchHeight / 256).toByte()))
+
+            val data = ByteArray(bwWidth * currentBatchHeight)
+            for (y in 0 until currentBatchHeight) {
+                for (x in 0 until width) {
+                    if (Color.red(bitmap.getPixel(x, i + y)) < 128) {
+                        data[y * bwWidth + x / 8] = (data[y * bwWidth + x / 8].toInt() or (0x80 shr (x % 8))).toByte()
+                    }
                 }
             }
+            out.write(data)
+            out.flush()
+            Thread.sleep(100)
         }
-
-        out.write(byteArrayOf(0x1D, 0x76, 0x30, 0x00))
-        out.write(byteArrayOf((bwWidth % 256).toByte(), (bwWidth / 256).toByte()))
-        out.write(byteArrayOf((height % 256).toByte(), (height / 256).toByte()))
-        out.write(data)
     }
 }

@@ -80,6 +80,8 @@ fun FruitCountingScreen(
     var selectedItem by remember { mutableStateOf<Any?>(null) } // Sesuaikan tipe datanya
     // Refresh list data
     var fruitDataList by remember { mutableStateOf(dbHelper.getAllFruitCounting(fcba)) }
+    var isSelectionMode by remember { mutableStateOf(false) }
+    val selectedItems = remember { mutableStateListOf<Map<String, String>>() }
     val supervisorOptions = remember(fcba) { dbHelper.getSupervisorsMap(fcba) }
 
     val todayLabel = remember {
@@ -119,51 +121,130 @@ fun FruitCountingScreen(
 
     } else {
         // TAMPILAN UTAMA: LIST DATA
+
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("List Perhitungan Buah", color = Color.White) },
+                    title = {
+                        Text(
+                            if (isSelectionMode) "Pilih Data (${selectedItems.size})" else "List Perhitungan Buah",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, null, tint = Color.White)
+                        IconButton(onClick = {
+                            if (isSelectionMode) {
+                                isSelectionMode = false
+                                selectedItems.clear()
+                            } else {
+                                onBack()
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (isSelectionMode) Icons.Default.Close else Icons.Default.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White
+                            )
+                        }
+                    },
+                    actions = {
+                        // TOMBOL CEKLIS (Mode Seleksi) di Pojok Kanan Atas
+                        IconButton(onClick = {
+                            isSelectionMode = !isSelectionMode
+                            if (!isSelectionMode) selectedItems.clear()
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Checklist,
+                                contentDescription = "Mode Seleksi",
+                                tint = if (isSelectionMode) Color.Yellow else Color.White
+                            )
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1A3A8F))
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(
-                    onClick = { isFormVisible = true },
-                    containerColor = Color(0xFF1A3A8F),
-                    contentColor = Color.White
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Tambah Data")
+                if (isSelectionMode) {
+                    // TOMBOL CETAK MASSAL (Hanya muncul jika ada data dipilih)
+                    if (selectedItems.isNotEmpty()) {
+                        ExtendedFloatingActionButton(
+                            onClick = {
+                                val itemsToPrint = selectedItems.toList()
+                                PrintHelper.printMultiple(context, itemsToPrint)
+                                // Reset setelah cetak
+                                isSelectionMode = false
+                                selectedItems.clear()
+                            },
+                            icon = { Icon(Icons.Default.Print, contentDescription = null) },
+                            text = { Text("Cetak ${selectedItems.size} Data") },
+                            containerColor = Color(0xFF4CAF50), // Warna Hijau
+                            contentColor = Color.White
+                        )
+                    }
+                } else {
+                    // TOMBOL TAMBAH DATA BIASA
+                    FloatingActionButton(
+                        onClick = { isFormVisible = true },
+                        containerColor = Color(0xFF1A3A8F),
+                        contentColor = Color.White
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Tambah Data")
+                    }
                 }
             }
         ) { padding ->
             if (fruitDataList.isEmpty()) {
-                Box(Modifier
-                    .fillMaxSize()
-                    .padding(padding), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                     Text("Belum ada data. Klik + untuk menambah.")
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(16.dp),
+                        .padding(padding)
+                        .padding(horizontal = 16.dp),
+                    contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(fruitDataList) { data ->
-                        FruitCountingItemCard(
-                            data = data,
-                            onClick = { selectedDataForNfc = data },
-                            onLongClick = {
-                                selectedItemForMenu = data
-                                showMenu = true
+                        val isSelected = selectedItems.contains(data)
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // Tampilkan Checkbox jika dalam mode seleksi
+                            if (isSelectionMode) {
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = { checked ->
+                                        if (checked) selectedItems.add(data) else selectedItems.remove(data)
+                                    }
+                                )
                             }
-                        )
+
+                            Box(modifier = Modifier.weight(1f)) {
+                                FruitCountingItemCard(
+                                    data = data,
+                                    onClick = {
+                                        if (isSelectionMode) {
+                                            // Toggle seleksi saat card di klik
+                                            if (isSelected) selectedItems.remove(data) else selectedItems.add(data)
+                                        } else {
+                                            // Aksi klik normal (misal buka detail/nfc)
+                                            // selectedDataForNfc = data
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (!isSelectionMode) {
+                                            selectedItemForMenu = data
+                                            showMenu = true
+                                        }
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }

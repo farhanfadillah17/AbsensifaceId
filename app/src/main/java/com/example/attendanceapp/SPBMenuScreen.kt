@@ -99,50 +99,138 @@ fun SPBListScreen(
             emptyList()
         }
     }
+
+    var isSelectionMode by remember { mutableStateOf(false) }
+    val selectedItems = remember { mutableStateListOf<Map<String, String>>() }
     var itemToDelete by remember { mutableStateOf<Map<String, String>?>(null) }
     val sheetState = rememberModalBottomSheetState()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Daftar SPB", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) } }
+                title = {
+                    Text(
+                        if (isSelectionMode) "Pilih SPB (${selectedItems.size})" else "Daftar SPB",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = {
+                        if (isSelectionMode) {
+                            isSelectionMode = false
+                            selectedItems.clear()
+                        } else {
+                            onBack()
+                        }
+                    }) {
+                        Icon(
+                            imageVector = if (isSelectionMode) Icons.Default.Close else Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
+                    }
+                },
+                actions = {
+                    // TOMBOL CEKLIS DI POJOK KANAN ATAS
+                    IconButton(onClick = {
+                        isSelectionMode = !isSelectionMode
+                        if (!isSelectionMode) selectedItems.clear()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Checklist,
+                            contentDescription = "Mode Seleksi",
+                            tint = if (isSelectionMode) Color.Yellow else Color.White
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1A3A8F))
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onTambahClick, containerColor = Color(0xFF1A3A8F)) {
-                Icon(Icons.Default.Add, contentDescription = "Tambah", tint = Color.White)
+            if (isSelectionMode) {
+                // TOMBOL PRINT (Hanya muncul jika ada yang dipilih)
+                if (selectedItems.isNotEmpty()) {
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            val itemsToPrint = selectedItems.toList()
+                            PrintHelper.printMultiple(context, itemsToPrint)
+                            // Reset setelah cetak
+                            isSelectionMode = false
+                            selectedItems.clear()
+                        },
+                        icon = { Icon(Icons.Default.Print, contentDescription = null) },
+                        text = { Text("Cetak ${selectedItems.size} SPB") },
+                        containerColor = Color(0xFF4CAF50), // Warna Hijau
+                        contentColor = Color.White
+                    )
+                }
+            } else {
+                // TOMBOL TAMBAH BIASA
+                FloatingActionButton(
+                    onClick = onTambahClick,
+                    containerColor = Color(0xFF1A3A8F)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Tambah", tint = Color.White)
+                }
             }
         }
     ) { padding ->
         if (spbListData.isEmpty()) {
-            Box(Modifier
-                .fillMaxSize()
-                .padding(padding), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("Belum ada data SPB", color = Color.Gray)
             }
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
-                contentPadding = PaddingValues(16.dp),
+                    .padding(padding)
+                    .padding(horizontal = 16.dp),
+                contentPadding = PaddingValues(vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(spbListData) { item ->
-                    SPBItemCard(
-                        item = item,
-                        onClick = { selectedDetailItem = item },
-                        onLongClick = {
-                            selectedItemForMenu = item
-                            showMenu = true
+                    val isSelected = selectedItems.contains(item)
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isSelectionMode) {
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { checked ->
+                                    if (checked) selectedItems.add(item) else selectedItems.remove(item)
+                                }
+                            )
                         }
-                    )
+
+                        Box(modifier = Modifier.weight(1f)) {
+                            SPBItemCard(
+                                item = item,
+                                onClick = {
+                                    if (isSelectionMode) {
+                                        if (isSelected) selectedItems.remove(item) else selectedItems.add(item)
+                                    } else {
+                                        selectedDetailItem = item
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!isSelectionMode) {
+                                        selectedItemForMenu = item
+                                        showMenu = true
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
 
-        // --- 1. MODAL BOTTOM SHEET (MENU) ---
+
+    // --- 1. MODAL BOTTOM SHEET (MENU) ---
         if (showMenu && selectedItemForMenu != null) {
             ModalBottomSheet(onDismissRequest = { showMenu = false }, sheetState = sheetState) {
                 Column(Modifier
@@ -276,7 +364,7 @@ fun SPBListScreen(
             )
         }
     }
-}
+
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable

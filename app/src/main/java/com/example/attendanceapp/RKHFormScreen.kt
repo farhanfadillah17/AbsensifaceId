@@ -17,6 +17,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
@@ -144,6 +146,9 @@ fun RKHMainScreen(
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
 
+    var isSelectionMode by remember { mutableStateOf(false) }
+    val selectedItems = remember { mutableStateListOf<Map<String, String>>() }
+
     val todayLabel = remember {
         SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID")).format(Date())
     }
@@ -163,26 +168,77 @@ fun RKHMainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Daftar RKH", color = Color.White, fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        if (isSelectionMode) "Pilih RKH (${selectedItems.size})" else "Daftar RKH",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    IconButton(onClick = {
+                        if (isSelectionMode) {
+                            isSelectionMode = false
+                            selectedItems.clear()
+                        } else {
+                            onBack()
+                        }
+                    }) {
+                        Icon(
+                            imageVector = if (isSelectionMode) Icons.Default.Close else Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
+                    }
+                },
+                actions = {
+                    // TOMBOL CEKLIS DI POJOK KANAN ATAS
+                    IconButton(onClick = {
+                        isSelectionMode = !isSelectionMode
+                        if (!isSelectionMode) selectedItems.clear()
+                    }) {
+                        Icon(
+                            imageVector =Icons.Default.Checklist,
+                            contentDescription = "Mode Seleksi",
+                            tint = if (isSelectionMode) Color.Yellow else Color.White
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1A3A8F))
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddClick, containerColor = Color(0xFF1A3A8F)) {
-                Icon(Icons.Default.Add, contentDescription = "Tambah", tint = Color.White)
+            if (isSelectionMode) {
+                // TOMBOL PRINT (Hanya muncul jika ada yang dipilih)
+                if (selectedItems.isNotEmpty()) {
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            val itemsToPrint = selectedItems.toList() // Buat salinan list
+                            if (itemsToPrint.isNotEmpty()) {
+                                PrintHelper.printMultiple(context, itemsToPrint)
+                                isSelectionMode = false
+                                selectedItems.clear()
+                            } else {
+                                Toast.makeText(context, "Pilih data terlebih dahulu", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        icon = { Icon(Icons.Default.Print, contentDescription = null) },
+                        text = { Text("Cetak ${selectedItems.size} RKH") },
+                        containerColor = Color(0xFF4CAF50),
+                        contentColor = Color.White
+                    )
+                }
+            } else {
+                // TOMBOL TAMBAH BIASA
+                FloatingActionButton(onClick = onAddClick, containerColor = Color(0xFF1A3A8F)) {
+                    Icon(Icons.Default.Add, contentDescription = "Tambah", tint = Color.White)
+                }
             }
         }
     ) { padding ->
         // --- TAMPILAN LIST DATA ---
         if (rkhDataList.isEmpty()) {
-            Box(Modifier
-                .fillMaxSize()
-                .padding(padding), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("Belum ada data RKH tersimpan hari ini", color = Color.Gray)
             }
         } else {
@@ -190,22 +246,44 @@ fun RKHMainScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(rkhDataList) { rkh ->
-                    RKHItemCard(
-                        data = rkh,
-                        onClick = {
-                            // Klik biasa diarahkan langsung ke Detail (Opsional)
-                            selectedDetailItem = rkh
-                        },
-                        onLongClick = {
-                            // HOLD (Long Press) untuk memunculkan Bottom Sheet
-                            selectedItemForMenu = rkh
-                            showMenu = true
+                    val isSelected = selectedItems.contains(rkh)
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isSelectionMode) {
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { checked ->
+                                    if (checked) selectedItems.add(rkh) else selectedItems.remove(rkh)
+                                }
+                            )
                         }
-                    )
+
+                        Box(modifier = Modifier.weight(1f)) {
+                            RKHItemCard(
+                                data = rkh,
+                                onClick = {
+                                    if (isSelectionMode) {
+                                        if (isSelected) selectedItems.remove(rkh) else selectedItems.add(rkh)
+                                    } else {
+                                        selectedDetailItem = rkh
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!isSelectionMode) {
+                                        selectedItemForMenu = rkh
+                                        showMenu = true
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
