@@ -1586,12 +1586,36 @@ class AttendanceDatabaseHelper(private val context: Context) :
     fun getAllSPBListMap(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        val query = "SELECT * FROM T_SPB WHERE fcba = ? ORDER BY created_at DESC"
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+
+        // 2. Tambahkan filter LIKE ? agar hanya mengambil data hari ini
+        val query = """
+        SELECT 
+            h.id, 
+            h.spb_no, 
+            h.mill_name, 
+            h.driver_name, 
+            h.vehicle_no, 
+            h.created_at,
+            IFNULL(SUM(d.unit), 0) as total_unit,
+            IFNULL(MIN(d.location_code), '-') as first_loc
+        FROM T_SPB_HEADER h
+        LEFT JOIN T_SPB_DETAIL d ON h.spb_no = d.spb_no
+        WHERE h.fcba = ? AND h.created_at LIKE ?
+        GROUP BY h.spb_no
+        ORDER BY h.created_at DESC
+    """.trimIndent()
 
         try {
-            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
+            // Menggunakan today% untuk mencocokkan tanggal di awal string created_at
+            db.rawQuery(query, arrayOf(fcba, "$today%")).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
+
+                    val idIdx = cursor.getColumnIndex("id")
+                    if (idIdx != -1) {
+                        map["id"] = cursor.getString(idIdx) ?: ""
+                    }
                     map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id"))
                     map["no_spb"] = cursor.getString(cursor.getColumnIndexOrThrow("spb_no"))
                     map["mill_name"] = cursor.getString(cursor.getColumnIndexOrThrow("mill_name"))
@@ -1602,6 +1626,9 @@ class AttendanceDatabaseHelper(private val context: Context) :
                     map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("location_code"))
                     map["unit"] = cursor.getString(cursor.getColumnIndexOrThrow("total_janjang"))
                     map["created_at"] = cursor.getString(cursor.getColumnIndexOrThrow("created_at"))
+
+                    map["total_unit"] = cursor.getString(cursor.getColumnIndexOrThrow("total_unit")) ?: "0"
+                    map["first_loc"] = cursor.getString(cursor.getColumnIndexOrThrow("first_loc")) ?: "-"
                     list.add(map)
                 }
             }
@@ -1612,15 +1639,23 @@ class AttendanceDatabaseHelper(private val context: Context) :
     }
 
     // 2. Fungsi Hapus SPB
-    fun deleteSPB(id: String): Boolean {
-        val db = writableDatabase
-        return try {
-            val result = db.delete("T_SPB", "id = ?", arrayOf(id))
-            result > 0
+    fun deleteSPB(spbNo: String): Int {
+        val db = this.writableDatabase
+        var result = 0
+        try {
+            db.beginTransaction()
+            // 1. Hapus Detail dulu
+            db.delete(T_SPB_DETAIL, "$SD_SPB_NO = ?", arrayOf(spbNo))
+            // 2. Hapus Header berdasarkan spb_no
+            result = db.delete(T_SPB_HEADER, "$SH_SPB_NO = ?", arrayOf(spbNo))
+
+            db.setTransactionSuccessful()
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal hapus SPB: ${e.message}")
-            false
+            Log.e("DB_ERROR", "Error hapus SPB: ${e.message}")
+        } finally {
+            db.endTransaction()
         }
+        return result
     }
 
     // 3. Fungsi Update Header SPB
@@ -3222,30 +3257,27 @@ fun generateNoSPB(fcba: String): String {
     fun getAllSPB(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        // FIX: Ubah T_SPB_HEADER menjadi T_SPB sesuai dengan tabel tempat menyimpan
-        // Dan filter FCBA
-        val query = "SELECT * FROM T_SPB WHERE fcba = ? ORDER BY created_at DESC"
+        // Ambil tanggal hari ini untuk filter agar data lama tidak muncul
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+
+        // Tambahkan filter tanggal pada query (LIKE today%)
+        val query = "SELECT * FROM T_SPB WHERE fcba = ? AND created_at LIKE ? ORDER BY created_at DESC"
 
         try {
-            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
+            db.rawQuery(query, arrayOf(fcba, "$today%")).use { cursor ->
                 if (cursor.moveToFirst()) {
                     do {
                         val map = mutableMapOf<String, String>()
 
-                        // FIX: Sesuaikan Key Column dengan struktur CREATE TABLE T_SPB Anda
+                        // PENTING: Ambil ID agar data bisa dihapus
+                        val idIdx = cursor.getColumnIndex("id")
+                        map["id"] = if (idIdx != -1) cursor.getString(idIdx) ?: "" else ""
+
                         map["spb_no"] = cursor.getString(cursor.getColumnIndexOrThrow("spb_no")) ?: ""
-
-                        // UI mengharapkan 'mill_code', kita arahkan dari kolom 'mill_name'
                         map["mill_code"] = cursor.getString(cursor.getColumnIndexOrThrow("mill_name")) ?: ""
-
-                        // UI mengharapkan 'sopir_name', kita arahkan dari kolom 'driver_name'
                         map["sopir_name"] = cursor.getString(cursor.getColumnIndexOrThrow("driver_name")) ?: ""
-
                         map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("location_code")) ?: ""
-
-                        // UI mengharapkan 'unit', kita arahkan dari kolom 'total_janjang'
                         map["unit"] = cursor.getInt(cursor.getColumnIndexOrThrow("total_janjang")).toString()
-
                         map["created_at"] = cursor.getString(cursor.getColumnIndexOrThrow("created_at")) ?: ""
 
                         list.add(map)
@@ -3261,27 +3293,48 @@ fun generateNoSPB(fcba: String): String {
     fun getAllSPBHeader(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        try {
-            // Query untuk mengambil Header + Total Unit (SUM) + Lokasi Pertama (MIN)
-            val query = """
-            SELECT 
-                h.*, 
-                IFNULL(SUM(d.$SD_UNIT), 0) as total_unit,
-                IFNULL(MIN(d.$SD_LOC), '-') as first_loc
-            FROM $T_SPB_HEADER h
-            LEFT JOIN $T_SPB_DETAIL d ON h.$SH_SPB_NO = d.$SD_SPB_NO
-            WHERE h.$SH_FCBA = ?
-            GROUP BY h.$SH_SPB_NO
-            ORDER BY h.created_at DESC
-        """.trimIndent()
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+        val today = sdf.format(java.util.Date())
 
-            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
+        try {
+            val query = """
+        SELECT 
+            h.$SH_SPB_NO as header_id, -- Gunakan spb_no karena kolom 'id' tidak ada
+            h.*, 
+            IFNULL(SUM(d.$SD_UNIT), 0) as total_unit_agg,
+            IFNULL(MIN(d.$SD_LOC), '-') as first_loc
+        FROM $T_SPB_HEADER h
+        LEFT JOIN $T_SPB_DETAIL d ON h.$SH_SPB_NO = d.$SD_SPB_NO
+        WHERE h.$SH_FCBA = ? 
+        AND (h.created_at LIKE ? OR date(h.created_at) = date('now', 'localtime'))
+        GROUP BY h.$SH_SPB_NO
+        ORDER BY h.created_at DESC
+    """.trimIndent()
+
+            db.rawQuery(query, arrayOf(fcba, "$today%")).use { cursor ->
+                Log.d("DB_DEBUG", "Data di DB: ${cursor.count}")
+
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
+
+                    // Mapping header_id (spb_no) ke key "id" agar UI Hapus tetap bekerja
+                    val idIdx = cursor.getColumnIndex("header_id")
+                    map["id"] = if (idIdx != -1) cursor.getString(idIdx) ?: "" else ""
+
                     cursor.columnNames.forEach { col ->
                         val idx = cursor.getColumnIndex(col)
                         map[col] = cursor.getString(idx) ?: ""
                     }
+
+                    map["no_spb"] = map[SH_SPB_NO] ?: ""
+                    map["mill_name"] = map[SH_MILL] ?: ""
+                    map["driver_name"] = map[SH_SOPIR] ?: ""
+                    map["vehicle_code"] = map[SH_VEHICLE] ?: ""
+
+                    val totalAgg = map["total_unit_agg"] ?: "0"
+                    map["unit"] = if (totalAgg != "0" && totalAgg != "") totalAgg else (map["total_janjang"] ?: "0")
+                    map["location_code"] = if (map["first_loc"] != "-") map["first_loc"] ?: "" else (map["location_code"] ?: "")
+
                     list.add(map)
                 }
             }
@@ -3769,6 +3822,7 @@ fun generateNoSPB(fcba: String): String {
     fun insertSPBFull(header: Map<String, String>, details: List<Map<String, String>>): Boolean {
         val db = writableDatabase
         db.beginTransaction()
+        val currentTimestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
         return try {
             // 1. Simpan ke Header
             val hValues = ContentValues().apply {
@@ -3780,6 +3834,7 @@ fun generateNoSPB(fcba: String): String {
                 put(SH_PEMUAT1, header["pemuat_1"])
                 put(SH_PEMUAT2, header["pemuat_2"])
                 put(SH_FCBA, header["fcba"])
+                put("created_at", currentTimestamp)
             }
             db.insertOrThrow(T_SPB_HEADER, null, hValues)
 
@@ -3792,6 +3847,7 @@ fun generateNoSPB(fcba: String): String {
                     put(SD_TPH, item["tph_code"])
                     put(SD_FCBA, header["fcba"])
                     put(SD_EMP, item["employee_code"])
+
                 }
                 db.insertOrThrow(T_SPB_DETAIL, null, dValues)
             }

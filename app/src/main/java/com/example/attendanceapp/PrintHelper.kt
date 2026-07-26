@@ -113,7 +113,12 @@ object PrintHelper {
             out.write(byteArrayOf(0x1B, 0x33, 0x1E))
 
             val isSPB = item.containsKey("spb_no")
-            val title = if (isSPB) "SURAT PENGANTAR BARANG" else "BUKTI RENCANA KERJA"
+            val isTPH = item.containsKey("tph_code")
+            val title = when {
+                isSPB -> "SURAT PENGANTAR BARANG"
+                isTPH -> "BUKTI HITUNG BUAH"    // Jika ada tph_code, maka judul ini
+                else -> "BUKTI RENCANA KERJA"   // Default
+            }
 
             // 2. Header (Center + Bold)
             out.write(byteArrayOf(0x1B, 0x61, 0x01)) // Center
@@ -124,25 +129,36 @@ object PrintHelper {
             sendText(out, "--------------------------------\n")
 
             // 3. Body (Left Align)
-            out.write(byteArrayOf(0x1B, 0x61, 0x00))
+            out.write(byteArrayOf(0x1B, 0x61, 0x00)) // Left Align
+            val format = "%-12s: %s\n"
+
             if (isSPB) {
-                out.write(formatRow("NO SPB", item["spb_no"]))
-                out.write(formatRow("MILL", item["mill_code"]))
-                out.write(formatRow("UNIT", "${item["unit"]} Jjg"))
-                out.write(formatRow("LOKASI", item["location_code"]))
+                out.write(String.format(format, "NO SPB", item["spb_no"] ?: "-").toByteArray())
+                out.write(String.format(format, "MILL", item["mill_code"] ?: "-").toByteArray())
+                out.write(String.format(format, "KENDARAAN", item["vehicle_code"] ?: "-").toByteArray())
+                out.write(String.format(format, "LOKASI", item["location_code"] ?: "-").toByteArray())
+                out.write(String.format(format, "KODE TPH", item["tph_code"] ?: "-").toByteArray())
+                out.write(String.format(format, "UNIT", item["unit"] ?: "Jjg").toByteArray())
             } else {
-                out.write(formatRow("NO RKH", item["no_rkh"]))
-                if (item.containsKey("tph_code")) out.write(formatRow("TPH", item["tph_code"]))
-                out.write(formatRow("JOB", item["job_code"]))
-                out.write(formatRow("HASIL", "${item["output"]} ${item["unit"]}"))
+                val isTPH = item.containsKey("tph_code")
+                out.write(String.format(format, "NO RKH", item["no_rkh"] ?: "-").toByteArray())
+                if (isTPH) out.write(String.format(format, "KODE TPH", item["tph_code"] ?: "-").toByteArray())
+                out.write(String.format(format, "JOB", item["job_code"] ?: "-").toByteArray())
+                out.write(String.format(format, "LOKASI", item["location_code"] ?: "-").toByteArray())
+                out.write(String.format(format, "UNIT", item["unit"] ?: "-").toByteArray())
+                out.write(String.format(format, "HASIL/TGT", item["output"] ?: "0").toByteArray())
             }
 
-            sendText(out, "--------------------------------\n")
+            out.write("--------------------------------\n".toByteArray())
             out.flush()
             Thread.sleep(500)
 
             // 4. QR Code
-            val qrData = if (isSPB) "SPB:${item["spb_no"]}" else "RKH:${item["no_rkh"]}"
+            val qrData = when {
+                isSPB -> "SPB:${item["spb_no"]}|MIL:${item["mill_code"]}|VEH:${item["vehicle_code"]}|LOC:${item["location_code"]}|TPH:${item["tph_code"]}|UNIT:${item["unit"]}"
+                isTPH -> "RKH:${item["no_rkh"]}|TPH:${item["tph_code"]}|UNIT:${item["unit"]}|OUT:${item["output"]}"
+                else -> "RKH:${item["no_rkh"]}|JOB:${item["job_code"]}|UNIT:${item["unit"]}|OUT:${item["output"]}|HK:${item["jumlah_hk"]}"
+            }
             val bitmap = generateQRCodeFullWidth(qrData)
             out.write(byteArrayOf(0x1B, 0x61, 0x01)) // Center
             printBitmapRaster(out, bitmap)
@@ -174,17 +190,47 @@ object PrintHelper {
     }
 
     private fun formatRow(label: String, value: String?): ByteArray {
-        val valStr = value ?: "-"
-        val labelWidth = 11
-        val formattedLabel = if (label.length > labelWidth) label.substring(0, labelWidth) else label.padEnd(labelWidth)
+        val cleanLabel = label.trim()
+        val cleanValue = value?.trim() ?: "-"
 
-        // Sisa karakter (32 - 11 label - 2 titik dua spasi = 19 karakter sisa)
-        val maxValWidth = LINE_CHARS - labelWidth - 2
-        val formattedValue = if (valStr.length > maxValWidth) valStr.substring(0, maxValWidth) else valStr
+        // Gunakan StringBuilder untuk kontrol yang lebih pasti
+        val sb = StringBuilder()
 
-        val row = "$formattedLabel: $formattedValue\n"
-        return try { row.toByteArray(charset("GBK")) } catch (e: Exception) { row.toByteArray() }
+        // 1. Label (dibuat tepat 11 karakter)
+        sb.append(cleanLabel)
+        while (sb.length < 11) {
+            sb.append(" ")
+        }
+        if (sb.length > 11) {
+            sb.setLength(11) // Hanya potong label jika kepanjangan
+        }
+
+        // 2. Pemisah
+        sb.append(": ")
+
+        // 3. Nilai (Jangan potong jika masih dalam batas baris)
+        // Standar 32 karakter - 11 label - 2 pemisah = 19 karakter sisa
+        val totalCurrentLength = sb.length + cleanValue.length
+        if (totalCurrentLength > LINE_CHARS) {
+            // Hanya potong jika melebihi lebar kertas (32 karakter)
+            val allowedLength = LINE_CHARS - sb.length
+            if (allowedLength > 0) {
+                sb.append(cleanValue.substring(0, allowedLength))
+            }
+        } else {
+            sb.append(cleanValue)
+        }
+
+        sb.append("\n")
+
+        val row = sb.toString()
+        return try {
+            row.toByteArray(charset("GBK"))
+        } catch (e: Exception) {
+            row.toByteArray()
+        }
     }
+
 
     private fun generateQRCodeFullWidth(content: String): Bitmap {
         val hints = mutableMapOf<EncodeHintType, Any>()

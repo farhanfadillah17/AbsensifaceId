@@ -250,9 +250,10 @@ fun SPBListScreen(
                     HorizontalDivider()
                     ListItem(
                         headlineContent = { Text("Hapus Data", color = Color.Red) },
-                        leadingContent = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
+                        leadingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red) },
                         modifier = Modifier.clickable {
                             showMenu = false
+                            // Set item yang akan dihapus agar muncul di AlertDialog
                             itemToDelete = selectedItemForMenu
                         }
                     )
@@ -346,24 +347,38 @@ fun SPBListScreen(
         }
 
         // --- 3. DIALOG HAPUS ---
-        if (itemToDelete != null) {
-            AlertDialog(
-                onDismissRequest = { itemToDelete = null },
-                title = { Text("Hapus Data") },
-                text = { Text("Yakin ingin menghapus SPB ${itemToDelete!!["no_spb"]}?") },
-                confirmButton = {
-                    Button(colors = ButtonDefaults.buttonColors(containerColor = Color.Red), onClick = {
-                        if (dbHelper.deleteSPB(itemToDelete!!["id"] ?: "")) {
-                            spbListData = dbHelper.getAllSPBListMap(fcba)
-                            Toast.makeText(context, "Data Terhapus", Toast.LENGTH_SHORT).show()
+    // --- 3. DIALOG HAPUS ---
+    if (itemToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = { Text("Hapus Data") },
+            // PERBAIKAN: Gunakan key "spb_no" (sesuai dengan data di SPBItemCard)
+            text = { Text("Yakin ingin menghapus SPB ${itemToDelete!!["spb_no"] ?: "-"}?") },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                    // Di dalam AlertDialog Hapus:
+                    onClick = {
+                        val spbNo = itemToDelete!!["no_spb"] ?: "" // Ambil nomor SPB
+
+                        if (spbNo.isNotEmpty()) {
+                            val res = dbHelper.deleteSPB(spbNo) // Panggil fungsi hapus baru
+                            if (res > 0) {
+                                spbListData = dbHelper.getAllSPBHeader(fcba) // Refresh list
+                                Toast.makeText(context, "Data Terhapus", Toast.LENGTH_SHORT).show()
+                            }
                         }
                         itemToDelete = null
-                    }) { Text("Hapus") }
-                },
-                dismissButton = { TextButton(onClick = { itemToDelete = null }) { Text("Batal") } }
-            )
-        }
+                    }
+                ) { Text("Hapus") }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) { Text("Batal") }
+            }
+        )
     }
+
+}
 
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -400,7 +415,7 @@ fun SPBItemCard(
                 Column(Modifier.weight(0.9f)) {
                     Text("Total Janjang", fontSize = 10.sp, color = Color.Gray)
                     // Ambil total_unit (sum dari detail)
-                    Text("${item["total_unit"] ?: "0"} Jjg", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                    Text("${item["unit"] ?: "0"} Jjg", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                 }
                 Column(Modifier.weight(1f)) {
                     Text("Sopir", fontSize = 10.sp, color = Color.Gray)

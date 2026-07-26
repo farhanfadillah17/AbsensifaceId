@@ -233,7 +233,7 @@ fun FruitCountingScreen(
                                             if (isSelected) selectedItems.remove(data) else selectedItems.add(data)
                                         } else {
                                             // Aksi klik normal (misal buka detail/nfc)
-                                            // selectedDataForNfc = data
+                                             selectedDataForNfc = data
                                         }
                                     },
                                     onLongClick = {
