@@ -116,7 +116,7 @@ fun RKHItemCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Info, null, Modifier.size(14.dp), Color.Gray)
                         Spacer(Modifier.width(4.dp))
-                        Text("Blok: ${data["location_code"] ?: "-"}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Blok: ${data["location"] ?: "-"}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                     Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -368,11 +368,11 @@ fun RKHMainScreen(
                         DetailRow("Afdeling", selectedDetailItem!!["afdeling"])
                         DetailRow("Gang", selectedDetailItem!!["gangcode"])
                         DetailRow("Pekerjaan", "${selectedDetailItem!!["job_code"]} - ${selectedDetailItem!!["job_name"]}")
-                        DetailRow("Lokasi/Blok", selectedDetailItem!!["location_code"])
+                        DetailRow("Lokasi/Blok", selectedDetailItem!!["location"])
                         DetailRow("Jumlah HK", selectedDetailItem!!["jumlah_hk"])
-                        DetailRow("Unit", selectedDetailItem!!["unit"])
-                        DetailRow("Output", selectedDetailItem!!["output"])
-                        DetailRow("Supervisor", listOfNotNull(selectedDetailItem!!["supervisi1"], selectedDetailItem!!["supervisi2"], selectedDetailItem!!["supervisi3"], selectedDetailItem!!["supervisi4"]).filter { it.isNotEmpty() }.joinToString(", "))
+                        DetailRow("Unit", "${selectedDetailItem!!["unit"]} ${selectedDetailItem!!["uom_unit"]}")
+                        DetailRow("Output", "${selectedDetailItem!!["output"]} ${selectedDetailItem!!["uom_output"]}")
+                        DetailRow("Supervisor", listOfNotNull(selectedDetailItem!!["sup1_name"], selectedDetailItem!!["sup2_name"], selectedDetailItem!!["sup3_name"], selectedDetailItem!!["sup4_name"]).filter { it.isNotEmpty() }.joinToString("\n "))
                         DetailRow("Tgl Buat", selectedDetailItem!!["created_at"])
                     }
                 },
@@ -393,32 +393,17 @@ fun RKHMainScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
                         // Di dalam Dialog Konfirmasi Hapus RKHFormScreen.kt
                         onClick = {
-                            val rkhNo = itemToDelete?.get("no_rkh")
-                            if (rkhNo != null) {
-                                // 1. Hapus dari database (Pastikan fungsi deleteRKH di Helper menerima No RKH sebagai parameter)
-                                if (dbHelper.deleteRKH(rkhNo)) {
+                            val rkhId = itemToDelete?.get("id")
+                            if (!rkhId.isNullOrEmpty()) {
+                                // 1. Hapus dari database (Gunakan ID agar hanya baris tersebut yang terhapus)
+                                if (dbHelper.deleteRKHById(rkhId)) {
                                     Toast.makeText(context, "Berhasil dihapus", Toast.LENGTH_SHORT).show()
 
-                                    // 2. Ambil data mentah terbaru dari database
-                                    val newRawData = dbHelper.getAllRKHListMap(fcba)
-
-                                    // 3. Proses pengelompokan (Grouping) agar list kembali sinkron
-                                    rkhDataList = newRawData.groupBy { it["no_rkh"] }.map { (noRkh, records) ->
-                                        // Ambil satu record sebagai template
-                                        val combined = records.first().toMutableMap()
-
-                                        // Gabungkan semua location_code dari grup yang sama
-                                        val allLocations = records.mapNotNull { it["location_code"] }
-                                            .filter { it.isNotBlank() }
-                                            .distinct()
-                                            .joinToString(", ")
-
-                                        combined["location_code"] = allLocations
-                                        combined
-                                    }
+                                    // 2. Ambil data terbaru dari database
+                                    rkhDataList = dbHelper.getAllRKHListMap(fcba)
                                 }
                             }
-                            // 4. Tutup dialog konfirmasi hapus
+                            // 3. Tutup dialog konfirmasi hapus
                             itemToDelete = null
                         }
                     ) { Text("Hapus", color = Color.White) }
@@ -451,12 +436,12 @@ fun RKHFormScreen(
     // --- 2. STATE DATA ---
     val rkhTypes = remember {
         listOf(
-            "RKH Panen (Perhitungan buah)",
-            "RKH Perawatan (perawatan)",
-            "RKH Bibitan (bibitan)",
-            "RKH Traksi (TRAKSI)",   // Pastikan ada kata TRAKSI untuk filter
-            "RKH Workshop (WORKSHOP)",
-            "RKH Umum (umum)"
+            "RKH Panen",
+            "RKH Perawatan",
+            "RKH Bibitan",
+            "RKH Traksi",   // Pastikan ada kata TRAKSI untuk filter
+            "RKH Workshop",
+            "RKH Umum"
         )
     }
     var selectedType by remember { mutableStateOf("") }
@@ -464,6 +449,7 @@ fun RKHFormScreen(
 
     // Tambahkan ini di bagian State Data
     var addedBlocks by remember { mutableStateOf(listOf<Map<String, String>>()) }
+    var originalIds by remember { mutableStateOf(setOf<String>()) }
 
     var noRkh by remember { mutableStateOf("Generating...") }
     var rkhDate by remember {
@@ -487,24 +473,30 @@ fun RKHFormScreen(
     var hk by remember { mutableStateOf("") } // Jumlah HK sekarang di Step 1
     var unit by remember { mutableStateOf("") }
     var output by remember { mutableStateOf("") }
+    var bjrValue by remember { mutableStateOf("0.0") }
+    var weightValue by remember { mutableStateOf("0.0") }
 
     var activeDialog by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(editId) {
         if (editId != null) {
-            android.util.Log.d("RKH_EDIT", "Memuat data untuk No RKH: $editId")
+            Log.d("RKH_EDIT", "Memuat data untuk No RKH: $editId")
 
-            // 1. Ambil Data Header (Type, Afd, Job, HK, Supervisor)
-            val headerData = dbHelper.getRKHByNo(editId, fcba)
+            // 1. Ambil Data Header berdasarkan ID
+            val headerData = dbHelper.getRKHById(editId)
             headerData?.let {
-                noRkh = it["no_rkh"] ?: editId
+                val currentNoRkh = it["no_rkh"] ?: editId
+                noRkh = currentNoRkh
                 selectedType = it["type_rkh"] ?: it["type"] ?: ""
                 selectedAfd = it["afdeling"] ?: ""
                 selectedGang = it["gangcode"] ?: ""
-                selectedJob = it["job_code"] ?: ""
+                
+                // Ambil Nama Job berdasarkan Code yang tersimpan
+                val jobCode = it["job_code"] ?: ""
+                val jobData = dbHelper.getJobByCode(jobCode, fcba)
+                selectedJob = if (jobData != null) "${jobData["FCCODE"]} - ${jobData["FCNAME"]}" else jobCode
+                
                 hk = it["jumlah_hk"] ?: ""
-                unit = it["unit"] ?: ""
-                output = it["output"] ?: ""
 
                 // Supervisor
                 sup1Code = it["supervisi1_code"] ?: ""
@@ -515,6 +507,11 @@ fun RKHFormScreen(
                 sup3Name = it["supervisi3_name"] ?: ""
                 sup4Code = it["supervisi4_code"] ?: ""
                 sup4Name = it["supervisi4_name"] ?: ""
+
+                // 2. Ambil SEMUA BLOK untuk RKH ini agar tidak hilang saat save
+                val blocks = dbHelper.getRKHBlocksByNo(currentNoRkh, fcba)
+                addedBlocks = blocks
+                originalIds = blocks.mapNotNull { it["id"] }.toSet()
             }
 
         } else {
@@ -530,13 +527,19 @@ fun RKHFormScreen(
 
 
 
+    LaunchedEffect(unit, bjrValue) {
+        val u = unit.toDoubleOrNull() ?: 0.0
+        val b = bjrValue.toDoubleOrNull() ?: 0.0
+        weightValue = String.format(java.util.Locale.US, "%.2f", u * b)
+    }
+
     // Data Lists
     val focusManager = LocalFocusManager.current
     val afdelingList = remember(fcba) { dbHelper.getAfdelingList(fcba) }
     val gangList = remember(fcba, selectedAfd) {
         if (selectedAfd.isNotEmpty()) dbHelper.getGangsByAfdeling(selectedAfd, fcba) else emptyList()
     }
-    val jobList = remember(fcba) { dbHelper.getJobList(fcba) }
+    val jobList = remember(fcba, selectedType) { dbHelper.getJobList(fcba, selectedType) }
     val locationList = remember(fcba, selectedAfd, selectedType) {
         val type = selectedType.uppercase()
         val cleanFcba = fcba.trim()
@@ -632,7 +635,15 @@ fun RKHFormScreen(
                     "AFD" -> { selectedAfd = selectedValue; selectedGang = "" }
                     "GANG" -> selectedGang = selectedValue
                     "JOB" -> selectedJob = selectedValue
-                    "LOC" -> selectedLoc = selectedValue
+                    "LOC" -> {
+                        selectedLoc = selectedValue
+                        if (selectedType.uppercase().contains("PANEN")) {
+                            val bjr = dbHelper.getBjrByBlock(selectedValue, fcba)
+                            bjrValue = bjr.toString()
+                        } else {
+                            bjrValue = "0.0"
+                        }
+                    }
                 }
                 activeDialog = null
             }
@@ -763,6 +774,30 @@ fun RKHFormScreen(
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next)
                             )
 
+                            if (selectedType.uppercase().contains("PANEN")) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = bjrValue,
+                                        onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) bjrValue = it },
+                                        label = { Text("BJR") },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next)
+                                    )
+                                    OutlinedTextField(
+                                        value = weightValue,
+                                        onValueChange = {},
+                                        label = { Text("Weight (KG)") },
+                                        modifier = Modifier.weight(1f),
+                                        readOnly = true,
+                                        singleLine = true
+                                    )
+                                }
+                            }
+
                             OutlinedTextField(
                                 value = output,
                                 onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) output = it },
@@ -772,33 +807,39 @@ fun RKHFormScreen(
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done)
                             )
 
-                            // TOMBOL TAMBAH KE DAFTAR (Bukan Simpan ke DB dulu)
-                            Button(
-                                onClick = {
-                                    if (selectedLoc.isNotEmpty()) {
-                                        // Menambahkan ke list 'addedBlocks' yang sudah Anda buat di State
-                                        addedBlocks = addedBlocks + mapOf(
-                                            "loc" to selectedLoc,
-                                            "hk" to hk,
-                                            "unit" to unit,
-                                            "output" to output
-                                        )
-                                        // Reset input field saja, agar bisa pilih blok lain
-                                        selectedLoc = ""
-                                        unit = ""
-                                        output = ""
+                            // TOMBOL TAMBAH KE DAFTAR (Hanya muncul jika BUKAN mode edit)
+//                            if (!isEditMode) {
+                                Button(
+                                    onClick = {
+                                        if (selectedLoc.isNotEmpty()) {
+                                            // Menambahkan ke list 'addedBlocks' yang sudah Anda buat di State
+                                            addedBlocks = addedBlocks + mapOf(
+                                                "loc" to selectedLoc,
+                                                "hk" to hk,
+                                                "unit" to unit,
+                                                "output" to output,
+                                                "bjr" to bjrValue,
+                                                "weight" to weightValue
+                                            )
+                                            // Reset input field saja, agar bisa pilih blok lain
+                                            selectedLoc = ""
+                                            unit = ""
+                                            output = ""
+                                            bjrValue = "0.0"
+                                            weightValue = "0.0"
 
-                                    } else {
-                                        Toast.makeText(context, "Pilih lokasi dulu!", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57C00))
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Tambah Blok ke Daftar")
-                            }
+                                        } else {
+                                            Toast.makeText(context, "Pilih lokasi dulu!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57C00))
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Tambah Blok ke Daftar")
+                                }
+//                            }
                         }
                     }
 
@@ -817,7 +858,12 @@ fun RKHFormScreen(
                                     Text("${index + 1}. ", fontWeight = FontWeight.Bold)
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text("Blok: ${block["loc"]}", fontWeight = FontWeight.SemiBold)
-                                        Text("Unit: ${block["unit"]} | Output: ${block["output"]}", fontSize = 12.sp, color = Color.Gray)
+                                        val detailText = if (selectedType.uppercase().contains("PANEN")) {
+                                            "Unit: ${block["unit"]} | BJR: ${block["bjr"]} | Berat: ${block["weight"]} KG"
+                                        } else {
+                                            "Unit: ${block["unit"]} | Output: ${block["output"]}"
+                                        }
+                                        Text(detailText, fontSize = 12.sp, color = Color.Gray)
                                     }
                                     IconButton(onClick = {
                                         addedBlocks = addedBlocks.filterIndexed { i, _ -> i != index }
@@ -839,7 +885,9 @@ fun RKHFormScreen(
                                     "loc" to selectedLoc,
                                     "hk" to hk,
                                     "unit" to unit,
-                                    "output" to output
+                                    "output" to output,
+                                    "bjr" to bjrValue,
+                                    "weight" to weightValue
                                 )
                             } else addedBlocks
 
@@ -847,25 +895,56 @@ fun RKHFormScreen(
                                 Toast.makeText(context, "Pilih lokasi dulu!", Toast.LENGTH_SHORT).show()
                             } else {
                                 if (isEditMode) {
-                                    // --- LOGIKA UPDATE ---
-                                    // Cara paling aman: Hapus data lama dengan No RKH ini, lalu Insert ulang yang baru
-                                    dbHelper.deleteRKH(noRkh)
+                                    // --- LOGIKA UPDATE BERBASIS ID ---
+                                    val currentIds = finalBlocks.mapNotNull { it["id"] }.toSet()
+                                    val idsToDelete = originalIds - currentIds
 
+                                    // 1. Hapus record yang dibuang dari list
+                                    idsToDelete.forEach { id ->
+                                        dbHelper.deleteRKHById(id)
+                                    }
+
+                                    // 2. Update atau Insert record yang ada di list
                                     finalBlocks.forEach { block ->
-                                        dbHelper.insertRKHFull(
-                                            noRkh = noRkh,
-                                            tanggal = rkhDate,
-                                            type = selectedType,
-                                            fcba = fcba,
-                                            afd = selectedAfd,
-                                            gang = selectedGang,
-                                            s1 = sup1Code, s2 = sup2Code, s3 = sup3Code, s4 = sup4Code,
-                                            job = selectedJob,
-                                            loc = block["loc"] ?: "",
-                                            hk = block["hk"]?.toDoubleOrNull() ?: 0.0,
-                                            unit = block["unit"]?.toDoubleOrNull() ?: 0.0,
-                                            out = block["output"]?.toDoubleOrNull() ?: 0.0
-                                        )
+                                        val blockId = block["id"]
+                                        if (!blockId.isNullOrEmpty()) {
+                                            // UPDATE EXISTING
+                                            dbHelper.updateRKHFullById(
+                                                id = blockId,
+                                                noRkh = noRkh,
+                                                tanggal = rkhDate,
+                                                type = selectedType,
+                                                fcba = fcba,
+                                                afd = selectedAfd,
+                                                gang = selectedGang,
+                                                s1 = sup1Code, s2 = sup2Code, s3 = sup3Code, s4 = sup4Code,
+                                                job = selectedJob.substringBefore(" - "),
+                                                loc = block["loc"] ?: "",
+                                                hk = block["hk"]?.toDoubleOrNull() ?: 0.0,
+                                                unit = block["unit"] ?: "",
+                                                out = block["output"]?.toDoubleOrNull() ?: 0.0,
+                                                bjr = block["bjr"]?.toDoubleOrNull() ?: 0.0,
+                                                weight = block["weight"]?.toDoubleOrNull() ?: 0.0
+                                            )
+                                        } else {
+                                            // INSERT NEW
+                                            dbHelper.insertRKHFull(
+                                                noRkh = noRkh,
+                                                tanggal = rkhDate,
+                                                type = selectedType,
+                                                fcba = fcba,
+                                                afd = selectedAfd,
+                                                gang = selectedGang,
+                                                s1 = sup1Code, s2 = sup2Code, s3 = sup3Code, s4 = sup4Code,
+                                                job = selectedJob.substringBefore(" - "),
+                                                loc = block["loc"] ?: "",
+                                                hk = block["hk"]?.toDoubleOrNull() ?: 0.0,
+                                                unit = block["unit"] ?: "",
+                                                out = block["output"]?.toDoubleOrNull() ?: 0.0,
+                                                bjr = block["bjr"]?.toDoubleOrNull() ?: 0.0,
+                                                weight = block["weight"]?.toDoubleOrNull() ?: 0.0
+                                            )
+                                        }
                                     }
                                     Toast.makeText(context, "RKH Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
                                     onSuccess()
@@ -880,11 +959,13 @@ fun RKHFormScreen(
                                             afd = selectedAfd,
                                             gang = selectedGang,
                                             s1 = sup1Code, s2 = sup2Code, s3 = sup3Code, s4 = sup4Code,
-                                            job = selectedJob,
+                                            job = selectedJob.substringBefore(" - "),
                                             loc = block["loc"] ?: "",
                                             hk = block["hk"]?.toDoubleOrNull() ?: 0.0,
-                                            unit = block["unit"]?.toDoubleOrNull() ?: 0.0,
-                                            out = block["output"]?.toDoubleOrNull() ?: 0.0
+                                            unit = block["unit"] ?: "",
+                                            out = block["output"]?.toDoubleOrNull() ?: 0.0,
+                                            bjr = block["bjr"]?.toDoubleOrNull() ?: 0.0,
+                                            weight = block["weight"]?.toDoubleOrNull() ?: 0.0
                                         )
                                     }
                                     Toast.makeText(context, "Data Berhasil Disimpan", Toast.LENGTH_SHORT).show()

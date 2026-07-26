@@ -1,7 +1,9 @@
 package com.example.attendanceapp
 
+import android.graphics.BitmapFactory
 import android.util.Log
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +49,18 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+
+    // --- LOGO FROM ASSETS ---
+    val logoBitmap = remember {
+        try {
+            context.assets.open("logo sip.png").use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
+            }
+        } catch (e: Exception) {
+            Log.e("LOGIN_LOGO", "Error loading logo: ${e.message}")
+            null
+        }
+    }
 
     // --- STATE BARU UNTUK IMPORT DATA ---
     var isImporting by remember { mutableStateOf(false) }
@@ -172,6 +187,17 @@ fun LoginScreen(
                     )
                 }
             }
+        }
+
+        // --- TAMPILAN LOGO ---
+        if (logoBitmap != null) {
+            Image(
+                bitmap = logoBitmap,
+                contentDescription = "SIP Logo",
+                modifier = Modifier
+                    .size(100.dp)
+                    .padding(bottom = 16.dp)
+            )
         }
 
         Text(
@@ -337,7 +363,7 @@ fun LoginScreen(
         }
 
         Text(
-            text = "App Version 1.0.45",
+            text = "App Version 1.0.45 | 07/26/2026",
             color = Color.DarkGray,
             fontSize = 10.sp,
             modifier = Modifier.padding(top = 16.dp)

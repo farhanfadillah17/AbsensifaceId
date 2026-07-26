@@ -16,16 +16,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+
 @Composable
 fun MasterDataMainScreen(
     sessionManager: SessionManager,
     onEmployeeClick: () -> Unit,
     onFieldClick: () -> Unit,
+    onJobClick: () -> Unit,
+    onTphClick: () -> Unit,
+    onFcbaClick: () -> Unit,
+    onMillClick: () -> Unit,
+    onVehicleClick: () -> Unit,
+    onNurseryClick: () -> Unit,
+    onGcClick: () -> Unit,
+    onWorkshopClick: () -> Unit,
+    onBjrClick: () -> Unit,
     onBack: () -> Unit
 ) {
     val userName = remember { sessionManager.getUserName() ?: "User" }
     val primaryColor = Color(0xFF1A3A8F) // Biru konsisten dengan SyncScreen
     val secondaryColor = Color(0xFFF5F7FA)
+    val scrollState = rememberScrollState()
 
     Box(
         modifier = Modifier
@@ -35,7 +48,8 @@ fun MasterDataMainScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = 24.dp)
+                .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Header
@@ -97,7 +111,124 @@ fun MasterDataMainScreen(
                 onClick = onFieldClick
             )
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Sub-menu 3: Job
+            MasterDataMenuButton(
+                title = "DATA PEKERJAAN",
+                subtitle = "Daftar jenis pekerjaan (Job)",
+                icon = Icons.Default.Work,
+                color = Color.White,
+                contentColor = primaryColor,
+                isOutline = true,
+                onClick = onJobClick
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Sub-menu 4: TPH
+            MasterDataMenuButton(
+                title = "DATA TPH",
+                subtitle = "Daftar Tempat Pengumpulan Hasil",
+                icon = Icons.Default.LocationOn,
+                color = Color.White,
+                contentColor = primaryColor,
+                isOutline = true,
+                onClick = onTphClick
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Sub-menu 5: FCBA
+            MasterDataMenuButton(
+                title = "BUSINESS UNIT (FCBA)",
+                subtitle = "Daftar unit bisnis / estate",
+                icon = Icons.Default.Business,
+                color = Color.White,
+                contentColor = primaryColor,
+                isOutline = true,
+                onClick = onFcbaClick
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Sub-menu 6: Mill
+            MasterDataMenuButton(
+                title = "PABRIK / MILL",
+                subtitle = "Daftar pabrik kelapa sawit",
+                icon = Icons.Default.Factory,
+                color = Color.White,
+                contentColor = primaryColor,
+                isOutline = true,
+                onClick = onMillClick
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Sub-menu 7: Vehicle
+            MasterDataMenuButton(
+                title = "KENDARAAN / VEHICLE",
+                subtitle = "Daftar kendaraan operasional",
+                icon = Icons.Default.LocalShipping,
+                color = Color.White,
+                contentColor = primaryColor,
+                isOutline = true,
+                onClick = onVehicleClick
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Sub-menu 8: Nursery
+            MasterDataMenuButton(
+                title = "NURSERY / BIBITAN",
+                subtitle = "Informasi pembibitan tanaman",
+                icon = Icons.Default.Grass,
+                color = Color.White,
+                contentColor = primaryColor,
+                isOutline = true,
+                onClick = onNurseryClick
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Sub-menu 9: GC
+            MasterDataMenuButton(
+                title = "GC MASTER",
+                subtitle = "Master data biaya umum",
+                icon = Icons.Default.Settings,
+                color = Color.White,
+                contentColor = primaryColor,
+                isOutline = true,
+                onClick = onGcClick
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Sub-menu 10: Workshop
+            MasterDataMenuButton(
+                title = "WORKSHOP MASTER",
+                subtitle = "Master data bengkel",
+                icon = Icons.Default.Build,
+                color = Color.White,
+                contentColor = primaryColor,
+                isOutline = true,
+                onClick = onWorkshopClick
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Sub-menu 11: BJR
+            MasterDataMenuButton(
+                title = "PERIODE BJR",
+                subtitle = "Daftar Berat Janjang Rata-rata",
+                icon = Icons.Default.Analytics,
+                color = Color.White,
+                contentColor = primaryColor,
+                isOutline = true,
+                onClick = onBjrClick
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }

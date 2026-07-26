@@ -236,7 +236,7 @@ fun SPBListScreen(
                 Column(Modifier
                     .fillMaxWidth()
                     .padding(start = 16.dp, end = 16.dp, bottom = 40.dp)) {
-                    Text("Opsi SPB: ${selectedItemForMenu!!["no_spb"]}", fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
+                    Text("Opsi SPB: ${selectedItemForMenu!!["spb_no"]}", fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
                     ListItem(
                         headlineContent = { Text("Lihat Detail") },
                         leadingContent = { Icon(Icons.Default.Visibility, null, tint = Color.Blue) },
@@ -290,7 +290,7 @@ fun SPBListScreen(
                                 val totalJanjang = actualDetails.sumOf { it["unit"]?.toIntOrNull() ?: 0 }
 
                                 // 3. Masukkan ke printData dengan Key yang sesuai dengan PrintHelper.kt
-                                printData["no_spb"] = spbNo
+                                printData["spb_no"] = spbNo
                                 printData["mill_code"] = header["mill_code"] ?: "-"
                                 printData["sopir_name"] = header["sopir_name"] ?: "-"
                                 printData["vehicle_code"] = header["vehicle_code"] ?: "-"
@@ -359,7 +359,7 @@ fun SPBListScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
                     // Di dalam AlertDialog Hapus:
                     onClick = {
-                        val spbNo = itemToDelete!!["no_spb"] ?: "" // Ambil nomor SPB
+                        val spbNo = itemToDelete!!["spb_no"] ?: "" // Ambil nomor SPB
 
                         if (spbNo.isNotEmpty()) {
                             val res = dbHelper.deleteSPB(spbNo) // Panggil fungsi hapus baru
@@ -415,7 +415,7 @@ fun SPBItemCard(
                 Column(Modifier.weight(0.9f)) {
                     Text("Total Janjang", fontSize = 10.sp, color = Color.Gray)
                     // Ambil total_unit (sum dari detail)
-                    Text("${item["unit"] ?: "0"} Jjg", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                    Text("${item["total_unit"] ?: "0"} Jjg", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                 }
                 Column(Modifier.weight(1f)) {
                     Text("Sopir", fontSize = 10.sp, color = Color.Gray)

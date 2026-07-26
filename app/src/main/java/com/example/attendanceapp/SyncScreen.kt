@@ -285,6 +285,62 @@ fun SyncScreen(
                                         syncStatus = "Import TPH $progress%"
                                     }
                                 }
+
+                                syncStatus = "Download data Business Unit..."
+                                val fcbaResponse = apiClient.getFcba()
+                                dbHelper.insertFcba(fcbaResponse) { progress ->
+                                    scope.launch(Dispatchers.Main) {
+                                        syncStatus = "Import Business Unit $progress%"
+                                    }
+                                }
+
+                                syncStatus = "Download data Customer..."
+                                val customerResponse = apiClient.getCustomer(fcba)
+                                dbHelper.insertCustomer(customerResponse) { progress ->
+                                    scope.launch(Dispatchers.Main) {
+                                        syncStatus = "Import Customer $progress%"
+                                    }
+                                }
+
+                                syncStatus = "Download data Nursery..."
+                                val nurseryResponse = apiClient.getNursery(fcba)
+                                dbHelper.insertNursery(nurseryResponse) { progress ->
+                                    scope.launch(Dispatchers.Main) {
+                                        syncStatus = "Import Nursery $progress%"
+                                    }
+                                }
+
+                                syncStatus = "Download data Vehicle..."
+                                val vehicleResponse = apiClient.getVehicle(fcba)
+                                dbHelper.insertVehicle(vehicleResponse) { progress ->
+                                    scope.launch(Dispatchers.Main) {
+                                        syncStatus = "Import Vehicle $progress%"
+                                    }
+                                }
+
+                                syncStatus = "Download data GC Master..."
+                                val gcResponse = apiClient.getGc(fcba)
+                                dbHelper.insertGc(gcResponse) { progress ->
+                                    scope.launch(Dispatchers.Main) {
+                                        syncStatus = "Import GC $progress%"
+                                    }
+                                }
+
+                                syncStatus = "Download data Workshop..."
+                                val workshopResponse = apiClient.getWorkshop(fcba)
+                                dbHelper.insertWorkshop(workshopResponse) { progress ->
+                                    scope.launch(Dispatchers.Main) {
+                                        syncStatus = "Import Workshop $progress%"
+                                    }
+                                }
+
+                                syncStatus = "Download data BJR..."
+                                val bjrResponse = apiClient.getBjr(fcba)
+                                dbHelper.insertBjr(bjrResponse) { progress ->
+                                    scope.launch(Dispatchers.Main) {
+                                        syncStatus = "Import BJR $progress%"
+                                    }
+                                }
                             }
                             syncStatus = "Download selesai!"
                         } catch (e: Exception) {

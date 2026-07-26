@@ -58,7 +58,7 @@ data class MenuConfig(
 
 // 2. Enum Screen
 enum class Screen {
-    LOGIN, DASHBOARD, HOME, EMPLOYEE_FORM, REGISTER_FACE, QR_SCAN, FACE_VERIFY, HISTORY, PROGRESS_MENU, FRUIT_COUNTING, ANCAK_PANEN, SPB_MENU, SPB_FORM, AKP_FORM, RKH_VIEW,RKH_FORM, TRANSFER_DATA, SYNC, MASTER_DATA, EMPLOYEE_MENU, NFC_REGISTER, NFC_ATTENDANCE
+    LOGIN, DASHBOARD, HOME, EMPLOYEE_FORM, REGISTER_FACE, QR_SCAN, FACE_VERIFY, HISTORY, PROGRESS_MENU, FRUIT_COUNTING, ANCAK_PANEN, SPB_MENU, SPB_FORM, AKP_FORM, RKH_VIEW,RKH_FORM, TRANSFER_DATA, SYNC, MASTER_DATA, EMPLOYEE_MENU, NFC_REGISTER, NFC_ATTENDANCE, MASTER_LIST
 }
 
 class MainActivity : ComponentActivity() {
@@ -132,30 +132,6 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     scope.launch(Dispatchers.IO) {
 
-                        if (db.isTableEmpty("NURSERY")) {
-                            Log.d("DB_INIT", "Mengimport data Nursery...")
-                            db.importSqlFromAssets("nursery.sql")
-                        }
-                        // Cek Tabel Mill (CUSTOMER)
-                        if (db.isTableEmpty("CUSTOMER")) {
-                            db.importSqlFromAssets("mill.sql")
-                        }
-                        // Cek Tabel Vehicle (VEHICLE)
-                        if (db.isTableEmpty("VEHICLE")) {
-                            db.importSqlFromAssets("vehicle.sql")
-                        }
-
-                        if (db.isTableEmpty("GCMASTER")) {
-                            Log.d("DB_INIT", "Mengimport data Traksi...")
-                            db.importSqlFromAssets("gcmaster.sql")
-                        }
-
-                        // 5. TAMBAHKAN: Cek Tabel Workshop (WORKSHOP)
-                        // Catatan: Pastikan nama tabel di isTableEmpty sesuai dengan konstanta Anda
-                        if (db.isTableEmpty("WORKSHOP")) {
-                            Log.d("DB_INIT", "Mengimport data Workshop...")
-                            db.importSqlFromAssets("workshop.sql")
-                        }
                     }
                 }
 
@@ -321,6 +297,7 @@ fun AppNavigation(
     var selectedSpbCategory by remember { mutableStateOf("") }
     var nfcAction by remember { mutableStateOf("READ") } // "READ" or "WRITE"
     var selectedRkhId by remember { mutableStateOf<String?>(null) }
+    var selectedMasterType by remember { mutableStateOf("") }
 
 
 
@@ -597,9 +574,52 @@ fun AppNavigation(
             sessionManager = sessionManager,
             onEmployeeClick = { navigateTo(Screen.EMPLOYEE_MENU) },
             onFieldClick = { 
-                // Sementara tampilkan toast atau arahkan ke layar dummy jika belum ada form Field
-                Toast.makeText(context, "Menu Field segera hadir", Toast.LENGTH_SHORT).show()
+                selectedMasterType = "FIELD"
+                navigateTo(Screen.MASTER_LIST)
             },
+            onJobClick = {
+                selectedMasterType = "JOB"
+                navigateTo(Screen.MASTER_LIST)
+            },
+            onTphClick = {
+                selectedMasterType = "TPH"
+                navigateTo(Screen.MASTER_LIST)
+            },
+            onFcbaClick = {
+                selectedMasterType = "FCBA"
+                navigateTo(Screen.MASTER_LIST)
+            },
+            onMillClick = {
+                selectedMasterType = "MILL"
+                navigateTo(Screen.MASTER_LIST)
+            },
+            onVehicleClick = {
+                selectedMasterType = "VEHICLE"
+                navigateTo(Screen.MASTER_LIST)
+            },
+            onNurseryClick = {
+                selectedMasterType = "NURSERY"
+                navigateTo(Screen.MASTER_LIST)
+            },
+            onGcClick = {
+                selectedMasterType = "GC"
+                navigateTo(Screen.MASTER_LIST)
+            },
+            onWorkshopClick = {
+                selectedMasterType = "WORKSHOP"
+                navigateTo(Screen.MASTER_LIST)
+            },
+            onBjrClick = {
+                selectedMasterType = "BJR"
+                navigateTo(Screen.MASTER_LIST)
+            },
+            onBack = { navigateBack() }
+        )
+
+        Screen.MASTER_LIST -> MasterDataListScreen(
+            type = selectedMasterType,
+            dbHelper = db,
+            fcba = sessionManager.getFcba() ?: "",
             onBack = { navigateBack() }
         )
 
@@ -669,145 +689,106 @@ fun DashboardScreen(
     val fcba = sharedPref.getString("fcba", "") ?: ""
 
     LaunchedEffect(Unit) {
-
-        isImporting = true
-//        importStatus = "Menyiapkan data karyawan..."
-
         try {
+            val tablesToSync = listOf(
+                AttendanceDatabaseHelper.T_EMP,
+                AttendanceDatabaseHelper.T_JOB,
+                AttendanceDatabaseHelper.T_FIELD,
+                AttendanceDatabaseHelper.T_TPH,
+                AttendanceDatabaseHelper.T_MENU_ACCESS,
+                AttendanceDatabaseHelper.T_BU,
+                AttendanceDatabaseHelper.T_MILL,
+                AttendanceDatabaseHelper.T_NURSERY,
+                AttendanceDatabaseHelper.T_VEHICLE,
+                AttendanceDatabaseHelper.T_GCMASTER,
+                AttendanceDatabaseHelper.T_WORKSHOP_MASTER,
+                AttendanceDatabaseHelper.T_BJR
+            )
+            
+            var needsSync = false
+            for (table in tablesToSync) {
+                if (dbHelper.isTableEmpty(table)) {
+                    needsSync = true
+                    break
+                }
+            }
 
+            if (!needsSync) return@LaunchedEffect
+
+            isImporting = true
+            
             // =========================
             // EMPLOYEE
             // =========================
-
-            var existingData = withContext(Dispatchers.IO) {
-                dbHelper.getAllMasterEmployees(fcba).size
-            }
-
-            if (existingData == 0) {
-
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_EMP)) {
                 importStatus = "Menyiapkan data karyawan..."
-
                 withContext(Dispatchers.IO) {
-
                     val response = apiClient.getEmployee(fcba)
-//                    Log.d("test import", "DashboardScreen: $response")
-
                     dbHelper.insertEmployee(response) { count ->
-
                         scope.launch(Dispatchers.Main) {
                             importStatus = "Mengimpor Employee $count%"
                         }
-
                     }
-
                 }
-
                 importStatus = "Data karyawan siap!"
             }
 
             // =========================
             // JOB
             // =========================
-
-            existingData = withContext(Dispatchers.IO) {
-                dbHelper.getJobList(fcba).size
-            }
-
-            if (existingData == 0) {
-
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_JOB)) {
                 importStatus = "Menyiapkan data job..."
-
                 withContext(Dispatchers.IO) {
-
                     val response = apiClient.getJob(fcba)
-//                    Log.d("test import", "DashboardScreen: $response")
-
                     dbHelper.insertJob(response) { count ->
-
                         scope.launch(Dispatchers.Main) {
                             importStatus = "Mengimpor Job $count%"
                         }
-
                     }
-
                 }
-
                 importStatus = "Data job siap!"
             }
 
             // =========================
             // FIELD
             // =========================
-
-            existingData = withContext(Dispatchers.IO) {
-                dbHelper.getBlockList(fcba).size
-            }
-
-            if (existingData == 0) {
-
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_FIELD)) {
                 importStatus = "Menyiapkan data field..."
-
                 withContext(Dispatchers.IO) {
-
                     val response = apiClient.getField(fcba)
-//                    Log.d("test import", "DashboardScreen: $response")
-
                     dbHelper.insertField(response) { count ->
-
                         scope.launch(Dispatchers.Main) {
                             importStatus = "Mengimpor field $count%"
                         }
-
                     }
-
                 }
-
                 importStatus = "Data field siap!"
             }
 
             // =========================
             // TPH
             // =========================
-
-            existingData = withContext(Dispatchers.IO) {
-                dbHelper.getAllTph(fcba).size
-            }
-
-            if (existingData == 0) {
-
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_TPH)) {
                 importStatus = "Menyiapkan data tph..."
-
                 withContext(Dispatchers.IO) {
-
                     val response = apiClient.getTph(fcba)
-//                    Log.d("test import", "DashboardScreen: $response")
-
                     dbHelper.insertTph(response) { count ->
-
                         scope.launch(Dispatchers.Main) {
                             importStatus = "Mengimpor tph $count%"
                         }
-
                     }
-
                 }
-
                 importStatus = "Data tph siap!"
             }
 
-
             // =========================
-// ACCESS CONTROL (HAK AKSES)
-// =========================
-            existingData = withContext(Dispatchers.IO) {
-                dbHelper.getAllowedMenusForUser(empId).size
-            }
-
-            if (existingData == 0) {
+            // ACCESS CONTROL (HAK AKSES)
+            // =========================
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_MENU_ACCESS)) {
                 importStatus = "Menyiapkan hak akses menu..."
                 withContext(Dispatchers.IO) {
                     try {
-                        val response = apiClient.getAccess() // Panggil API Access
+                        val response = apiClient.getAccess()
                         dbHelper.insertAccess(response)
                     } catch (e: Exception) {
                         Log.e("IMPORT_ACCESS", "Gagal download access: ${e.message}")
@@ -819,52 +800,126 @@ fun DashboardScreen(
             // =========================
             // FCBA
             // =========================
-
-            existingData = withContext(Dispatchers.IO) {
-                dbHelper.getAllFcba().size
-            }
-
-            if (existingData == 0) {
-
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_BU)) {
                 importStatus = "Menyiapkan data fcba..."
-
                 withContext(Dispatchers.IO) {
-
                     val response = apiClient.getFcba()
-//                    Log.d("test import", "DashboardScreen: $response")
-
                     dbHelper.insertFcba(response) { count ->
-
                         scope.launch(Dispatchers.Main) {
                             importStatus = "Mengimpor fcba $count%"
                         }
-
                     }
-
                 }
-
                 importStatus = "Data fcba siap!"
             }
 
+            // =========================
+            // CUSTOMER (MILL)
+            // =========================
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_MILL)) {
+                importStatus = "Menyiapkan data customer..."
+                withContext(Dispatchers.IO) {
+                    val response = apiClient.getCustomer(fcba)
+                    dbHelper.insertCustomer(response) { count ->
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor customer $count%"
+                        }
+                    }
+                }
+                importStatus = "Data customer siap!"
+            }
+
+            // =========================
+            // NURSERY
+            // =========================
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_NURSERY)) {
+                importStatus = "Menyiapkan data nursery..."
+                withContext(Dispatchers.IO) {
+                    val response = apiClient.getNursery(fcba)
+                    dbHelper.insertNursery(response) { count ->
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor nursery $count%"
+                        }
+                    }
+                }
+                importStatus = "Data nursery siap!"
+            }
+
+            // =========================
+            // VEHICLE
+            // =========================
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_VEHICLE)) {
+                importStatus = "Menyiapkan data kendaraan..."
+                withContext(Dispatchers.IO) {
+                    val response = apiClient.getVehicle(fcba)
+                    dbHelper.insertVehicle(response) { count ->
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor kendaraan $count%"
+                        }
+                    }
+                }
+                importStatus = "Data kendaraan siap!"
+            }
+
+            // =========================
+            // GC MASTER (TRAKSI)
+            // =========================
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_GCMASTER)) {
+                importStatus = "Menyiapkan data traksi..."
+                withContext(Dispatchers.IO) {
+                    val response = apiClient.getGc(fcba)
+                    dbHelper.insertGc(response) { count ->
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor Traksi $count%"
+                        }
+                    }
+                }
+                importStatus = "Data traksi siap!"
+            }
+
+            // =========================
+            // WORKSHOP
+            // =========================
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_WORKSHOP_MASTER)) {
+                importStatus = "Menyiapkan data workshop..."
+                withContext(Dispatchers.IO) {
+                    val response = apiClient.getWorkshop(fcba)
+                    dbHelper.insertWorkshop(response) { count ->
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor Workshop $count%"
+                        }
+                    }
+                }
+                importStatus = "Data workshop siap!"
+            }
+
+            // =========================
+            // BJR PERIOD
+            // =========================
+            if (dbHelper.isTableEmpty(AttendanceDatabaseHelper.T_BJR)) {
+                importStatus = "Menyiapkan data BJR..."
+                withContext(Dispatchers.IO) {
+                    val response = apiClient.getBjr(fcba)
+                    dbHelper.insertBjr(response) { count ->
+                        scope.launch(Dispatchers.Main) {
+                            importStatus = "Mengimpor BJR $count%"
+                        }
+                    }
+                }
+                importStatus = "Data BJR siap!"
+            }
+
             importStatus = "Sinkronisasi selesai"
+            context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE).edit().putBoolean("isFirstRun", false).apply()
 
         } catch (e: Exception) {
-
-            Log.e(
-                "IMPORT_DATA",
-                "Error: ${e.message}",
-                e
-            )
-
-            importStatus =
-                "Gagal mengunduh data: ${e.localizedMessage}"
-
+            Log.e("IMPORT_DATA", "Error: ${e.message}", e)
+            importStatus = "Gagal mengunduh data: ${e.localizedMessage}"
         } finally {
-
             isImporting = false
-
         }
     }
+
 
 
 

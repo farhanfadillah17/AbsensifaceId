@@ -92,7 +92,61 @@ class ApiClient {
         return api.postFaceEmbedding(fccode, fcba, faceEmbedding)
     }
 
+    suspend fun getCustomer(fcba: String): CustomerResponse {
+        return api.getCustomer(fcba)
+    }
+
+    suspend fun getNursery(fcba: String): NurseryResponse {
+        return api.getNursery(fcba)
+    }
+
+    suspend fun getVehicle(fcba: String): VehicleResponse {
+        return api.getVehicle(fcba)
+    }
+
+    suspend fun getGc(fcba: String): GcResponse {
+        return api.getGc(fcba)
+    }
+
+    suspend fun getWorkshop(fcba: String): WorkshopResponse {
+        return api.getWorkshop(fcba)
+    }
+
+    suspend fun getBjr(fcba: String): BjrResponse {
+        return api.getBjr(fcba)
+    }
+
     interface ApiService {
+
+        @GET("get_data_customer.asp")
+        suspend fun getCustomer(
+            @Query("fcba") fcba: String
+        ): CustomerResponse
+
+        @GET("get_data_nursery.asp")
+        suspend fun getNursery(
+            @Query("fcba") fcba: String
+        ): NurseryResponse
+
+        @GET("get_data_vehicle.asp")
+        suspend fun getVehicle(
+            @Query("fcba") fcba: String
+        ): VehicleResponse
+
+        @GET("get_data_gc.asp")
+        suspend fun getGc(
+            @Query("fcba") fcba: String
+        ): GcResponse
+
+        @GET("get_data_workshop.asp")
+        suspend fun getWorkshop(
+            @Query("fcba") fcba: String
+        ): WorkshopResponse
+
+        @GET("get_data_bjr.asp")
+        suspend fun getBjr(
+            @Query("fcba") fcba: String
+        ): BjrResponse
 
         @GET("get_data_employee.asp")
         suspend fun getEmployee(
@@ -242,6 +296,91 @@ class ApiClient {
     data class AccessResponse(
         val header: Header,
         val detail: List<Access>
+    )
+
+    data class Customer(
+        val customercode: String,
+        val description: String,
+        val fcba: String
+    )
+
+    data class CustomerResponse(
+        val header: Header,
+        val detail: List<Customer>
+    )
+
+    data class Nursery(
+        val nurserycode: String,
+        val description: String,
+        val dateplanted: String,
+        val fcba: String,
+        val stockcode: String,
+        val storecode: String,
+        val status: String? = null
+    )
+
+    data class NurseryResponse(
+        val header: Header,
+        val detail: List<Nursery>
+    )
+
+    data class Vehicle(
+        val fccode: String,
+        val fcname: String,
+        val vehiclegroupcode: String,
+        val activation: String,
+        val registrationno: String,
+        val fcba: String
+    )
+
+    data class VehicleResponse(
+        val header: Header,
+        val detail: List<Vehicle>
+    )
+
+    data class Gc(
+        val item: String,
+        val fccode: String,
+        val fcname: String,
+        val gcgroup: String,
+        val show_gc: String,
+        val division: String,
+        val ownership: String,
+        val fcba: String
+    )
+
+    data class GcResponse(
+        val header: Header,
+        val detail: List<Gc>
+    )
+
+    data class Workshop(
+        val fccode: String,
+        val fcname: String,
+        val remarks: String,
+        val activation: String,
+        val fcba: String
+    )
+
+    data class WorkshopResponse(
+        val header: Header,
+        val detail: List<Workshop>
+    )
+
+    data class Bjr(
+        val lineno: String,
+        val periodyear: String,
+        val periodmonth: String,
+        val division: String,
+        val status_tanaman: String,
+        val fieldcode: String,
+        val bjr: String,
+        val fcba: String
+    )
+
+    data class BjrResponse(
+        val header: Header,
+        val detail: List<Bjr>
     )
 
     data class PostResponse(

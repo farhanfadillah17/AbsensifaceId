@@ -39,7 +39,7 @@ data class UserProfile(
     val username: String, val empcode: String, val fcba: String,
     val divisi: String, val gang: String, val role: String,
 
-)
+    )
 
 data class Mill(val code: String, val name: String, val fcba: String)
 data class Vehicle(val code: String, val name: String, val regNo: String, val fcba: String)
@@ -49,8 +49,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     companion object {
         // Ganti nama ke v11 untuk reset total terakhir kali
-        const val DATABASE_NAME = "attendance_reset_final_v321.db"
-        const val DATABASE_VERSION = 321
+        const val DATABASE_NAME = "attendance_reset_final_v325.db"
+        const val DATABASE_VERSION = 325
 
         const val T_EMP = "EMPLOYEE"
         const val E_FCCODE = "FCCODE"
@@ -170,8 +170,11 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
         const val T_FRUIT_COUNTING = "fruit_counting"
         const val T_TPH = "TPH"
+        const val T_BJR = "BJRPERIOD"
 
         const val T_NURSERY = "NURSERY"
+        const val T_FIELD = "FIELD"
+        const val T_BU = "BUSINESSUNIT"
 
         const val T_GCMASTER = "GCMASTER"
         const val T_WORKSHOP_MASTER = "WORKSHOP"
@@ -230,11 +233,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
             // 4. Tabel Master Dropdown RKH
             db.execSQL("CREATE TABLE IF NOT EXISTS $T_AFDELING (FCCODE TEXT PRIMARY KEY, FCNAME TEXT, FCBA TEXT)")
 
-            db.execSQL("DROP TABLE IF EXISTS $T_GANG")
             db.execSQL("CREATE TABLE IF NOT EXISTS $T_GANG (FCCODE TEXT PRIMARY KEY, FCNAME TEXT, FCBA TEXT, FCENTRY TEXT, FCEDIT TEXT)")
 
-            // PERBAIKAN DI SINI: Tabel JOB sudah dibersihkan dari error string
-            db.execSQL("DROP TABLE IF EXISTS $T_JOB")
             val createJobTable = """
     CREATE TABLE IF NOT EXISTS $T_JOB (
         FCCODE TEXT PRIMARY KEY,
@@ -322,13 +322,14 @@ class AttendanceDatabaseHelper(private val context: Context) :
         jumlah_hk REAL,
         unit TEXT, -- Ubah ke TEXT agar bisa simpan "KG", "HK", dll
         output REAL,
+        bjr REAL,
+        weight REAL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
 """.trimIndent()
             )
 
             // 6. Tabel Employee
-            db.execSQL("DROP TABLE IF EXISTS $T_EMP")
             db.execSQL(
                 """
     CREATE TABLE IF NOT EXISTS $T_EMP (
@@ -440,7 +441,6 @@ class AttendanceDatabaseHelper(private val context: Context) :
             """.trimIndent()
             )
 
-            db.execSQL("DROP TABLE IF EXISTS TPH")
             db.execSQL(
                 """
     CREATE TABLE IF NOT EXISTS TPH (
@@ -476,7 +476,23 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
             db.execSQL(
                 """
-            CREATE TABLE IF NOT EXISTS BUSINESSUNIT (
+                CREATE TABLE IF NOT EXISTS $T_BJR (
+                    LINENO TEXT,
+                    PERIODYEAR TEXT,
+                    PERIODMONTH TEXT,
+                    DIVISION TEXT,
+                    STATUS_TANAMAN TEXT,
+                    FIELDCODE TEXT,
+                    BJR REAL,
+                    FCBA TEXT,
+                    PRIMARY KEY(FIELDCODE, FCBA)
+                )
+                """.trimIndent()
+            )
+
+            db.execSQL(
+                """
+            CREATE TABLE IF NOT EXISTS $T_BU (
                 FCCODE TEXT PRIMARY KEY,
                 FCNAME TEXT,
                 FCCOMPANYCODE TEXT,
@@ -511,7 +527,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
             db.execSQL(
                 """
-    CREATE TABLE IF NOT EXISTS FIELD (
+    CREATE TABLE IF NOT EXISTS $T_FIELD (
         FCCODE TEXT PRIMARY KEY,
         FCNAME TEXT,
         DIVISION TEXT,
@@ -907,16 +923,16 @@ class AttendanceDatabaseHelper(private val context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS $T_USERS")
-        db.execSQL("DROP TABLE IF EXISTS $T_EMP")
-        db.execSQL("DROP TABLE IF EXISTS $T_ATT")
-        db.execSQL("DROP TABLE IF EXISTS $T_FACE")
-        db.execSQL("DROP TABLE IF EXISTS $T_MAINTENANCE")
-        db.execSQL("DROP TABLE IF EXISTS fruit_counting")
-        db.execSQL("DROP TABLE IF EXISTS table_ancak_panen")
-        db.execSQL("DROP TABLE IF EXISTS T_MENU")
-        db.execSQL("DROP TABLE IF EXISTS T_MENU_ACCESS")
-        db.execSQL("DROP TABLE IF EXISTS $T_FACE_FAIL")
+//        db.execSQL("DROP TABLE IF EXISTS $T_USERS")
+//        db.execSQL("DROP TABLE IF EXISTS $T_EMP")
+//        db.execSQL("DROP TABLE IF EXISTS $T_ATT")
+//        db.execSQL("DROP TABLE IF EXISTS $T_FACE")
+//        db.execSQL("DROP TABLE IF EXISTS $T_MAINTENANCE")
+//        db.execSQL("DROP TABLE IF EXISTS fruit_counting")
+//        db.execSQL("DROP TABLE IF EXISTS table_ancak_panen")
+//        db.execSQL("DROP TABLE IF EXISTS T_MENU")
+//        db.execSQL("DROP TABLE IF EXISTS T_MENU_ACCESS")
+//        db.execSQL("DROP TABLE IF EXISTS $T_FACE_FAIL")
         onCreate(db)
     }
 
@@ -1040,7 +1056,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
     fun getEmployeeByOnlyCode(code: String, fcba: String): Employee? {
         return try {
             val db = this.readableDatabase
-            
+
             // Jika admin (99), lihat semua. Jika bukan, filter sesuai BA.
             val selection = if (fcba == "99") "$E_FCCODE = ?" else "$E_FCCODE = ? AND $E_FCBA = ?"
             val selectionArgs = if (fcba == "99") arrayOf(code) else arrayOf(code, fcba)
@@ -1207,7 +1223,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
             } else {
                 "SELECT * FROM $T_ATT WHERE $A_TIMESTAMP LIKE ? AND $A_FCBA = ? ORDER BY $A_TIMESTAMP DESC"
             }
-            
+
             val args = if (fcba == "99") arrayOf("$today%") else arrayOf("$today%", fcba)
 
             db.rawQuery(query, args).use { c ->
@@ -1287,7 +1303,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 "SELECT * FROM $T_EMP WHERE $E_FCBA = ? ORDER BY $E_NAME ASC"
             }
             val args = if (fcba == "99") null else arrayOf(fcba)
-            
+
             db.rawQuery(query, args).use { cursor ->
                 while (cursor.moveToNext()) {
                     list.add(
@@ -1367,8 +1383,15 @@ class AttendanceDatabaseHelper(private val context: Context) :
             db.beginTransaction()
             db.delete(T_EMP, null, null)
             db.delete(T_JOB, null, null)
-            db.delete("FIELD", null, null)
+            db.delete(T_FIELD, null, null)
             db.delete(T_TPH, null, null)
+            db.delete(T_BU, null, null)
+            db.delete(T_MILL, null, null)
+            db.delete(T_NURSERY, null, null)
+            db.delete(T_VEHICLE, null, null)
+            db.delete(T_GCMASTER, null, null)
+            db.delete(T_WORKSHOP_MASTER, null, null)
+            db.delete(T_BJR, null, null)
             db.setTransactionSuccessful()
             Log.d("DB_CHECK", "Semua data master berhasil dihapus.")
         } catch (e: Exception) {
@@ -1586,36 +1609,12 @@ class AttendanceDatabaseHelper(private val context: Context) :
     fun getAllSPBListMap(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-
-        // 2. Tambahkan filter LIKE ? agar hanya mengambil data hari ini
-        val query = """
-        SELECT 
-            h.id, 
-            h.spb_no, 
-            h.mill_name, 
-            h.driver_name, 
-            h.vehicle_no, 
-            h.created_at,
-            IFNULL(SUM(d.unit), 0) as total_unit,
-            IFNULL(MIN(d.location_code), '-') as first_loc
-        FROM T_SPB_HEADER h
-        LEFT JOIN T_SPB_DETAIL d ON h.spb_no = d.spb_no
-        WHERE h.fcba = ? AND h.created_at LIKE ?
-        GROUP BY h.spb_no
-        ORDER BY h.created_at DESC
-    """.trimIndent()
+        val query = "SELECT * FROM T_SPB WHERE fcba = ? ORDER BY created_at DESC"
 
         try {
-            // Menggunakan today% untuk mencocokkan tanggal di awal string created_at
-            db.rawQuery(query, arrayOf(fcba, "$today%")).use { cursor ->
+            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
-
-                    val idIdx = cursor.getColumnIndex("id")
-                    if (idIdx != -1) {
-                        map["id"] = cursor.getString(idIdx) ?: ""
-                    }
                     map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id"))
                     map["no_spb"] = cursor.getString(cursor.getColumnIndexOrThrow("spb_no"))
                     map["mill_name"] = cursor.getString(cursor.getColumnIndexOrThrow("mill_name"))
@@ -1626,9 +1625,6 @@ class AttendanceDatabaseHelper(private val context: Context) :
                     map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("location_code"))
                     map["unit"] = cursor.getString(cursor.getColumnIndexOrThrow("total_janjang"))
                     map["created_at"] = cursor.getString(cursor.getColumnIndexOrThrow("created_at"))
-
-                    map["total_unit"] = cursor.getString(cursor.getColumnIndexOrThrow("total_unit")) ?: "0"
-                    map["first_loc"] = cursor.getString(cursor.getColumnIndexOrThrow("first_loc")) ?: "-"
                     list.add(map)
                 }
             }
@@ -1640,22 +1636,16 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
     // 2. Fungsi Hapus SPB
     fun deleteSPB(spbNo: String): Int {
-        val db = this.writableDatabase
-        var result = 0
-        try {
-            db.beginTransaction()
-            // 1. Hapus Detail dulu
+        val db = writableDatabase
+        return try {
+            // Hapus detail dulu karena ada relasi
             db.delete(T_SPB_DETAIL, "$SD_SPB_NO = ?", arrayOf(spbNo))
-            // 2. Hapus Header berdasarkan spb_no
-            result = db.delete(T_SPB_HEADER, "$SH_SPB_NO = ?", arrayOf(spbNo))
-
-            db.setTransactionSuccessful()
+            // Hapus header
+            db.delete(T_SPB_HEADER, "$SH_SPB_NO = ?", arrayOf(spbNo))
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Error hapus SPB: ${e.message}")
-        } finally {
-            db.endTransaction()
+            Log.e("DB_ERROR", "Gagal hapus SPB: ${e.message}")
+            0
         }
-        return result
     }
 
     // 3. Fungsi Update Header SPB
@@ -1848,7 +1838,7 @@ class AttendanceDatabaseHelper(private val context: Context) :
                         }
 
                         db.insertWithOnConflict(
-                            "businessunit",
+                            "BUSINESSUNIT",
                             null,
                             values,
                             SQLiteDatabase.CONFLICT_REPLACE
@@ -1870,7 +1860,178 @@ class AttendanceDatabaseHelper(private val context: Context) :
                 db.endTransaction()
             }
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Error membaca file import user: ${e.message}")
+            Log.e("DB_ERROR", "Error membaca file import fcba: ${e.message}")
+        }
+    }
+
+    fun insertCustomer(datas: ApiClient.CustomerResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            val totalStatements = datas.header.total
+            var processedCount = 0
+            val currentDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            db.beginTransaction()
+            try {
+                datas.detail.forEach { data ->
+                    try {
+                        val values = ContentValues().apply {
+                            put("CUSTOMERCODE", data.customercode)
+                            put("DESCRIPTION", data.description)
+                            put("FCBA", data.fcba)
+                            put("LASTUPDATE", currentDate)
+                            put("LASTTIME", currentTime)
+                        }
+                        db.insertWithOnConflict(T_MILL, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+                        processedCount++
+                        if (totalStatements > 0) onProgress((processedCount * 100) / totalStatements)
+                    } catch (e: Exception) {
+                        Log.e("IMPORT_ERROR", "Gagal di import customer: ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error insertCustomer: ${e.message}")
+        }
+    }
+
+    fun insertNursery(datas: ApiClient.NurseryResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            val totalStatements = datas.header.total
+            var processedCount = 0
+            db.beginTransaction()
+            try {
+                datas.detail.forEach { data ->
+                    try {
+                        val values = ContentValues().apply {
+                            put("NURSERYCODE", data.nurserycode)
+                            put("DESCRIPTION", data.description)
+                            put("DATEPLANTED", data.dateplanted)
+                            put("FCBA", data.fcba)
+                            put("STATUS", data.status)
+                        }
+                        db.insertWithOnConflict(T_NURSERY, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+                        processedCount++
+                        if (totalStatements > 0) onProgress((processedCount * 100) / totalStatements)
+                    } catch (e: Exception) {
+                        Log.e("IMPORT_ERROR", "Gagal di import nursery: ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error insertNursery: ${e.message}")
+        }
+    }
+
+    fun insertVehicle(datas: ApiClient.VehicleResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            val totalStatements = datas.header.total
+            var processedCount = 0
+            val currentDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+
+            db.beginTransaction()
+            try {
+                datas.detail.forEach { data ->
+                    try {
+                        val values = ContentValues().apply {
+                            put("FCCODE", data.fccode)
+                            put("FCNAME", data.fcname)
+                            put("VEHICLEGROUPCODE", data.vehiclegroupcode)
+                            put("ACTIVATION", data.activation)
+                            put("REGISTRATIONNO", data.registrationno)
+                            put("FCBA", data.fcba)
+                            put("LASTUPDATE", currentDate)
+                            put("LASTTIME", currentTime)
+                        }
+                        db.insertWithOnConflict(T_VEHICLE, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+                        processedCount++
+                        if (totalStatements > 0) onProgress((processedCount * 100) / totalStatements)
+                    } catch (e: Exception) {
+                        Log.e("IMPORT_ERROR", "Gagal di import vehicle: ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error insertVehicle: ${e.message}")
+        }
+    }
+
+    fun insertGc(datas: ApiClient.GcResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            val totalStatements = datas.header.total
+            var processedCount = 0
+            db.beginTransaction()
+            try {
+                datas.detail.forEach { data ->
+                    try {
+                        val values = ContentValues().apply {
+                            put("ITEM", data.item)
+                            put("FCCODE", data.fccode)
+                            put("FCNAME", data.fcname)
+                            put("GCGROUP", data.gcgroup)
+                            put("SHOW_GC", data.show_gc)
+                            put("DIVISION", data.division)
+                            put("OWNERSHIP", data.ownership)
+                            put("FCBA", data.fcba)
+                        }
+                        db.insertWithOnConflict(T_GCMASTER, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+                        processedCount++
+                        if (totalStatements > 0) onProgress((processedCount * 100) / totalStatements)
+                    } catch (e: Exception) {
+                        Log.e("IMPORT_ERROR", "Gagal di import gc: ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error insertGc: ${e.message}")
+        }
+    }
+
+    fun insertWorkshop(datas: ApiClient.WorkshopResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            val totalStatements = datas.header.total
+            var processedCount = 0
+            db.beginTransaction()
+            try {
+                datas.detail.forEach { data ->
+                    try {
+                        val values = ContentValues().apply {
+                            put("FCCODE", data.fccode)
+                            put("FCNAME", data.fcname)
+                            put("REMARKS", data.remarks)
+                            put("ACTIVATION", data.activation)
+                            put("FCBA", data.fcba)
+                        }
+                        db.insertWithOnConflict(T_WORKSHOP_MASTER, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+                        processedCount++
+                        if (totalStatements > 0) onProgress((processedCount * 100) / totalStatements)
+                    } catch (e: Exception) {
+                        Log.e("IMPORT_ERROR", "Gagal di import workshop: ${e.message}")
+                    }
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error insertWorkshop: ${e.message}")
         }
     }
 
@@ -2155,6 +2316,50 @@ class AttendanceDatabaseHelper(private val context: Context) :
 
 
 
+    fun insertBjr(datas: ApiClient.BjrResponse, onProgress: (Int) -> Unit = {}) {
+        val db = writableDatabase
+        try {
+            db.beginTransaction()
+            val total = datas.detail.size
+            datas.detail.forEachIndexed { index, data ->
+                val values = ContentValues().apply {
+                    put("LINENO", data.lineno)
+                    put("PERIODYEAR", data.periodyear)
+                    put("PERIODMONTH", data.periodmonth)
+                    put("DIVISION", data.division)
+                    put("STATUS_TANAMAN", data.status_tanaman)
+                    put("FIELDCODE", data.fieldcode)
+                    put("BJR", data.bjr.toDoubleOrNull() ?: 0.0)
+                    put("FCBA", data.fcba)
+                }
+                db.insertWithOnConflict(T_BJR, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+                if (total > 0) onProgress(((index + 1) * 100) / total)
+            }
+            db.setTransactionSuccessful()
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal insert BJR: ${e.message}")
+        } finally {
+            if (db != null && db.inTransaction()) db.endTransaction()
+        }
+    }
+
+    fun getBjrByBlock(fieldCode: String, fcba: String): Double {
+        val db = readableDatabase
+        val year = SimpleDateFormat("yyyy", Locale.getDefault()).format(Date())
+        val month = SimpleDateFormat("M", Locale.getDefault()).format(Date())
+        val query = "SELECT BJR FROM $T_BJR WHERE FIELDCODE = ? AND FCBA = ? AND PERIODYEAR = ? AND PERIODMONTH = ? LIMIT 1"
+        return try {
+            db.rawQuery(query, arrayOf(fieldCode, fcba, year, month)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    cursor.getDouble(0)
+                } else 0.0
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Error getBjrByBlock: ${e.message}")
+            0.0
+        }
+    }
+
     fun insertRKH(fcba: String, afd: String, gang: String, job: String, loc: String, hk: Double, unit: Double, out: Double): Long {
         val db = writableDatabase
         val cv = ContentValues().apply {
@@ -2168,6 +2373,54 @@ class AttendanceDatabaseHelper(private val context: Context) :
             put("output", out)
         }
         return db.insert(T_RKH, null, cv)
+    }
+
+    fun updateRKHFullById(
+        id: String,
+        noRkh: String,
+        tanggal: String,
+        type: String,
+        fcba: String,
+        afd: String,
+        gang: String,
+        s1: String,
+        s2: String,
+        s3: String,
+        s4: String,
+        job: String,
+        loc: String,
+        hk: Double,
+        unit: String,
+        out: Double,
+        bjr: Double = 0.0,
+        weight: Double = 0.0
+    ): Boolean {
+        val db = this.writableDatabase
+        val values = ContentValues().apply {
+            put("no_rkh", noRkh)
+            put("tanggal", tanggal)
+            put("type", type)
+            put("fcba", fcba)
+            put("afdeling", afd)
+            put("gangcode", gang)
+            put("supervisi1", s1)
+            put("supervisi2", s2)
+            put("supervisi3", s3)
+            put("supervisi4", s4)
+            put("job_code", job)
+            put("location_code", loc)
+            put("jumlah_hk", hk)
+            put("unit", unit)
+            put("output", out)
+            put("bjr", bjr)
+            put("weight", weight)
+        }
+        return try {
+            db.update(T_RKH, values, "id = ?", arrayOf(id)) > 0
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal update RKH by ID: ${e.message}")
+            false
+        }
     }
 
     fun insertRKHFull(
@@ -2184,8 +2437,10 @@ class AttendanceDatabaseHelper(private val context: Context) :
         job: String,
         loc: String,
         hk: Double,
-        unit: Double,   // Diubah ke String karena bisa berisi "KG", "HK", dll
-        out: Double
+        unit: String,   // Diubah ke String karena bisa berisi "KG", "HK", dll
+        out: Double,
+        bjr: Double = 0.0,
+        weight: Double = 0.0
     ): Long {
         val db = this.writableDatabase
         val values = ContentValues().apply {
@@ -2210,6 +2465,8 @@ class AttendanceDatabaseHelper(private val context: Context) :
             put("jumlah_hk", hk)
             put("unit", unit)
             put("output", out)
+            put("bjr", bjr)
+            put("weight", weight)
 
             // Timestamp
             put("created_at", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
@@ -2423,36 +2680,36 @@ class AttendanceDatabaseHelper(private val context: Context) :
     }
 
 
-//     3. Fungsi Generate Nomor SPB (Contoh: SRE/SPB/20260618/001)
-fun generateNoSPB(fcba: String): String {
-    val db = readableDatabase
-    val today = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-    // Format Prefix: FCBA/SPB/YYYYMMDD/
-    val prefix = "$fcba/SPB/$today/"
-    var seq = 1
+    //     3. Fungsi Generate Nomor SPB (Contoh: SRE/SPB/20260618/001)
+    fun generateNoSPB(fcba: String): String {
+        val db = readableDatabase
+        val today = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+        // Format Prefix: FCBA/SPB/YYYYMMDD/
+        val prefix = "$fcba/SPB/$today/"
+        var seq = 1
 
-    // 1. PERBAIKAN: Gunakan T_SPB_HEADER (Tabel baru Anda)
-    // 2. PERBAIKAN: Urutkan berdasarkan spb_no DESC untuk mendapatkan nomor terbaru
-    val query = "SELECT $SH_SPB_NO FROM $T_SPB_HEADER WHERE $SH_SPB_NO LIKE ? ORDER BY $SH_SPB_NO DESC LIMIT 1"
+        // 1. PERBAIKAN: Gunakan T_SPB_HEADER (Tabel baru Anda)
+        // 2. PERBAIKAN: Urutkan berdasarkan spb_no DESC untuk mendapatkan nomor terbaru
+        val query = "SELECT $SH_SPB_NO FROM $T_SPB_HEADER WHERE $SH_SPB_NO LIKE ? ORDER BY $SH_SPB_NO DESC LIMIT 1"
 
-    try {
-        db.rawQuery(query, arrayOf("$prefix%")).use { cursor ->
-            if (cursor.moveToFirst()) {
-                val lastNo = cursor.getString(0) // Contoh: "KML/SPB/20260711/001"
+        try {
+            db.rawQuery(query, arrayOf("$prefix%")).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val lastNo = cursor.getString(0) // Contoh: "KML/SPB/20260711/001"
 
-                // Mengambil bagian setelah '/' terakhir (yaitu "001")
-                val lastPart = lastNo.substringAfterLast("/")
-                val lastSeq = lastPart.toIntOrNull() ?: 0
-                seq = lastSeq + 1
+                    // Mengambil bagian setelah '/' terakhir (yaitu "001")
+                    val lastPart = lastNo.substringAfterLast("/")
+                    val lastSeq = lastPart.toIntOrNull() ?: 0
+                    seq = lastSeq + 1
+                }
             }
+        } catch (e: Exception) {
+            android.util.Log.e("DB_ERROR", "Gagal generate No SPB: ${e.message}")
         }
-    } catch (e: Exception) {
-        android.util.Log.e("DB_ERROR", "Gagal generate No SPB: ${e.message}")
-    }
 
-    // Format hasil menjadi 3 digit (contoh: 002)
-    return "$prefix${String.format("%03d", seq)}"
-}
+        // Format hasil menjadi 3 digit (contoh: 002)
+        return "$prefix${String.format("%03d", seq)}"
+    }
 
     fun getAllRKH(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
@@ -2503,23 +2760,32 @@ fun generateNoSPB(fcba: String): String {
         // PERBAIKAN: Gunakan GROUP BY dan GROUP_CONCAT
         val query = """
         SELECT 
-            MAX(r.id) as id, 
+            id, 
             r.no_rkh, 
             r.fcba, 
             r.afdeling, 
-            MAX(r.unit) as unit,         
-            MAX(r.output) as output,
             r.gangcode, 
             r.job_code, 
             r.type,
-            GROUP_CONCAT(r.location_code, ', ') as location_code, 
-            SUM(CAST(r.jumlah_hk AS REAL)) as jumlah_hk,
-            MAX(r.created_at) as created_at,
-            MAX(j.fcname) as job_name
+            location_code, 
+            jumlah_hk,
+            created_at,
+            j.fcname job_name,
+			unit,
+			output,
+			j.UOM_UNIT uom_unit,
+			j.UNITOFMEASUREMENT uom_output,
+			e1.fcname sup1_name,
+			e2.fcname sup2_name,
+			e3.fcname sup3_name,
+			e4.fcname sup4_name
         FROM $T_RKH r
-        LEFT JOIN $T_JOB j ON r.job_code = j.fccode
+        LEFT JOIN $T_JOB j ON r.job_code = j.fccode and r.fcba = j.fcba
+		left join EMPLOYEE e1 on r.supervisi1 = e1.fccode and r.fcba = e1.fcba
+		left join EMPLOYEE e2 on r.supervisi2 = e2.fccode and r.fcba = e2.fcba
+		left join EMPLOYEE e3 on r.supervisi3 = e3.fccode and r.fcba = e3.fcba
+		left join EMPLOYEE e4 on r.supervisi4 = e4.fccode and r.fcba = e4.fcba
         WHERE r.fcba = ? AND r.created_at LIKE ? COLLATE NOCASE
-        GROUP BY r.no_rkh 
         ORDER BY id DESC
     """.trimIndent()
 
@@ -2563,9 +2829,7 @@ fun generateNoSPB(fcba: String): String {
             fcba, 
             afdeling, 
             gangcode, 
-            job_code,   
-            MAX(unit) as unit,
-            MAX(output) as output,
+            job_code,               
             GROUP_CONCAT(location_code, ', ') as combined_locations, 
             SUM(CAST(jumlah_hk AS REAL)) as total_hk 
         FROM $T_RKH 
@@ -2585,8 +2849,6 @@ fun generateNoSPB(fcba: String): String {
                     map["afdeling"] = cursor.getString(cursor.getColumnIndexOrThrow("afdeling")) ?: ""
                     map["gang_code"] = cursor.getString(cursor.getColumnIndexOrThrow("gangcode")) ?: ""
                     map["job_code"] = cursor.getString(cursor.getColumnIndexOrThrow("job_code")) ?: ""
-                    map["unit"] = cursor.getString(cursor.getColumnIndexOrThrow("unit")) ?: "-"
-                    map["output"] = cursor.getString(cursor.getColumnIndexOrThrow("output")) ?: "0"
 
                     map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("combined_locations")) ?: ""
                     map["jumlah_hk"] = cursor.getString(cursor.getColumnIndexOrThrow("total_hk")) ?: "0"
@@ -2794,19 +3056,19 @@ fun generateNoSPB(fcba: String): String {
                     map["id"] = cursor.getString(cursor.getColumnIndexOrThrow("id"))
                     map["no_rkh"] = cursor.getString(cursor.getColumnIndexOrThrow("no_rkh"))
                     map["gangcode"] = cursor.getString(cursor.getColumnIndexOrThrow("gangcode"))
-                    
+
                     // Code Supervisi (FCCode)
                     map["supervisi1"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi1")) ?: ""
                     map["supervisi2"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi2")) ?: ""
                     map["supervisi3"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi3")) ?: ""
                     map["supervisi4"] = cursor.getString(cursor.getColumnIndexOrThrow("supervisi4")) ?: ""
-                    
+
                     // Nama Supervisi (Hasil Join)
                     map["supervisi1_name"] = cursor.getString(cursor.getColumnIndexOrThrow("name1")) ?: map["supervisi1"] ?: ""
                     map["supervisi2_name"] = cursor.getString(cursor.getColumnIndexOrThrow("name2")) ?: map["supervisi2"] ?: ""
                     map["supervisi3_name"] = cursor.getString(cursor.getColumnIndexOrThrow("name3")) ?: map["supervisi3"] ?: ""
                     map["supervisi4_name"] = cursor.getString(cursor.getColumnIndexOrThrow("name4")) ?: map["supervisi4"] ?: ""
-                    
+
                     map["unit"] = cursor.getString(cursor.getColumnIndexOrThrow("unit"))
                     map["output"] = cursor.getString(cursor.getColumnIndexOrThrow("output"))
                     map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("combined_locations"))
@@ -2856,22 +3118,26 @@ fun generateNoSPB(fcba: String): String {
     }
 
 
-    // Fungsi untuk mengambil daftar blok yang ada di dalam satu nomor RKH
-    fun getLocationsByRKH(noRkh: String, fcba: String = "99"): List<String> {
-        val list = mutableListOf<String>()
+
+    fun getRKHBlocksByNo(noRkh: String, fcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        val query = if (fcba == "99") "SELECT DISTINCT location_code FROM $T_RKH WHERE no_rkh = ?"
-                    else "SELECT DISTINCT location_code FROM $T_RKH WHERE no_rkh = ? AND fcba = ?"
-        val args = if (fcba == "99") arrayOf(noRkh) else arrayOf(noRkh, fcba)
+        val query = "SELECT * FROM $T_RKH WHERE no_rkh = ? AND fcba = ?"
         try {
-            db.rawQuery(query, args).use { cursor ->
+            db.rawQuery(query, arrayOf(noRkh, fcba)).use { cursor ->
                 while (cursor.moveToNext()) {
-                    val loc = cursor.getString(0)
-                    if (!loc.isNullOrEmpty()) list.add(loc)
+                    val map = mutableMapOf<String, String>()
+                    cursor.columnNames.forEach { col ->
+                        map[col] = cursor.getString(cursor.getColumnIndexOrThrow(col)) ?: ""
+                    }
+                    // Alias keys for UI consistency in RKHFormScreen
+                    map["loc"] = map["location_code"] ?: ""
+                    map["hk"] = map["jumlah_hk"] ?: ""
+                    list.add(map)
                 }
             }
         } catch (e: Exception) {
-            Log.e("DB_ERROR", "Gagal ambil lokasi RKH: ${e.message}")
+            Log.e("DB_ERROR", "Gagal ambil blok RKH: ${e.message}")
         }
         return list
     }
@@ -2881,25 +3147,55 @@ fun generateNoSPB(fcba: String): String {
 
 
     // 1. Ambil JOB (Pekerjaan)
-    fun getJobList(userFcba: String): List<String> {
+    fun getJobList(userFcba: String, type: String = ""): List<String> {
         val list = mutableListOf<String>()
         try {
             val db = readableDatabase
-            // Jika admin (99), lihat semua.
-            // Jika data masih kosong, coba hilangkan filter FCBA sementara untuk testing
-            val query = if (userFcba == "99") {
-                "SELECT DISTINCT FCNAME FROM $T_JOB ORDER BY FCNAME ASC"
-            } else {
-                // Coba ganti query ini jika data tetap tidak muncul:
-                // "SELECT DISTINCT FCNAME FROM $T_JOB ORDER BY FCNAME ASC" (Tanpa filter FCBA)
-                "SELECT DISTINCT FCNAME FROM $T_JOB WHERE FCBA = ? ORDER BY FCNAME ASC"
+            var query = "SELECT DISTINCT FCCODE, FCNAME FROM $T_JOB WHERE 1=1"
+            val argsList = mutableListOf<String>()
+
+            // Filter FCBA jika bukan admin (99)
+            if (userFcba != "99") {
+                query += " AND FCBA = ?"
+                argsList.add(userFcba)
             }
 
-            val args = if (userFcba == "99") null else arrayOf(userFcba)
+            // Filter berdasarkan Type
+            if (type.isNotEmpty()) {
+                val t = type.lowercase()
+                when {
+                    t.contains("panen") -> {
+                        query += " AND JOB_CATEGORY = 'FF'"
+                    }
+                    t.contains("perawatan") -> {
+                        query += " AND JOB_CATEGORY = 'FF'"
+                    }
+                    t.contains("bibitan") -> {
+                        query += " AND (JOB_CATEGORY = 'MN' OR JOB_CATEGORY = 'PN')"
+                    }
+                    t.contains("traksi") -> {
+                        query += " AND FCCODE = '503010010'"
+                    }
+                    t.contains("ws") || t.contains("workshop") -> {
+                        query += " AND FCCODE = '502010010'"
+                    }
+                    t.contains("umum") -> {
+                        query += " AND FCCODE = '504010010'"
+                    }
+                    else -> {
+                        query += " AND JOB_CATEGORY LIKE ?"
+                        argsList.add("%$type%")
+                    }
+                }
+            }
 
-            db.rawQuery(query, args).use { c ->
+            query += " ORDER BY FCNAME ASC"
+
+            db.rawQuery(query, if (argsList.isEmpty()) null else argsList.toTypedArray()).use { c ->
                 while (c.moveToNext()) {
-                    list.add(c.getString(0))
+                    val code = c.getString(0)
+                    val name = c.getString(1)
+                    list.add("$code - $name")
                 }
             }
         } catch (e: Exception) {
@@ -3257,27 +3553,30 @@ fun generateNoSPB(fcba: String): String {
     fun getAllSPB(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        // Ambil tanggal hari ini untuk filter agar data lama tidak muncul
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-
-        // Tambahkan filter tanggal pada query (LIKE today%)
-        val query = "SELECT * FROM T_SPB WHERE fcba = ? AND created_at LIKE ? ORDER BY created_at DESC"
+        // FIX: Ubah T_SPB_HEADER menjadi T_SPB sesuai dengan tabel tempat menyimpan
+        // Dan filter FCBA
+        val query = "SELECT * FROM T_SPB WHERE fcba = ? ORDER BY created_at DESC"
 
         try {
-            db.rawQuery(query, arrayOf(fcba, "$today%")).use { cursor ->
+            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
                 if (cursor.moveToFirst()) {
                     do {
                         val map = mutableMapOf<String, String>()
 
-                        // PENTING: Ambil ID agar data bisa dihapus
-                        val idIdx = cursor.getColumnIndex("id")
-                        map["id"] = if (idIdx != -1) cursor.getString(idIdx) ?: "" else ""
-
+                        // FIX: Sesuaikan Key Column dengan struktur CREATE TABLE T_SPB Anda
                         map["spb_no"] = cursor.getString(cursor.getColumnIndexOrThrow("spb_no")) ?: ""
+
+                        // UI mengharapkan 'mill_code', kita arahkan dari kolom 'mill_name'
                         map["mill_code"] = cursor.getString(cursor.getColumnIndexOrThrow("mill_name")) ?: ""
+
+                        // UI mengharapkan 'sopir_name', kita arahkan dari kolom 'driver_name'
                         map["sopir_name"] = cursor.getString(cursor.getColumnIndexOrThrow("driver_name")) ?: ""
+
                         map["location_code"] = cursor.getString(cursor.getColumnIndexOrThrow("location_code")) ?: ""
+
+                        // UI mengharapkan 'unit', kita arahkan dari kolom 'total_janjang'
                         map["unit"] = cursor.getInt(cursor.getColumnIndexOrThrow("total_janjang")).toString()
+
                         map["created_at"] = cursor.getString(cursor.getColumnIndexOrThrow("created_at")) ?: ""
 
                         list.add(map)
@@ -3293,48 +3592,27 @@ fun generateNoSPB(fcba: String): String {
     fun getAllSPBHeader(fcba: String): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-        val today = sdf.format(java.util.Date())
-
         try {
+            // Query untuk mengambil Header + Total Unit (SUM) + Lokasi Pertama (MIN)
             val query = """
-        SELECT 
-            h.$SH_SPB_NO as header_id, -- Gunakan spb_no karena kolom 'id' tidak ada
-            h.*, 
-            IFNULL(SUM(d.$SD_UNIT), 0) as total_unit_agg,
-            IFNULL(MIN(d.$SD_LOC), '-') as first_loc
-        FROM $T_SPB_HEADER h
-        LEFT JOIN $T_SPB_DETAIL d ON h.$SH_SPB_NO = d.$SD_SPB_NO
-        WHERE h.$SH_FCBA = ? 
-        AND (h.created_at LIKE ? OR date(h.created_at) = date('now', 'localtime'))
-        GROUP BY h.$SH_SPB_NO
-        ORDER BY h.created_at DESC
-    """.trimIndent()
+            SELECT 
+                h.*, 
+                IFNULL(SUM(d.$SD_UNIT), 0) as total_unit,
+                IFNULL(MIN(d.$SD_LOC), '-') as first_loc
+            FROM $T_SPB_HEADER h
+            LEFT JOIN $T_SPB_DETAIL d ON h.$SH_SPB_NO = d.$SD_SPB_NO
+            WHERE h.$SH_FCBA = ?
+            GROUP BY h.$SH_SPB_NO
+            ORDER BY h.created_at DESC
+        """.trimIndent()
 
-            db.rawQuery(query, arrayOf(fcba, "$today%")).use { cursor ->
-                Log.d("DB_DEBUG", "Data di DB: ${cursor.count}")
-
+            db.rawQuery(query, arrayOf(fcba)).use { cursor ->
                 while (cursor.moveToNext()) {
                     val map = mutableMapOf<String, String>()
-
-                    // Mapping header_id (spb_no) ke key "id" agar UI Hapus tetap bekerja
-                    val idIdx = cursor.getColumnIndex("header_id")
-                    map["id"] = if (idIdx != -1) cursor.getString(idIdx) ?: "" else ""
-
                     cursor.columnNames.forEach { col ->
                         val idx = cursor.getColumnIndex(col)
                         map[col] = cursor.getString(idx) ?: ""
                     }
-
-                    map["no_spb"] = map[SH_SPB_NO] ?: ""
-                    map["mill_name"] = map[SH_MILL] ?: ""
-                    map["driver_name"] = map[SH_SOPIR] ?: ""
-                    map["vehicle_code"] = map[SH_VEHICLE] ?: ""
-
-                    val totalAgg = map["total_unit_agg"] ?: "0"
-                    map["unit"] = if (totalAgg != "0" && totalAgg != "") totalAgg else (map["total_janjang"] ?: "0")
-                    map["location_code"] = if (map["first_loc"] != "-") map["first_loc"] ?: "" else (map["location_code"] ?: "")
-
                     list.add(map)
                 }
             }
@@ -3479,6 +3757,17 @@ fun generateNoSPB(fcba: String): String {
             false
         }
     }
+    fun deleteRKHById(id: String): Boolean {
+        val db = this.writableDatabase
+        return try {
+            val result = db.delete(T_RKH, "id = ?", arrayOf(id))
+            android.util.Log.d("DB_DELETE", "Hapus RKH ID: $id pada tabel $T_RKH. Baris terhapus: $result")
+            result > 0
+        } catch (e: Exception) {
+            android.util.Log.e("DB_ERROR", "Gagal hapus RKH by ID: ${e.message}")
+            false
+        }
+    }
 
 
     fun deleteFruitCounting(id: Int): Int {
@@ -3611,7 +3900,7 @@ fun generateNoSPB(fcba: String): String {
             "SELECT CUSTOMERCODE, DESCRIPTION, FCBA FROM $T_MILL WHERE FCBA = ?"
         }
         val args = if (fcba == "99") null else arrayOf(fcba)
-        
+
         db.rawQuery(query, args).use { cursor ->
             if (cursor.moveToFirst()) {
                 do {
@@ -3636,7 +3925,7 @@ fun generateNoSPB(fcba: String): String {
         val query = if (fcba == "99") {
             "SELECT FCCODE, FCNAME, REGISTRATIONNO, FCBA FROM $T_VEHICLE ORDER BY FCNAME ASC"
         } else {
-            "SELECT FCCODE, FCNAME, REGISTRATIONNO, FCBA FROM $T_VEHICLE WHERE FCBA = ? ORDER BY FCNAME ASC"
+            "SELECT FCCODE, FCNAME, REGISTRATIONNO, FCBA FROM $T_VEHICLE WHERE FCBA = ? AND VEHICLEGROUPCODE IN ('DT', 'TR') ORDER BY FCNAME ASC"
         }
         val args = if (fcba == "99") null else arrayOf(fcba)
 
@@ -3672,7 +3961,7 @@ fun generateNoSPB(fcba: String): String {
                         "code" to (c.getString(0) ?: ""),
                         "name" to (c.getString(1) ?: ""),
 
-                    ))
+                        ))
                 }
             }
         } catch (e: Exception) {
@@ -3704,13 +3993,171 @@ fun generateNoSPB(fcba: String): String {
         return list
     }
 
+    fun getAllJobsDetails(fcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        db.rawQuery("SELECT * FROM $T_JOB WHERE FCBA = ?", arrayOf(fcba)).use { cursor ->
+            val columnNames = cursor.columnNames
+            while (cursor.moveToNext()) {
+                val map = mutableMapOf<String, String>()
+                columnNames.forEachIndexed { index, name ->
+                    map[name] = cursor.getString(index) ?: ""
+                }
+                list.add(map)
+            }
+        }
+        return list
+    }
+
+    fun getAllFieldsDetails(fcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        db.rawQuery("SELECT * FROM FIELD WHERE FCBA = ?", arrayOf(fcba)).use { cursor ->
+            val columnNames = cursor.columnNames
+            while (cursor.moveToNext()) {
+                val map = mutableMapOf<String, String>()
+                columnNames.forEachIndexed { index, name ->
+                    map[name] = cursor.getString(index) ?: ""
+                }
+                list.add(map)
+            }
+        }
+        return list
+    }
+
+    fun getAllTphsDetails(fcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        db.rawQuery("SELECT * FROM TPH WHERE FCBA = ?", arrayOf(fcba)).use { cursor ->
+            val columnNames = cursor.columnNames
+            while (cursor.moveToNext()) {
+                val map = mutableMapOf<String, String>()
+                columnNames.forEachIndexed { index, name ->
+                    map[name] = cursor.getString(index) ?: ""
+                }
+                list.add(map)
+            }
+        }
+        return list
+    }
+
+    fun getAllFcbasDetails(): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        db.rawQuery("SELECT * FROM BUSINESSUNIT", null).use { cursor ->
+            val columnNames = cursor.columnNames
+            while (cursor.moveToNext()) {
+                val map = mutableMapOf<String, String>()
+                columnNames.forEachIndexed { index, name ->
+                    map[name] = cursor.getString(index) ?: ""
+                }
+                list.add(map)
+            }
+        }
+        return list
+    }
+
+    fun getAllNurseriesDetails(fcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        db.rawQuery("SELECT * FROM $T_NURSERY WHERE FCBA = ?", arrayOf(fcba)).use { cursor ->
+            val columnNames = cursor.columnNames
+            while (cursor.moveToNext()) {
+                val map = mutableMapOf<String, String>()
+                columnNames.forEachIndexed { index, name ->
+                    map[name] = cursor.getString(index) ?: ""
+                }
+                list.add(map)
+            }
+        }
+        return list
+    }
+
+    fun getAllBjrsDetails(fcba: String): List<Map<String, String>> {
+        val list = mutableListOf<Map<String, String>>()
+        val db = readableDatabase
+        db.rawQuery("SELECT * FROM $T_BJR WHERE FCBA = ?", arrayOf(fcba)).use { cursor ->
+            val columnNames = cursor.columnNames
+            while (cursor.moveToNext()) {
+                val map = mutableMapOf<String, String>()
+                columnNames.forEachIndexed { index, name ->
+                    map[name] = cursor.getString(index) ?: ""
+                }
+                list.add(map)
+            }
+        }
+        return list
+    }
+
+    fun getJobByCode(code: String, fcba: String): Map<String, String>? {
+        val db = readableDatabase
+        val query = "SELECT * FROM $T_JOB WHERE FCCODE = ? AND FCBA = ? LIMIT 1"
+        return try {
+            db.rawQuery(query, arrayOf(code, fcba)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val map = mutableMapOf<String, String>()
+                    cursor.columnNames.forEach { col ->
+                        map[col] = cursor.getString(cursor.getColumnIndexOrThrow(col)) ?: ""
+                    }
+                    map
+                } else null
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "getJobByCode Error: ${e.message}")
+            null
+        }
+    }
+
+    fun getRKHById(id: String): Map<String, String>? {
+        val db = readableDatabase
+        val query = """
+            SELECT r.*, 
+                   e1.$E_NAME as name1, 
+                   e2.$E_NAME as name2, 
+                   e3.$E_NAME as name3, 
+                   e4.$E_NAME as name4
+            FROM $T_RKH r
+            LEFT JOIN $T_EMP e1 ON r.supervisi1 = e1.$E_FCCODE
+            LEFT JOIN $T_EMP e2 ON r.supervisi2 = e2.$E_FCCODE
+            LEFT JOIN $T_EMP e3 ON r.supervisi3 = e3.$E_FCCODE
+            LEFT JOIN $T_EMP e4 ON r.supervisi4 = e4.$E_FCCODE
+            WHERE r.id = ?
+        """.trimIndent()
+
+        return try {
+            db.rawQuery(query, arrayOf(id)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val map = mutableMapOf<String, String>()
+                    cursor.columnNames.forEach { col ->
+                        map[col] = cursor.getString(cursor.getColumnIndexOrThrow(col)) ?: ""
+                    }
+                    // Map keys to what RKHFormScreen expects
+                    map["supervisi1_code"] = map["supervisi1"] ?: ""
+                    map["supervisi2_code"] = map["supervisi2"] ?: ""
+                    map["supervisi3_code"] = map["supervisi3"] ?: ""
+                    map["supervisi4_code"] = map["supervisi4"] ?: ""
+                    
+                    map["supervisi1_name"] = map["name1"] ?: ""
+                    map["supervisi2_name"] = map["name2"] ?: ""
+                    map["supervisi3_name"] = map["name3"] ?: ""
+                    map["supervisi4_name"] = map["name4"] ?: ""
+                    
+                    map
+                } else null
+            }
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "getRKHById Error: ${e.message}")
+            null
+        }
+    }
+
     // Fungsi untuk mengambil satu data RKH
     fun getRKHByNo(noRkh: String, fcba: String = "99"): Map<String, String>? {
         val db = readableDatabase
         // Kita ambil 1 baris saja karena header (Type, Job, Afd, dll) biasanya sama untuk 1 no_rkh
         // Filter berdasarkan FCBA
         val query = if (fcba == "99") "SELECT * FROM $T_RKH WHERE no_rkh = ? LIMIT 1"
-                    else "SELECT * FROM $T_RKH WHERE no_rkh = ? AND fcba = ? LIMIT 1"
+        else "SELECT * FROM $T_RKH WHERE no_rkh = ? AND fcba = ? LIMIT 1"
         val args = if (fcba == "99") arrayOf(noRkh) else arrayOf(noRkh, fcba)
 
         return try {
@@ -3774,7 +4221,7 @@ fun generateNoSPB(fcba: String): String {
         // Tabel VEHICLE memiliki kolom FCCODE, FCNAME, FCBA, dan ACTIVATION
         val query = "SELECT FCCODE, FCNAME FROM $T_VEHICLE " +
                 "WHERE UPPER(TRIM(FCBA)) = UPPER(TRIM(?)) " +
-                "AND ACTIVATION = 'Y' ORDER BY FCNAME ASC"
+                "AND ACTIVATION = 'Y' AND VEHICLEGROUPCODE IN ('DT', 'TR') ORDER BY FCNAME ASC"
 
         try {
             db.rawQuery(query, arrayOf(fcba)).use { c ->
@@ -3798,7 +4245,7 @@ fun generateNoSPB(fcba: String): String {
         val list = mutableListOf<Map<String, String>>()
         val db = readableDatabase
         val query = if (fcba == "99") "SELECT * FROM T_SPB_DETAIL WHERE spb_no = ?"
-                    else "SELECT * FROM T_SPB_DETAIL WHERE spb_no = ? AND fcba = ?"
+        else "SELECT * FROM T_SPB_DETAIL WHERE spb_no = ? AND fcba = ?"
         val args = if (fcba == "99") arrayOf(spbNo) else arrayOf(spbNo, fcba)
 
         try {
@@ -3822,7 +4269,6 @@ fun generateNoSPB(fcba: String): String {
     fun insertSPBFull(header: Map<String, String>, details: List<Map<String, String>>): Boolean {
         val db = writableDatabase
         db.beginTransaction()
-        val currentTimestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
         return try {
             // 1. Simpan ke Header
             val hValues = ContentValues().apply {
@@ -3834,7 +4280,6 @@ fun generateNoSPB(fcba: String): String {
                 put(SH_PEMUAT1, header["pemuat_1"])
                 put(SH_PEMUAT2, header["pemuat_2"])
                 put(SH_FCBA, header["fcba"])
-                put("created_at", currentTimestamp)
             }
             db.insertOrThrow(T_SPB_HEADER, null, hValues)
 
@@ -3847,7 +4292,6 @@ fun generateNoSPB(fcba: String): String {
                     put(SD_TPH, item["tph_code"])
                     put(SD_FCBA, header["fcba"])
                     put(SD_EMP, item["employee_code"])
-
                 }
                 db.insertOrThrow(T_SPB_DETAIL, null, dValues)
             }
@@ -3905,7 +4349,7 @@ fun generateNoSPB(fcba: String): String {
             "SELECT COUNT(*) FROM $T_FACE_FAIL WHERE $FF_EMP_ID = ? AND $FF_FCBA = ? AND date($FF_CREATED_AT) = date('now')"
         }
         val args = if (fcba == "99") arrayOf(fccode) else arrayOf(fccode, fcba)
-        
+
         return try {
             db.rawQuery(query, args).use { cursor ->
                 if (cursor.moveToFirst()) {
