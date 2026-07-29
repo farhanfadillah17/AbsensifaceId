@@ -33,6 +33,9 @@ import kotlin.text.split
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import kotlin.collections.addAll
+import kotlin.text.clear
+import kotlin.text.toIntOrNull
 
 
 @Composable
@@ -245,7 +248,12 @@ fun SPBListScreen(
                     ListItem(
                         headlineContent = { Text("Edit Header") },
                         leadingContent = { Icon(Icons.Default.Edit, null, tint = Color(0xFFF57C00)) },
-                        modifier = Modifier.clickable { showMenu = false; onEditClick(selectedItemForMenu!!["id"] ?: "") }
+                        modifier = Modifier.clickable {
+                            showMenu = false
+                            // UBAH ["id"] MENJADI ["spb_no"]
+                            val idToEdit = selectedItemForMenu!!["spb_no"] ?: ""
+                            onEditClick(idToEdit)
+                        }
                     )
                     HorizontalDivider()
                     ListItem(
@@ -450,24 +458,54 @@ fun SPBFormScreen(
     var pemuat1 by remember { mutableStateOf("") }
     var pemuat2 by remember { mutableStateOf("") }
 
+    var locCode by remember { mutableStateOf("") }
+    var unit by remember { mutableStateOf("") }
+    var tph by remember { mutableStateOf("") }
+    var empCode by remember { mutableStateOf("") }
+    val scannedCards = remember { mutableStateListOf<Map<String, String>>() }
+    var totalUnit by remember { mutableIntStateOf(0) }
+
     var activeDialog by remember { mutableStateOf<String?>(null) }
     // --- STATE DATA MASTER ---
     val mills = remember { mutableStateListOf<Mill>() }
     val vehicles = remember { mutableStateListOf<Vehicle>() }
     val employeeOptions = remember(fcba) { dbHelper.getEmployeeList(fcba) }
-    LaunchedEffect(Unit) {
+
+    LaunchedEffect(editId) {
+        // 1. Load Data Master
         mills.clear()
         mills.addAll(dbHelper.getAllMills(fcba))
-
-
-
         vehicles.clear()
         vehicles.addAll(dbHelper.getAllVehicles(fcba))
 
-        if (editId == null) {
+        if (editId != null) {
+            // --- MODE EDIT ---
+            val header = dbHelper.getSPBHeaderByNo(editId, fcba)
+            if (header != null) {
+                // Gunakan key yang ada di skema CREATE TABLE Anda:
+                spbNo = header["spb_no"] ?: ""
+                selectedMill = header["mill_code"] ?: ""     // DISESUAIKAN (bukan mill_name)
+                sopirName = header["sopir_name"] ?: ""
+                selectedVehicle = header["vehicle_code"] ?: "" // DISESUAIKAN (bukan vehicle_no)
+                pemuat1 = header["pemuat_1"] ?: ""           // DISESUAIKAN (bukan loader_1)
+                pemuat2 = header["pemuat_2"] ?: ""           // DISESUAIKAN (bukan loader_2)
+
+                // Ambil Detail rincian scan
+                val details = dbHelper.getSPBDetailsByNo(editId, fcba)
+                scannedCards.clear()
+                scannedCards.addAll(details)
+
+                // Update total unit agar tidak 0
+                totalUnit = details.sumOf { it["unit"]?.toIntOrNull() ?: 0 }
+            }
+        } else {
+            // --- MODE BARU ---
             spbNo = dbHelper.generateNoSPB(fcba)
         }
     }
+
+
+
 
     // --- STATE DIALOG PENCARIAN ---
     var showMillDialog by remember { mutableStateOf(false) }
@@ -513,12 +551,7 @@ fun SPBFormScreen(
         )
     }
     // --- STATE DETAIL ---
-    var locCode by remember { mutableStateOf("") }
-    var unit by remember { mutableStateOf("") }
-    var tph by remember { mutableStateOf("") }
-    var empCode by remember { mutableStateOf("") }
-    val scannedCards = remember { mutableStateListOf<Map<String, String>>() }
-    var totalUnit by remember { mutableIntStateOf(0) }
+
 
     // --- STATE NFC ---
     var showScanDialog by remember { mutableStateOf(false) }
@@ -608,10 +641,6 @@ fun SPBFormScreen(
     }
 
 
-    // Generate No SPB saat buka
-    LaunchedEffect(Unit) {
-        spbNo = dbHelper.generateNoSPB(fcba)
-    }
 
     Scaffold(
         topBar = {
@@ -856,13 +885,15 @@ fun SPBFormScreen(
 
                     // TOMBOL SIMPAN
                         Button(
+                            // DI DALAM SPBFormScreen -> Tombol SIMPAN SPB
                             onClick = {
                                 if (scannedCards.isEmpty()) {
-                                    Toast.makeText(context, "Belum ada data lokasi yang di-scan!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Belum ada data lokasi!", Toast.LENGTH_SHORT).show()
                                     return@Button
                                 }
-                                val currentDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                                // 1. Siapkan Data Header
+
+                                val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
                                 val headerMap = mapOf(
                                     "spb_no" to spbNo,
                                     "tanggal" to currentDate,
@@ -874,24 +905,30 @@ fun SPBFormScreen(
                                     "fcba" to fcba
                                 )
 
-                                // 2. Siapkan Data Detail (Konversi dari scannedCards)
                                 val detailsList = scannedCards.map { card ->
                                     mapOf(
                                         "location_code" to (card["location_code"] ?: ""),
                                         "unit" to (card["unit"] ?: "0"),
                                         "tph_code" to (card["tph_code"] ?: ""),
-                                        "employee_code" to (card["employee_code"] ?: "")
+                                        "employee_code" to empId // Gunakan ID penginput
                                     )
                                 }
 
-                                // 3. Panggil fungsi insertSPBFull yang baru dibuat di DatabaseHelper
-                                val isSuccess = dbHelper.insertSPBFull(headerMap, detailsList)
+                                // --- PENENTUAN INSERT ATAU UPDATE ---
+                                val isSuccess = if (editId != null) {
+                                    // Jika sedang mode edit, panggil fungsi update
+                                    dbHelper.updateSPBFull(editId, headerMap, detailsList)
+                                } else {
+                                    // Jika data baru, panggil fungsi insert
+                                    dbHelper.insertSPBFull(headerMap, detailsList)
+                                }
 
                                 if (isSuccess) {
-                                    Toast.makeText(context, "SPB Berhasil Disimpan!", Toast.LENGTH_SHORT).show()
-                                    onSuccess() // Kembali ke Dashboard atau Menu Utama
+                                    Toast.makeText(context, "Berhasil disimpan!", Toast.LENGTH_SHORT).show()
+                                    onSuccess()
                                 } else {
-                                    Toast.makeText(context, "Gagal menyimpan SPB ke Database!", Toast.LENGTH_LONG).show()
+                                    // Pesan gagal jika terjadi crash di database
+                                    Toast.makeText(context, "Gagal simpan ke database! Cek nomor SPB ganda.", Toast.LENGTH_LONG).show()
                                 }
                             },
                             modifier = Modifier

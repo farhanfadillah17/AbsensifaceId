@@ -4240,6 +4240,29 @@ class AttendanceDatabaseHelper(private val context: Context) :
     }
 
 
+    fun getSPBHeaderByNo(spbNo: String, fcba: String): Map<String, String>? {
+        val db = readableDatabase
+        // Sesuaikan nama kolom: spb_no dan fcba
+        val query = "SELECT * FROM T_SPB_HEADER WHERE spb_no = ? AND fcba = ?"
+        return try {
+            db.rawQuery(query, arrayOf(spbNo, fcba)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val map = mutableMapOf<String, String>()
+                    cursor.columnNames.forEach { col ->
+                        val idx = cursor.getColumnIndex(col)
+                        if (idx != -1) {
+                            map[col] = cursor.getString(idx) ?: ""
+                        }
+                    }
+                    map
+                } else null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+
 
     fun getSPBDetailsByNo(spbNo: String, fcba: String = "99"): List<Map<String, String>> {
         val list = mutableListOf<Map<String, String>>()
@@ -4263,6 +4286,47 @@ class AttendanceDatabaseHelper(private val context: Context) :
             Log.e("DB_ERROR", "Gagal ambil detail SPB: ${e.message}")
         }
         return list
+    }
+
+    fun updateSPBFull(spbNo: String, header: Map<String, String>, details: List<Map<String, String>>): Boolean {
+        val db = writableDatabase
+        db.beginTransaction()
+        return try {
+            // 1. Update Header
+            val hValues = ContentValues().apply {
+                put(SH_MILL, header["mill_code"])
+                put(SH_SOPIR, header["sopir_name"])
+                put(SH_VEHICLE, header["vehicle_code"])
+                put(SH_PEMUAT1, header["pemuat_1"])
+                put(SH_PEMUAT2, header["pemuat_2"])
+                // Tanggal biasanya tidak diubah saat edit, tapi bisa ditambahkan jika perlu
+            }
+            db.update(T_SPB_HEADER, hValues, "$SH_SPB_NO = ? AND $SH_FCBA = ?", arrayOf(spbNo, header["fcba"] ?: ""))
+
+            // 2. Hapus Detail Lama
+            db.delete(T_SPB_DETAIL, "$SD_SPB_NO = ?", arrayOf(spbNo))
+
+            // 3. Masukkan Detail Baru
+            details.forEach { item ->
+                val dValues = ContentValues().apply {
+                    put(SD_SPB_NO, spbNo)
+                    put(SD_LOC, item["location_code"])
+                    put(SD_UNIT, item["unit"]?.toDoubleOrNull() ?: 0.0)
+                    put(SD_TPH, item["tph_code"])
+                    put(SD_FCBA, header["fcba"])
+                    put(SD_EMP, item["employee_code"])
+                }
+                db.insertOrThrow(T_SPB_DETAIL, null, dValues)
+            }
+
+            db.setTransactionSuccessful()
+            true
+        } catch (e: Exception) {
+            Log.e("DB_ERROR", "Gagal Update SPB: ${e.message}")
+            false
+        } finally {
+            db.endTransaction()
+        }
     }
 
 
